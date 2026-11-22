@@ -1,0 +1,8 @@
+wait:900
+click:Start;wait:1300
+click:Lap;wait:1100
+click:Lap;wait:1500
+click:Lap;wait:700
+click:Stop;wait:1500
+click:Reset;wait:1200
+quit

@@ -69,8 +69,10 @@ committed examples are never rewritten. `scripts/build.sh` builds every
 example as `examples/<name>/<name>` and `examples/<name>/<name>.app`, and
 xref:contributing.adoc#driving-an-app[Driving an app] runs them unattended.
 A new example needs at least one recorded case (see
-xref:contributing.adoc#recorded-cases[Recorded cases]) and a row in the
-README's examples table.
+xref:contributing.adoc#recorded-cases[Recorded cases]), a tile in the
+README's examples grid with its demo (see
+xref:contributing.adoc#demos[Demos]), and a row in
+xref:apps.adoc#the-examples[The examples].
 
 === Blueprint tasks
 
@@ -225,6 +227,39 @@ committing it. The stopwatch cases avoid wall-clock readouts. The
 examples' cases and an app's (`macos.roc test`) follow the same matching
 rules, `cli/Recorded.roc`, except that an example's checkout path is written
 `<repo>` rather than `<app>`.
+
+[#demos]
+=== Demos
+
+The README's tiles, `docs/images/<example>.gif`, are recorded from the
+built examples. Each example's `examples/<example>/demo.script` holds the
+steps of its demo, one or more to a line, paced with `wait` so a person can
+follow them, and ending with `quit`. After `scripts/build.sh`:
+
+[source,sh]
+----
+roc-stable scripts/record_demos.roc                   # every example with a demo.script
+roc-stable scripts/record_demos.roc -- counter todos  # the named ones
+----
+
+`scripts/record_demos.roc` runs each example with its steps in the light
+appearance, reads the window's number from a `window` step it adds first,
+and takes a frame of that window every 100 ms with
+`screencapture -l<number> -o -x` until the app quits. A capture names the
+window, so the app never needs focus and windows above it never show.
+ffmpeg then scales the frames to 400 pixels wide on the window's backdrop,
+drops repeated frames and frames caught mid-resize, and writes a looping GIF
+with one palette; it prints each GIF's size, frame count and length. Keep a
+tile under 400 KB.
+
+Recording needs ffmpeg on PATH and the Screen Recording permission for the
+terminal (System Settings, Privacy & Security), so it is not part of the
+check gate; its pure parts (`scripts/src/Demo.roc`) are tested in the
+`scripts` stage. While it records it serves the checkout at
+`http://127.0.0.1:8737/`, which the http-fetch demo fetches so it never
+depends on the network; the file-inspector demo drops files from
+`/usr/share/dict`, so no local path shows in its tile. Its frames are left in
+`build/demos/<example>/`. Review a new GIF before committing it.
 
 == The check gate
 

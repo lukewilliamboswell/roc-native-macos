@@ -7,6 +7,7 @@ host/RocGlue.swift
 examples/*/*
 examples/*/*.app/
 !examples/*/*.roc
+!examples/*/demo.script
 
 # Blueprint's generated environment and links
 .blueprint/

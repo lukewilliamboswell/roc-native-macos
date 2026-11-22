@@ -81,15 +81,24 @@ from the [latest release](https://github.com/lukewilliamboswell/roc-native-macos
 and run it with `macos.roc`, as [Try an example](docs/apps.adoc#try-an-example)
 describes.
 
-| Example | Shows |
-|---|---|
-| [`counter`](examples/counter/main.roc)<br><img src="docs/images/counter.png" width="200" alt="counter"> | Local state (`Engine.state`), icon buttons, a large monospaced readout |
-| [`todos`](examples/todos/main.roc)<br><img src="docs/images/todos.png" width="200" alt="todos"> | A store with a table, `table_view` rows (row templates) in a `Ui.scroll` inside a `box`, a form with Return-to-submit, a segmented filter, a Command-N shortcut, done rows greyed by `text_s`, an empty state, a shared `Theme`, saving to local storage and reading it back at boot, and `expect` tests |
-| [`gallery`](examples/gallery/main.roc)<br><img src="docs/images/gallery.png" width="200" alt="gallery"> | `tabs` over labelled sections: a dropdown, a slider and progress bar, a text area, text styles, semantic and adaptive colours, SF Symbols, Command-N/Command-K shortcuts |
-| [`contacts`](examples/contacts/main.roc)<br><img src="docs/images/contacts.png" width="200" alt="contacts"> | 10,000 generated rows in a sidebar `Ui.list` (`NSTableView`), a search field filtering through the `table_view` query, a detail pane for the selected row |
-| [`stopwatch`](examples/stopwatch/main.roc)<br><img src="docs/images/stopwatch.png" width="200" alt="stopwatch"> | Store cells, an interval effect owned by `watch_latest` (Stop cancels it), a default button, and an `each` list of laps with splits, the fastest and slowest coloured |
-| [`http-fetch`](examples/http-fetch/main.roc)<br><img src="docs/images/http-fetch.png" width="200" alt="http-fetch"> | `Engine.http` under `watch_latest`: Fetch, Cancel (a pure cancel), a second Fetch superseding the first, an optional 2 s timeout, transfer progress (`with_progress`), and a status badge whose colour follows the answer (`box_s`) |
-| [`file-inspector`](examples/file-inspector/main.roc)<br><img src="docs/images/file-inspector.png" width="200" alt="file-inspector"> | `Ui.file_button` and a `Ui.drop_zone` delivering `File` handles, sizes in KB and MB; for an inspected file its SHA-256 (`sha256`), its first 200 bytes as text or "binary" (`slice`, `read_bytes`), its URL (`object_url`) and "Save Copy…" (`File.save`); Clear releases the handles |
+<table>
+<tr>
+<td width="33%" valign="top"><a href="examples/counter/"><img src="docs/images/counter.gif" width="100%" alt="The counter example running"></a><br><a href="examples/counter/"><code>counter</code></a>: local state and three buttons</td>
+<td width="33%" valign="top"><a href="examples/todos/"><img src="docs/images/todos.gif" width="100%" alt="The todos example running"></a><br><a href="examples/todos/"><code>todos</code></a>: a stored table, a form and a filter</td>
+<td width="33%" valign="top"><a href="examples/stopwatch/"><img src="docs/images/stopwatch.gif" width="100%" alt="The stopwatch example running"></a><br><a href="examples/stopwatch/"><code>stopwatch</code></a>: an interval effect and a list of laps</td>
+</tr>
+<tr>
+<td width="33%" valign="top"><a href="examples/contacts/"><img src="docs/images/contacts.gif" width="100%" alt="The contacts example running"></a><br><a href="examples/contacts/"><code>contacts</code></a>: searching 10,000 rows in a native list</td>
+<td width="33%" valign="top"><a href="examples/gallery/"><img src="docs/images/gallery.gif" width="100%" alt="The gallery example running"></a><br><a href="examples/gallery/"><code>gallery</code></a>: tabs over native controls and looks</td>
+<td width="33%" valign="top"><a href="examples/http-fetch/"><img src="docs/images/http-fetch.gif" width="100%" alt="The http-fetch example running"></a><br><a href="examples/http-fetch/"><code>http-fetch</code></a>: HTTP requests, their errors and answers</td>
+</tr>
+<tr>
+<td width="33%" valign="top"><a href="examples/file-inspector/"><img src="docs/images/file-inspector.gif" width="100%" alt="The file-inspector example running"></a><br><a href="examples/file-inspector/"><code>file-inspector</code></a>: dropped files: sizes, digests, previews</td>
+</tr>
+</table>
+
+[What each example shows](docs/apps.adoc#the-examples) lists the API each one
+uses.
 
 ## Contributing
 
