@@ -49,6 +49,9 @@ final class Host: NSObject, NSTextFieldDelegate {
     /// Whether the last sync found a scroll area or list (the window then
     /// stops growing to fit its content).
     var flexible = false
+    /// Whether an attribute that can move or resize a view changed since
+    /// the last layout pass (`sync`).
+    var relayout = false
     var keyMonitor: Any?
 
     init(window: NSWindow) {
