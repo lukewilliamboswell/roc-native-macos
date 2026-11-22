@@ -4,7 +4,7 @@ Repo := [].{
 
 	## The check's stages, in the order a full run takes them.
 	stages : List(Str)
-	stages = ["pins", "engine", "fmt", "scripts", "tool", "build", "test", "examples", "bundle"]
+	stages = ["pins", "engine", "fmt", "scripts", "tool", "build", "test", "examples", "bench", "bundle"]
 
 	## The stages named on the command line, or every stage when none is.
 	## `--update` is an option of the tool and examples stages, not a stage.

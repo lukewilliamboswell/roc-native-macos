@@ -22,7 +22,7 @@ provides the rest of the environment.
 scripts/build.sh                # glue, Swift host, linker stubs, every example
 scripts/build.sh counter        # one example, after the platform is built
 scripts/build.sh --platform     # only the platform's native inputs
-./examples/counter/counter      # or stopwatch, todos, http-fetch, file-inspector, gallery, contacts
+./examples/counter/counter      # or stopwatch, todos, http-fetch, file-inspector, gallery, contacts, about
 open examples/counter/counter.app
 ----
 
@@ -284,6 +284,7 @@ same one CI runs on `macos-15`. Its stages, in order:
 | `build` | `scripts/build.sh` with the `roc` on PATH
 | `test` | `roc test` on `platform/main.roc` and every example
 | `examples` | every recorded case
+| `bench` | every harness under `bench/`, built and run at a token size (`bench/<name>/run.sh --smoke`) so it never goes stale; a harness's `--smoke` fails unless the run does what it measures
 | `bundle` | the bundle from the `build` stage's inputs, and its consumer test: `macos.roc` `init`, `build` and `test` against it
 |===
 

@@ -6,7 +6,8 @@ import pf.Ui
 ## A gallery of the native controls and looks: tabs over four pages of
 ## labelled sections (controls, text, styles and shortcuts), a dropdown,
 ## a slider, a multi-line text area, symbols, progress bars, text styles,
-## semantic colours, and two window-wide shortcuts (Command-N and Command-K).
+## semantic colours that name themselves under the pointer, and two
+## window-wide shortcuts (Command-N and Command-K).
 main : Engine.Program(_)
 main = Engine.program_store({}, |_boot| store, |_boot| view())
 
@@ -19,6 +20,7 @@ store = Engine.store(
 		busy: Engine.cell(Bool.False),
 		notes: Engine.cell(""),
 		presses: Engine.cell(0.I64),
+		pointed: Engine.cell(""),
 	}.Engine.Cells,
 )
 
@@ -169,17 +171,28 @@ styles = ||
 			),
 			section(
 				"COLOURS",
-				Ui.hstack(
-					{ spacing: 10 },
-					[Red, Orange, Yellow, Green, Teal, Blue, Indigo, Purple, Pink, Adaptive({ light: 0x24404b, dark: 0x9fc3cf })].map(swatch),
+				Ui.vstack(
+					{ spacing: 8 },
+					[
+						Ui.hstack(
+							{ spacing: 10 },
+							[("Red", Red), ("Orange", Orange), ("Yellow", Yellow), ("Green", Green), ("Teal", Teal), ("Blue", Blue), ("Indigo", Indigo), ("Purple", Purple), ("Pink", Pink), ("Slate", Adaptive({ light: 0x24404b, dark: 0x9fc3cf }))].map(swatch),
+						),
+						Ui.text(cells.pointed.signal().map(|name| if (name.is_empty()) "Point at a colour to name it" else name), theme.caption),
+					],
 				),
 			),
 		],
 	)
 
-## A small rounded square of one colour.
-swatch : Ui.Color -> Elem(ctx)
-swatch = |color| Ui.box({ fill: color, radius: 6, padding: Zero, width: Fixed(26), height: Fixed(26) }, Ui.spacer())
+## A small rounded square of one colour, which names itself while the
+## pointer is over it.
+swatch : (Str, Ui.Color) -> Elem(Engine.StoreRoot(_))
+swatch = |(name, color)|
+	Ui.hover(
+		{ on_hover: Engine.handle(|inside| [cells.pointed.update(|shown| if (inside) name else if (shown == name) "" else shown)]) },
+		Ui.box({ fill: color, radius: 6, padding: Zero, width: Fixed(26), height: Fixed(26) }, Ui.spacer()),
+	)
 
 shortcuts : () -> Elem(Engine.StoreRoot(_))
 shortcuts = ||

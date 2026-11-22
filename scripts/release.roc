@@ -191,6 +191,10 @@ archive! = |root, version, dir| {
 		released = Bundle.released_main(source, url) ? |_| "${path} does not name ../../platform/main.roc"
 		write!("${top}/${path}", released)?
 	}
+	# Each example's assets/, byte for byte: images are not text.
+	for path in tracked!(["examples"])?.keep_if(|path| path.contains("/assets/")) {
+		copy!(path, "${top}/${path}")?
+	}
 	for path in tracked!(["tests/examples", "tests/fixtures"])? {
 		write!("${top}/${path}", read!(path)?)?
 	}
@@ -272,14 +276,16 @@ test! = |root, dir, binaries| {
 		# The example's program, and the one inside `<example>.app` when
 		# `macos.roc build` made one there (the cross-compiling jobs do).
 		in_app = "${apps}/${example}.app/Contents/MacOS/${example}"
-		bundled = if (Path.exists!(Path.utf8(in_app)) ?? Bool.False) [{ exe: in_app, label: "${example}.app" }] else []
+		# A bare program is run away from its assets, so ROC_ASSETS names
+		# them; a bundled one finds its own in Contents/Resources.
+		bundled = if (Path.exists!(Path.utf8(in_app)) ?? Bool.False) [{ exe: in_app, label: "${example}.app", assets: "" }] else []
 		cases = names_in!("${top}/tests/examples/${example}")?.keep_oks(Recorded.case_name)
 		if cases.is_empty() {
 			$failed = $failed.append("${example} has no recorded case")
 		}
-		for { exe, label } in [{ exe: "${apps}/${example}", label: example }].concat(bundled) {
+		for { exe, label, assets } in [{ exe: "${apps}/${example}", label: example, assets: "${top}/examples/${example}/assets" }].concat(bundled) {
 			for name in cases {
-				match run_case!(top, exe, "tests/examples/${example}/${name}") {
+				match run_case!(top, { exe, assets }, "tests/examples/${example}/${name}") {
 					Ok({}) => {
 						note!("release: PASS ${label}/${name}")
 						$passed = $passed + 1
@@ -379,16 +385,15 @@ served! = |server|
 ## One recorded case, run from the archive's top directory as `blueprint run
 ## examples` runs it from the checkout: exit 0, and print exactly the
 ## recorded output with that directory written `<repo>`.
-run_case! : Str, Str, Str => Try({}, Str)
-run_case! = |top, exe, base| {
+run_case! : Str, { exe : Str, assets : Str }, Str => Try({}, Str)
+run_case! = |top, { exe, assets }, base| {
 	if !(Path.exists!(Path.utf8(exe)) ?? Bool.False) {
 		return Err("${exe} does not exist")
 	}
 	steps = read!("${top}/${base}.script")?.trim()
 	expected = read!("${top}/${base}.expected")?
-	output = Cmd.new(OsStr.from_str(exe))
-		.cwd(Path.utf8(top))
-		.env("ROC_SCRIPT", OsStr.from_str(steps))
+	program = Cmd.new(OsStr.from_str(exe)).cwd(Path.utf8(top)).env("ROC_SCRIPT", OsStr.from_str(steps))
+	output = (if (assets.is_empty()) program else program.env("ROC_ASSETS", OsStr.from_str(assets)))
 		.stdin(Null)
 		.stderr(MergeWithStdout)
 		.timeout(Duration.seconds(60))
@@ -527,6 +532,14 @@ write! = |path, text| {
 	parent = Str.join_with(path.split_on("/").drop_last(1), "/")
 	Path.create_all!(Path.utf8(parent)) ? |error| "could not create ${parent}: ${Str.inspect(error)}"
 	Path.write_utf8!(Path.utf8(path), text).map_err(|error| "could not write ${path}: ${Str.inspect(error)}")
+}
+
+## Copy a file byte for byte, creating its directory.
+copy! : Str, Str => Try({}, Str)
+copy! = |source, target| {
+	parent = Str.join_with(target.split_on("/").drop_last(1), "/")
+	Path.create_all!(Path.utf8(parent)) ? |error| "could not create ${parent}: ${Str.inspect(error)}"
+	Path.copy!(Path.utf8(source), Path.utf8(target)).map_err(|error| "could not copy ${source} to ${target}: ${Str.inspect(error)}")
 }
 
 ## Remove a directory and everything in it, then create it empty.

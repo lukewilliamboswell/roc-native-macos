@@ -106,6 +106,14 @@
           "evidence": "getenv (ISO C 7.22.4.6), in libSystem's libsystem_c"
         },
         {
+          "name": "_getrusage",
+          "evidence": "getrusage (POSIX.1-2008; man 2 getrusage), whose peak resident set size ROC_BENCH reports, in libSystem's libsystem_kernel"
+        },
+        {
+          "name": "_mach_task_self_",
+          "evidence": "mach_task_self_, the current task's port that mach_task_self() reads (apple-oss-distributions/xnu, libsyscall/mach/mach_init.c), in libSystem's libsystem_kernel"
+        },
+        {
           "name": "_malloc",
           "evidence": "malloc (ISO C 7.22.3.4), in libSystem's libsystem_malloc"
         },
@@ -152,6 +160,10 @@
         {
           "name": "_stat",
           "evidence": "stat (POSIX.1-2008), in libSystem's libsystem_kernel"
+        },
+        {
+          "name": "_task_info",
+          "evidence": "task_info, with MACH_TASK_BASIC_INFO for the current resident size ROC_BENCH reports (apple-oss-distributions/xnu, osfmk/mach/task_info.h), in libSystem's libsystem_kernel"
         },
         {
           "name": "dyld_stub_binder",
@@ -1506,6 +1518,10 @@
       "evidence": "AppKit, /System/Library/Frameworks/AppKit.framework/Versions/C/AppKit (https://developer.apple.com/documentation/appkit).",
       "symbols": [
         {
+          "name": "_NSAccessibilityImageRole",
+          "evidence": "NSAccessibilityImageRole, the role of an asset image VoiceOver reads (https://developer.apple.com/documentation/appkit/nsaccessibility/role/image)"
+        },
+        {
           "name": "_NSApp",
           "evidence": "NSApp, the shared application (https://developer.apple.com/documentation/appkit/nsapp)"
         },
@@ -1638,6 +1654,10 @@
           "evidence": "the Objective-C class NSImage (https://developer.apple.com/documentation/appkit/nsimage)"
         },
         {
+          "name": "_OBJC_CLASS_$_NSImageRep",
+          "evidence": "the Objective-C class NSImageRep (https://developer.apple.com/documentation/appkit/nsimagerep)"
+        },
+        {
           "name": "_OBJC_CLASS_$_NSImageSymbolConfiguration",
           "evidence": "the Objective-C class NSImageSymbolConfiguration (https://developer.apple.com/documentation/appkit/nsimagesymbolconfiguration)"
         },
@@ -1710,6 +1730,10 @@
           "evidence": "the Objective-C class NSTextView (https://developer.apple.com/documentation/appkit/nstextview)"
         },
         {
+          "name": "_OBJC_CLASS_$_NSTrackingArea",
+          "evidence": "the Objective-C class NSTrackingArea (https://developer.apple.com/documentation/appkit/nstrackingarea)"
+        },
+        {
           "name": "_OBJC_CLASS_$_NSView",
           "evidence": "the Objective-C class NSView (https://developer.apple.com/documentation/appkit/nsview)"
         },
@@ -1740,6 +1764,10 @@
         {
           "name": "_NSRunLoopCommonModes",
           "evidence": "NSRunLoopCommonModes (https://developer.apple.com/documentation/foundation/runloop/mode/common)"
+        },
+        {
+          "name": "_OBJC_CLASS_$_NSBundle",
+          "evidence": "the Objective-C class NSBundle (https://developer.apple.com/documentation/foundation/nsbundle)"
         },
         {
           "name": "_OBJC_CLASS_$_NSHTTPURLResponse",

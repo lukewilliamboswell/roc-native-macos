@@ -96,6 +96,7 @@ describes.
 </tr>
 <tr>
 <td width="33%" valign="top"><a href="examples/file-inspector/"><img src="docs/images/file-inspector.gif" width="100%" alt="The file-inspector example running"></a><br><a href="examples/file-inspector/"><code>file-inspector</code></a>: dropped files: sizes, digests, previews</td>
+<td width="33%" valign="top"><a href="examples/about/"><img src="docs/images/about.gif" width="100%" alt="The about example running"></a><br><a href="examples/about/"><code>about</code></a>: images from the app's assets, and its icon</td>
 </tr>
 </table>
 

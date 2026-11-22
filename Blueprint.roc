@@ -40,8 +40,8 @@ roc_stable_program = Fetch("roc-stable", Recipes.roc_nightly(tooling.compiler))
 # in the profile, which roc-policy reads only at the digest recorded here.
 repository_policy = {
 	schema_version: 2,
-	roots: ["platform", "examples", "glue", "cli", "scripts"],
-	profiles: [{ name: "repository", path: "tests/repository-policy.roc.txt", definition: "profile", sha256: "a20d5cbdb54bbff8ebc1c1c0be7f497d1573ca9ff074707413336b6ff7495898" }],
+	roots: ["platform", "examples", "bench", "glue", "cli", "scripts"],
+	profiles: [{ name: "repository", path: "tests/repository-policy.roc.txt", definition: "profile", sha256: "e5b247be4e3dc93857bca967e841893eed6326c734611b60813fbb4798d59b12" }],
 	rules: [{ id: "tooling/pin", kind: CompilerPin, include: ["scripts/**/*.roc"], value: tooling.compiler }],
 	overrides: [],
 }

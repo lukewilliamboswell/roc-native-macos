@@ -32,6 +32,8 @@ import src/Repo
 ## - `test`: `roc test` on the platform root and on every example.
 ## - `examples`: every example's recorded scripted runs; `examples --update`
 ##   records what they print now.
+## - `bench`: every harness under `bench/` (`bench/<name>/run.sh --smoke`),
+##   built and run at a token size, so it never goes stale.
 ## - `bundle`: the platform bundle from the inputs `build` made, and an
 ##   author's first steps against it with the `macos.roc` tool: `init`,
 ##   `build` and `test` a counter (`scripts/bundle.roc --prebuilt --test`).
@@ -101,6 +103,7 @@ run_stage! = |stage, update, colour|
 		"build" => build!()
 		"test" => test!()
 		"examples" => examples!(update, colour)
+		"bench" => bench!()
 		"bundle" => run!("roc-stable", ["scripts/bundle.roc", "--", "--prebuilt", "--test"])
 		_ => Ok(["no such stage"])
 	}
@@ -139,7 +142,7 @@ engine! = || {
 
 fmt! : Bool => Try(List(Str), _)
 fmt! = |colour| {
-	sources = tracked!(["platform", "glue", "examples", "cli"])?.keep_if(|path| path.ends_with(".roc"))
+	sources = tracked!(["platform", "glue", "examples", "bench", "cli"])?.keep_if(|path| path.ends_with(".roc"))
 	var $checked = []
 	for path in sources {
 		match Repo.fmt_skip(path) {
@@ -183,6 +186,18 @@ test! = || {
 	var $problems = run!("roc", ["test", "platform/main.roc"])?
 	for example in examples_present!()? {
 		$problems = $problems.concat(run!("roc", ["test", "examples/${example}/main.roc"])?)
+	}
+	Ok($problems)
+}
+
+## Every harness under `bench/`: built and run at a token size with
+## `run.sh --smoke`, which fails unless the run does what it measures.
+bench! : () => Try(List(Str), _)
+bench! = || {
+	harnesses = tracked!(["bench"])?.keep_if(|path| path.ends_with("/run.sh"))
+	var $problems = []
+	for script in harnesses {
+		$problems = $problems.concat(run_with!(Cmd.new("bash").args([script, "--smoke"].map(OsStr.from_str)).env("ROC", "roc"), "${script} --smoke")?)
 	}
 	Ok($problems)
 }
