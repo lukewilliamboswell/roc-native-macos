@@ -4,7 +4,7 @@ Repo := [].{
 
 	## The check's stages, in the order a full run takes them.
 	stages : List(Str)
-	stages = ["pins", "engine", "fmt", "scripts", "tool", "build", "test", "examples", "bench", "bundle"]
+	stages = ["pins", "engine", "fmt", "scripts", "tool", "glue", "build", "test", "examples", "bench", "bundle"]
 
 	## The stages named on the command line, or every stage when none is.
 	## `--update` is an option of the tool and examples stages, not a stage.
@@ -28,6 +28,10 @@ Repo := [].{
 	## their digests.
 	engine_modules : List(Str)
 	engine_modules = ["Core", "Engine", "Web", "EntryRoutes", "Url", "ReadyIndex", "Spelling", "Layout", "TableCore", "View", "Seq", "MarkupAdvice", "SignalCore"].map(|name| "platform/${name}.roc")
+
+	## Every script, whose `expect`s the scripts stage runs.
+	scripts : List(Str)
+	scripts = ["scripts/check_all.roc", "scripts/build.roc", "scripts/link_inputs.roc", "scripts/bundle.roc", "scripts/release.roc", "scripts/record_demos.roc"]
 
 	## Files that would pin a compiler for the whole repository, which the
 	## model forbids: only the scripts' headers name one.

@@ -6,6 +6,14 @@ name: CI
 # for real: `macos-15` hosted runners have a logged-in GUI session, so each
 # recorded ROC_SCRIPT case drives real AppKit controls. A scripted run never
 # takes keyboard focus.
+#
+#   nightly  the latest Roc nightly, resolved once for every job
+#   host     the Swift host, in its own job and keyed by its fingerprint
+#            (sources, glue header, recipe, swiftc, Xcode): restored from the
+#            cache when nothing it is built from changed, otherwise built twice
+#            with identical bytes required and saved
+#   check    the whole gate, with that host; its build stage reuses a host
+#            whose recorded fingerprint matches
 
 on:
   pull_request:
@@ -20,9 +28,8 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  # The latest Roc nightly, resolved once so every job of a run uses the same
-  # `roc` (roc-automation's model: the package compiler floats; only the
-  # scripts' `roc-stable` is pinned, in Blueprint.roc).
+  # The package compiler floats, so one run resolves it once (roc-automation's
+  # actions.adoc); only the scripts' `roc-stable` is pinned, in Blueprint.roc.
   nightly:
     name: Resolve the Roc nightly
     runs-on: ubuntu-24.04
@@ -37,11 +44,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: echo "tag=$(gh api repos/roc-lang/nightlies/releases/latest --jq .tag_name)" >> "$GITHUB_OUTPUT"
 
-  check:
-    name: Check
-    needs: nightly
+  host:
+    name: Build the Swift host
     runs-on: macos-15
-    timeout-minutes: 45
+    timeout-minutes: 30
     permissions:
       contents: read
     steps:
@@ -53,16 +59,58 @@ jobs:
       # same one release.yml builds with.
       - uses: ./.github/actions/setup-xcode
       - uses: lukewilliamboswell/roc-automation/actions/setup-blueprint@acc5efdcd929b38e665cd3ae6e694d1c4887f9c7
+      - id: fingerprint
+        run: blueprint run build -- host --fingerprint
+      # A cache is storage, not trust: the entry is this repository's own
+      # earlier build of the same fingerprint, and the gate audits it again.
+      - id: cache
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25
+        with:
+          key: libhost-${{ steps.fingerprint.outputs.fingerprint }}
+          path: |
+            platform/targets/arm64mac/libhost.a
+            platform/targets/arm64mac/libhost.fingerprint
+      - if: steps.cache.outputs.cache-hit != 'true'
+        run: blueprint run build -- host --reproduce
+      - if: steps.cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25
+        with:
+          key: libhost-${{ steps.fingerprint.outputs.fingerprint }}
+          path: |
+            platform/targets/arm64mac/libhost.a
+            platform/targets/arm64mac/libhost.fingerprint
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: libhost
+          path: |
+            platform/targets/arm64mac/libhost.a
+            platform/targets/arm64mac/libhost.fingerprint
+          if-no-files-found: error
+          retention-days: 7
+
+  check:
+    name: Check
+    needs: [nightly, host]
+    runs-on: macos-15
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-xcode
+      - uses: lukewilliamboswell/roc-automation/actions/setup-blueprint@acc5efdcd929b38e665cd3ae6e694d1c4887f9c7
         with:
           cache: 'true'
           cache-workload: dev
       - uses: lukewilliamboswell/roc-automation/actions/setup-roc-nightly@acc5efdcd929b38e665cd3ae6e694d1c4887f9c7
         with:
           nightly-tag: ${{ needs.nightly.outputs.tag }}
-      - name: Report the compilers and the Swift toolchain
-        run: |
-          roc version
-          blueprint run tooling-version
-          swiftc --version
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          name: libhost
+          path: platform/targets/arm64mac
+      - run: blueprint run release -- versions
       - run: blueprint check
       - run: blueprint run check

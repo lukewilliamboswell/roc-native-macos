@@ -9,7 +9,7 @@ rest need a reviewer.
 Run `blueprint run check` with a current Roc nightly installed as `roc`. It is
 the same gate CI runs on `macos-15`: compiler pins, engine digests,
 formatting, the scripts' tests, the `macos.roc` tool's package (`cli/`),
-`scripts/build.sh`, `roc test`, every example's recorded scripted runs
+the committed glue, `scripts/build.roc`, `roc test`, every example's recorded scripted runs
 (`tests/examples/`), and the platform bundle with a counter created, built
 and tested against it through `macos.roc` (`scripts/bundle.roc --test`). A new example needs at
 least one recorded case: add `tests/examples/<example>/<case>.script` and run
@@ -30,13 +30,18 @@ revision in `docs/architecture.adoc` in the same commit. The native vocabulary b
 ## No Apple SDK material in linker inputs
 
 The sysroot Roc links against (`platform/targets/macos-sysroot`) is generated
-by `scripts/build_macos_stubs.py` from the reviewed catalog
-`host/interfaces.json` alone. Never read, copy or derive anything from Apple
-SDK `.tbd` files, headers or framework binaries, and never commit generated
-stubs or `libhost.a`. A new symbol the host references fails `--audit` until
-the catalog owns it. Add it in a reviewed edit that names its library and
-evidence, and never expand the catalog to silence a link error. Keep Swift's
-`-disable-autolink-frameworks` and `-disable-force-load-symbols`.
+by `scripts/link_inputs.roc` from the reviewed catalog `host/interfaces.json`
+alone, and released on its own: `link-inputs.lock.json` selects the release,
+and only `publish-link-inputs.yml` writes the lock. Never read, copy or derive
+anything from Apple SDK `.tbd` files, headers or framework binaries
+(`host/PROVENANCE.md`), and never commit generated stubs or `libhost.a`. A
+new symbol the host references fails the build's audit until the catalog
+owns it. Add it in a reviewed edit that names its library and the symbol's
+own evidence, and never expand the catalog to silence a link error; a
+catalog change is a new linker-input release. Keep Swift's
+`-disable-autolink-frameworks` and `-disable-force-load-symbols`, and keep
+the host reproducible: every path relative, objects at fixed paths,
+`libtool -D`.
 
 ## Roc runs on the main thread only
 
@@ -49,8 +54,10 @@ re-enter the engine from inside a turn.
 ## The ABI and the glue
 
 `glue/SwiftGlue.roc` generates `host/roc_swift_abi.h` and `host/RocGlue.swift`
-from the compiler's layout facts. Do not hand-edit them, or hand-encode a Roc
-value in Swift. A list's `capacity_or_alloc_ptr` stores the capacity shifted
+from the compiler's layout facts. They are committed, and the check's `glue`
+stage fails when they are not what the `roc` on PATH generates: regenerate
+them with `blueprint run build -- glue` and commit the diff with any host
+change it needs. Do not hand-edit them, or hand-encode a Roc value in Swift. A list's `capacity_or_alloc_ptr` stores the capacity shifted
 left one bit, and its low bit marks a seamless slice. Getting this wrong was
 the spike's one real crash. Build lists with `RocList.ownedBytes` / `.bytes` /
 `.empty`, and call entry points through the typed `Roc.*` functions. When a
@@ -101,5 +108,6 @@ call a macOS program to build. Every failure is one sentence from
 - Unknown commands or effects in the host are fatal errors with a clear
   message, never silent skips.
 - Do not commit build outputs (`examples/<name>/<name>`, `platform/targets/`,
-  generated glue, `build/`) or `.blueprint/`.
+  `build/`) or `.blueprint/`. The generated glue in `host/` is the exception:
+  it is committed, and regenerated, never edited.
 - Do not commit or push unless asked.

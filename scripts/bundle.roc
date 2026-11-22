@@ -21,7 +21,7 @@ import src/Recorded
 ##     blueprint run bundle -- --test                    # then create, build and test an app against it
 ##     blueprint run bundle -- --prebuilt                # bundle the inputs already built
 ##
-## It builds the platform's native inputs (`scripts/build.sh --platform`)
+## It builds the platform's native inputs (`scripts/build.roc -- --platform`)
 ## unless `--prebuilt`, stages the tracked `platform/*.roc` modules, the
 ## Swift host `targets/arm64mac/libhost.a`, the generated linker stubs
 ## `targets/macos-sysroot/` and the licence notices under `build/`, and runs
@@ -57,7 +57,7 @@ main! = |raw_args| {
 	root = Env.cwd!()?.display()
 	out = if (options.output_dir.starts_with("/")) options.output_dir else "${root}/${options.output_dir}"
 	if !options.prebuilt {
-		step!(Cmd.new("bash").args(["scripts/build.sh", "--platform"]).env("ROC", "roc"), "scripts/build.sh --platform")?
+		step!(Cmd.new("roc-stable").args(["scripts/build.roc", "--", "--platform"]).env("ROC", "roc"), "scripts/build.roc -- --platform")?
 	}
 	for input in [Bundle.host_library, Bundle.sysroot] {
 		if !(Path.exists!(Path.utf8("platform/${input}"))?) {

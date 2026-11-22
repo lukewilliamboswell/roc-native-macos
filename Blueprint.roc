@@ -64,15 +64,16 @@ config = [
 				"https://github.com/roc-lang/basic-cli/releases/download/0.28.1/7brgwR8YUqfeGrkdfF1V4GPPN7DnP7ftqub9KcrTEZtr.tar.zst",
 				"https://github.com/roc-lang/http/releases/download/1.0.0/6ZUwqYhCS8PU9Mo6MF7oV82ET2o7KYb57CLKDq4cq4sS.tar.zst",
 			]),
-			# `bash` runs scripts/build.sh, `swiftc` compiles the host and `libtool`
-			# archives it (with `xargs`, `sort` and `env`), `python3`
-			# generates the linker stubs (scripts/build_macos_stubs.py) and
-			# serves the bundle to its consumer tests (scripts/bundle.roc,
-			# scripts/release.roc), `shasum` checks the engine modules' digests
-			# and the release files', `git` lists the tracked files the checks
-			# read, `zip` and `unzip` write and read the examples archive, and
-			# `xcodebuild` names the Xcode a release's notes record.
-			Expect(["roc", "bash", "env", "swiftc", "libtool", "xargs", "sort", "python3", "shasum", "git", "zip", "unzip", "xcodebuild"]),
+			# `swiftc` compiles the host and `libtool` archives it
+			# (scripts/build.roc), `nm` lists its references for the stub audit,
+			# `xcodebuild` names the Xcode in the host's fingerprint and a
+			# release's notes, `curl` downloads the locked linker inputs,
+			# `python3` serves the bundle to its consumer tests (scripts/bundle.roc,
+			# scripts/release.roc), `shasum` takes the digests the checks,
+			# fingerprints and release files need, `git` lists the tracked files
+			# the checks read, `zip` and `unzip` write and read the examples
+			# archive, and `bash` runs the bench harnesses.
+			Expect(["roc", "bash", "env", "swiftc", "libtool", "nm", "xcodebuild", "curl", "python3", "shasum", "git", "zip", "unzip"]),
 		],
 	),
 	# The manual (docs/index.adoc) as a website, static Markdown and a PDF,
@@ -91,9 +92,13 @@ config = [
 	# example's recorded runs and the bundle with its consumer test.
 	# `check -- STAGE...` runs only the named stages, in order.
 	Task("check", [Use("dev"), Run(["scripts/check_all.roc", "--"])]),
-	# scripts/build.sh defaults to the RC1 compiler's install path; the task
-	# builds with the `roc` on PATH, as `check` does.
-	Task("build", [Use("dev"), Run(["env", "ROC=roc", "scripts/build.sh"])]),
+	# The host, the linker inputs and every example (scripts/build.roc):
+	# `-- --platform`, `-- NAME...`, `-- --link-inputs DIR`, `-- glue [--check]`
+	# and `-- host [--fingerprint | --reproduce]`.
+	Task("build", [Use("dev"), Run(["scripts/build.roc", "--"])]),
+	# The producer of the macOS linker inputs (scripts/link_inputs.roc):
+	# `-- build DIR`, `-- stubs DIR`, `-- fingerprint`.
+	Task("link-inputs", [Use("dev"), Run(["scripts/link_inputs.roc", "--"])]),
 	Task("test", [Use("dev"), Run(["scripts/check_all.roc", "--", "test"])]),
 	Task("examples", [Use("dev"), Run(["scripts/check_all.roc", "--", "examples"])]),
 	# The platform bundle an app's header names: builds the platform's

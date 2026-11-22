@@ -30,6 +30,7 @@ on:
     paths:
       - .github/workflows/link-inputs.yml
       - host/interfaces.json
+      - LICENSE
       - host/PROVENANCE.md
       - scripts/link_inputs.roc
       - scripts/src/LinkInputs.roc

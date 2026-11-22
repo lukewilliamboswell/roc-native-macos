@@ -47,7 +47,7 @@ Applications link AppKit, Foundation, CoreGraphics, libSystem, libobjc and the
 Swift runtime and overlays in `/usr/lib/swift`. macOS supplies all of them at
 run time, and the repository does not copy or redistribute any of them.
 
-`scripts/build_macos_stubs.py` writes the linker stubs in
+`scripts/link_inputs.roc` writes the linker stubs in
 `platform/targets/macos-sysroot/` from scratch. They are minimal TAPI
 descriptions of install names and symbol names, taken only from the reviewed
 catalog `host/interfaces.json`. The generator reads no Apple SDK header, `.tbd`

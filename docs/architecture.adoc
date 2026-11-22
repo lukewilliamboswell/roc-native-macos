@@ -211,7 +211,7 @@ An app's assets are the files of `assets/` beside its `main.roc`
 (xref:apps.adoc#assets[Assets and the icon]). They are delivered as files,
 not compiled into the program: `macos.roc build` copies the directory into
 `<name>.app/Contents/Resources/assets/` and to `.macos/assets/` beside the
-program `test` runs, and `scripts/build.sh` copies a repository example's
+program `test` runs, and `scripts/build.roc` copies a repository example's
 into its `.app` (the bare `examples/<name>/<name>` finds `assets/` beside
 it). Copying files works from any system, keeps images out of the binary and
 out of the engine's attribute strings, and is how AppKit loads images anyway.
@@ -237,7 +237,7 @@ The icon:: `CFBundleIconFile` names `Contents/Resources/AppIcon.icns`.
 `icns`, a big-endian length, then entries of an OSType, a length and data,
 and since macOS 10.7 an entry (`ic10` for 1024 pixels, `ic09` 512, …,
 `icp4` 16) may hold a PNG as it is. One entry is enough: macOS scales it,
-and `iconutil` writes the same layout for a one-image set. `scripts/build.sh`
+and `iconutil` writes the same layout for a one-image set. `scripts/build.roc`
 only copies an `assets/icon.icns`.
 Signing:: Roc's linker signs the program ad hoc; nothing seals the bundle's
 resources (`_CodeSignature/CodeResources`), as before. Gatekeeper's
@@ -513,13 +513,30 @@ spike's one real crash (see xref:contributing.adoc#findings[Findings]).
 == Linker inputs: no Apple SDK files
 
 Following roc-gui, the platform ships no Apple SDK material. Roc's linker
-links a platform's `targets/macos-sysroot`. `scripts/build_macos_stubs.py`
-writes that sysroot as minimal TAPI v4 `.tbd` stubs, built only from the
-reviewed catalog `host/interfaces.json`: install names, symbol names and
-stated evidence per library. It reads no SDK file. With `--audit` it also
-fails the build if `libhost.a` references a symbol the catalog does not own,
-so adding one is a reviewed edit. The platform bundle carries these generated
-stubs, never an SDK file.
+links a platform's `targets/macos-sysroot`: minimal TAPI v4 `.tbd` stubs
+written only from the reviewed catalog `host/interfaces.json`, which records
+each library's install name and evidence and each symbol's own evidence
+(`host/PROVENANCE.md` states what may count as evidence and what is never
+read). The platform bundle carries these generated stubs, never an SDK file.
+
+The stubs are an external linker input with a release of their own, as
+roc-automation's "Publish linker inputs from a pull request" describes.
+`scripts/link_inputs.roc` (the `link-inputs` task) writes them, with the
+catalog, `PROVENANCE.md` and the licence, into a deterministic
+`link-inputs-arm64mac.tar`, and a `build-input-release.json` manifest that
+binds its SHA-256 and size to the source commit and an input fingerprint (the
+catalog, the provenance statement, the licence, the producer's source and the
+tooling compiler). The producer workflow `link-inputs.yml` builds it twice,
+requires identical bytes, and links and runs every example against it; the
+trusted publisher `publish-link-inputs.yml` (`actions/publish-build-inputs`)
+publishes it as `linker-inputs-sha256-<manifest digest>` and commits
+`link-inputs.lock.json` to the pull request. Every other build installs the
+archive the lock selects (`scripts/build.roc`, cached under
+`build/link-inputs-cache` and verified by size and SHA-256), and fails when
+the lock's fingerprint is not the checkout's. Before the first release, with
+no lock, the build generates the stubs from the catalog. After installing
+them it audits `libhost.a`: a reference the catalog does not own fails the
+build, so adding one is a reviewed edit that names its library and evidence.
 
 Swift is compiled with `-disable-autolink-frameworks` and
 `-disable-force-load-symbols`, so the frameworks linked are exactly the
@@ -527,7 +544,7 @@ catalog's. Roc then links each `X.framework/X.tbd` it finds. The resulting
 binaries load only `AppKit`, `Foundation`, `CoreGraphics`, `libSystem`,
 `libobjc` and the Swift runtime and overlays in `/usr/lib/swift`.
 
-Unlike roc-gui, the catalog's evidence is per library, not per symbol. Swift
-symbols are assigned by the mangled module or extension owner (Swift's
-`docs/ABI/Mangling.rst`), and ObjC classes by Apple's documented framework.
-Tightening that to per-symbol evidence is follow-up work.
+A Swift symbol's evidence is the declaration it mangles (Swift's
+`docs/ABI/Mangling.rst`), named by the open-source demangler, in the module
+the library ships; an ObjC class's is its page in Apple's documentation of
+its framework.

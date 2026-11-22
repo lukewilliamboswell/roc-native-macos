@@ -28,7 +28,11 @@ import src/Repo
 ## - `tool`: `cli/Bundle.roc` is what `scripts/src/Release.roc` generates for
 ##   a checkout (`tool --update` writes it), `scripts/src/Recorded.roc` is a
 ##   copy of `cli/Recorded.roc`, and `roc test` on the tool.
-## - `build`: `scripts/build.sh`, with the latest nightly as `roc`.
+## - `glue`: the committed glue in host/ is what `glue/SwiftGlue.roc`
+##   generates with the `roc` on PATH (`scripts/build.roc -- glue --check`).
+## - `build`: `scripts/build.roc`, with the latest nightly as `roc`: the host
+##   (reused when its fingerprint matches), the linker inputs and every
+##   example.
 ## - `test`: `roc test` on the platform root and on every example.
 ## - `examples`: every example's recorded scripted runs; `examples --update`
 ##   records what they print now.
@@ -99,7 +103,8 @@ run_stage! = |stage, update, colour|
 		"engine" => engine!()
 		"fmt" => fmt!(colour)
 		"tool" => tool!(update)
-		"scripts" => Ok(run!("roc-stable", ["test", "scripts/check_all.roc"])?.concat(run!("roc-stable", ["test", "scripts/bundle.roc"])?).concat(run!("roc-stable", ["test", "scripts/release.roc"])?).concat(run!("roc-stable", ["test", "scripts/record_demos.roc"])?))
+		"scripts" => scripts!()
+		"glue" => run!("roc-stable", ["scripts/build.roc", "--", "glue", "--check"])
 		"build" => build!()
 		"test" => test!()
 		"examples" => examples!(update, colour)
@@ -179,7 +184,17 @@ tool! = |update| {
 }
 
 build! : () => Try(List(Str), _)
-build! = || run_with!(Cmd.new("bash").args(["scripts/build.sh"]).env("ROC", "roc"), "scripts/build.sh")
+build! = || run_with!(Cmd.new("roc-stable").args(["scripts/build.roc"]).env("ROC", "roc"), "scripts/build.roc")
+
+## The `expect`s of every script, and so of every module under scripts/src.
+scripts! : () => Try(List(Str), _)
+scripts! = || {
+	var $problems = []
+	for script in Repo.scripts {
+		$problems = $problems.concat(run!("roc-stable", ["test", script])?)
+	}
+	Ok($problems)
+}
 
 test! : () => Try(List(Str), _)
 test! = || {
