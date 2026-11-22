@@ -37,8 +37,11 @@ Meta := [].{
 	none : Fields
 	none = { name: "", id: "", version: "", build: "", copyright: "", category: "", minimum_macos: "" }
 
-	## The app's metadata, every field decided.
-	Resolved : { name : Str, id : Str, version : Str, build : Str, copyright : Str, category : Str, minimum_macos : Str }
+	## The app's metadata, every field decided. `release` is the version as
+	## given, with any pre-release suffix (`1.0.0-beta.1`), which names the
+	## zip and the GitHub release; `version` is its numbers alone (`1.0.0`),
+	## as `CFBundleShortVersionString` must be.
+	Resolved : { name : Str, id : Str, version : Str, release : Str, build : Str, copyright : Str, category : Str, minimum_macos : Str }
 
 	## The version an app has when nothing names one.
 	default_version : Str
@@ -117,7 +120,8 @@ Meta := [].{
 	valid = |field, value|
 		match field {
 			"id" => valid_id(value)
-			"version" | "build" => Meta.version_parts(value).is_ok()
+			"version" => Meta.release_parts(value).is_ok()
+			"build" => Meta.version_parts(value).is_ok()
 			"minimum_macos" =>
 				match Meta.version_parts(value) {
 					Ok([major, ..]) => major >= 11
@@ -146,6 +150,35 @@ Meta := [].{
 		Ok($numbers)
 	}
 
+	## A release version's numbers and its pre-release suffix, if any:
+	## `1.0.0-beta.1` is `1.0.0` and `beta.1`. The suffix is letters,
+	## digits, dots and hyphens, as SemVer's pre-release is.
+	release_parts : Str -> Try({ numbers : Str, suffix : Str }, [NotAVersion])
+	release_parts = |text| {
+		{ numbers, suffix } = match text.split_on("-") {
+			[only] => { numbers: only, suffix: "" }
+			[first, .. as rest] => { numbers: first, suffix: Str.join_with(rest, "-") }
+			[] => return Err(NotAVersion)
+		}
+		suffix_ok = suffix.to_utf8().all(|b| (b >= 'a' and b <= 'z') or (b >= 'A' and b <= 'Z') or (b >= '0' and b <= '9') or b == '.' or b == '-')
+		if text.ends_with("-") or !suffix_ok or Meta.version_parts(numbers).is_err() {
+			Err(NotAVersion)
+		} else {
+			Ok({ numbers, suffix })
+		}
+	}
+
+	## The `.app`'s file name, without `.app`, for the app's name: what
+	## Finder, the Dock and Launchpad show. A `/` or `:`, which a file name
+	## cannot hold on macOS, becomes `-`.
+	bundle_name : Str -> Str
+	bundle_name = |name| name.replace_each("/", "-").replace_each(":", "-")
+
+	## The zip `package` writes, for the app's name and release: spaces
+	## become `-`, so that the name survives as a download's URL.
+	zip_name : Str, Str -> Str
+	zip_name = |name, release| "${Meta.bundle_name(name).replace_each(" ", "-")}-${release}.zip"
+
 	## The flags' fields over the file's: a flag that was given wins.
 	over : Fields, Fields -> Fields
 	over = |flags, written| {
@@ -163,15 +196,21 @@ Meta := [].{
 
 	## Every field decided, for the app whose directory is named `dir_name`:
 	## the name is `dir_name`, the bundle identifier `com.example.<dir_name>`, the
-	## version 0.1, the build number the version, and the oldest macOS 11.0.
+	## version 0.1, the build number the version's numbers, and the oldest
+	## macOS 11.0.
 	resolve : Fields, Str -> Resolved
 	resolve = |fields, dir_name| {
 		given_or = |given, default| if (given.is_empty()) default else given
-		version = given_or(fields.version, Meta.default_version)
+		release = given_or(fields.version, Meta.default_version)
+		version = match Meta.release_parts(release) {
+			Ok({ numbers, .. }) => numbers
+			Err(_) => release
+		}
 		{
 			name: given_or(fields.name, dir_name),
 			id: given_or(fields.id, "com.example.${dir_name}"),
 			version,
+			release,
 			build: given_or(fields.build, version),
 			copyright: fields.copyright,
 			category: fields.category,
@@ -186,7 +225,6 @@ Meta := [].{
 		\\  "name": "${dir_name}",
 		\\  "id": "com.example.${dir_name}",
 		\\  "version": "0.1.0",
-		\\  "build": "1",
 		\\  "category": "public.app-category.utilities"
 		\\}
 		\\
@@ -387,7 +425,7 @@ line_at = |bytes, at| bytes.take_first(at).count_if(|b| b == '\n') + 1
 ## A starter file is valid, and names the app.
 expect {
 	parsed = Meta.from_json(Meta.starter("counter"))
-	parsed == Ok({ ..Meta.none, name: "counter", id: "com.example.counter", version: "0.1.0", build: "1", category: "public.app-category.utilities" })
+	parsed == Ok({ ..Meta.none, name: "counter", id: "com.example.counter", version: "0.1.0", category: "public.app-category.utilities" })
 		and (parsed ?? Meta.none).name == "counter"
 		and Meta.check(parsed ?? Meta.none, File) == Ok({})
 }
@@ -432,11 +470,24 @@ expect {
 	actual == [Err(MetaNotText({ field: "build", line: 2 })), Err(MetaUnknownField("nmae")), Err(MetaDuplicate("id"))]
 }
 
-## Versions are one to three whole numbers.
+## Versions are one to three whole numbers, and may have a pre-release
+## suffix; build numbers may not.
 expect {
-	actual = ["1", "1.2", "1.2.3", "10.0.15", "v1.2", "1.2.3.4", "1..2", "", "1.2-beta", "1.x"].map(|v| Meta.valid("version", v))
-	actual == [Bool.True, Bool.True, Bool.True, Bool.True, Bool.False, Bool.False, Bool.False, Bool.False, Bool.False, Bool.False]
+	actual = ["1", "1.2", "1.2.3", "10.0.15", "1.0.0-beta.1", "2.0-rc-2", "v1.2", "1.2.3.4", "1..2", "", "1.2-", "1.2-be ta", "1.x"].map(|v| Meta.valid("version", v))
+	builds = ["7", "1.2.3", "1.0.0-beta.1"].map(|v| Meta.valid("build", v))
+	actual == [Bool.True, Bool.True, Bool.True, Bool.True, Bool.True, Bool.True, Bool.False, Bool.False, Bool.False, Bool.False, Bool.False, Bool.False, Bool.False]
+		and builds == [Bool.True, Bool.True, Bool.False]
 }
+
+expect [Meta.release_parts("1.0.0-beta.1"), Meta.release_parts("2.1"), Meta.release_parts("2.0-rc-2")] == [Ok({ numbers: "1.0.0", suffix: "beta.1" }), Ok({ numbers: "2.1", suffix: "" }), Ok({ numbers: "2.0", suffix: "rc-2" })]
+
+## A pre-release keeps its suffix in the zip's name, not in Info.plist.
+expect {
+	meta = Meta.resolve({ ..Meta.none, name: "Tom & Jerry", version: "1.0.0-beta.1" }, "tom")
+	meta.version == "1.0.0" and meta.release == "1.0.0-beta.1" and meta.build == "1.0.0" and Meta.zip_name(meta.name, meta.release) == "Tom-&-Jerry-1.0.0-beta.1.zip"
+}
+
+expect [Meta.bundle_name("Counter"), Meta.bundle_name("A/B: C")] == ["Counter", "A-B- C"]
 
 ## The oldest macOS is 11 or later; a category is one of the App Store's.
 expect {
@@ -462,9 +513,9 @@ expect {
 expect {
 	file = { ..Meta.none, name: "Counter", version: "1.2.0", copyright: "© me" }
 	flags = { ..Meta.none, version: "1.3.0", id: "org.me.counter" }
-	Meta.resolve(Meta.over(flags, file), "counter") == { name: "Counter", id: "org.me.counter", version: "1.3.0", build: "1.3.0", copyright: "© me", category: "", minimum_macos: "11.0" }
+	Meta.resolve(Meta.over(flags, file), "counter") == { name: "Counter", id: "org.me.counter", version: "1.3.0", release: "1.3.0", build: "1.3.0", copyright: "© me", category: "", minimum_macos: "11.0" }
 }
 
-expect Meta.resolve(Meta.none, "counter") == { name: "counter", id: "com.example.counter", version: "0.1", build: "0.1", copyright: "", category: "", minimum_macos: "11.0" }
+expect Meta.resolve(Meta.none, "counter") == { name: "counter", id: "com.example.counter", version: "0.1", release: "0.1", build: "0.1", copyright: "", category: "", minimum_macos: "11.0" }
 
 expect [Meta.flag_field("--minimum-macos"), Meta.flag_field("--id"), Meta.flag_field("--sign"), Meta.flag_field("name")] == [Ok("minimum_macos"), Ok("id"), Err(NotAField), Err(NotAField)]

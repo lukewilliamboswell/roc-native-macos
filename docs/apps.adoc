@@ -57,13 +57,15 @@ Run `macos.roc` from the app's directory, the one holding `main.roc`:
 | `roc macos.roc run` | build the app and start it, on an Apple silicon Mac
 | `roc macos.roc test` | build the app and run its recorded cases, on an Apple silicon Mac; `--update` records what they print now
 | `roc macos.roc package` | build the app, sign it and zip it as `dist/<name>-<version>.zip`, on any system; `--sign` and `--notarize` sign it with a Developer ID (see xref:apps.adoc#ship-your-app[Ship your app])
+| `roc macos.roc ci package`, `ci release` | what the release workflow runs: package the app as the secrets allow, and attach the zip to the pushed tag's GitHub release (see xref:apps.adoc#automate[Let GitHub release it])
 |===
 
 `<name>` is the app's directory. `roc macos.roc COMMAND --help` describes a
 command, and every failure is explained in a sentence.
 
 `build` runs `roc build main.roc --target=arm64mac`, which writes the program
-to `.macos/<name>`, and puts it in a minimal `<name>.app` with the app's
+to `.macos/<name>`, and puts it in a minimal `.app`, named for the app's
+`name` (by default `<name>.app`), with the app's
 xref:apps.adoc#assets[assets and icon] and its
 xref:apps.adoc#metadata[metadata]. `test` runs the same program.
 
@@ -91,10 +93,10 @@ starter:
 |===
 | Field and flag | `Info.plist` key | What it is
 
-| `name`, `--name TEXT` | `CFBundleName`, `CFBundleDisplayName` | the name in the menu bar; by default `<name>`
+| `name`, `--name TEXT` | `CFBundleName`, `CFBundleDisplayName` | the name in the menu bar, and the `.app`'s file name, which Finder and the Dock show (a `/` or `:` becomes `-`); by default `<name>`
 | `id`, `--id ID` | `CFBundleIdentifier` | the bundle identifier, two or more dot-separated parts of letters, digits and hyphens; by default `com.example.<name>`. It also names the app's saved settings (`UserDefaults`), so keep it once people use the app
-| `version`, `--version 1.2.0` | `CFBundleShortVersionString` | one to three whole numbers separated by dots, with no `v`; by default 0.1. It names the zip `package` writes
-| `build`, `--build 7` | `CFBundleVersion` | the build number, in the same form; by default the version
+| `version`, `--version 1.2.0` | `CFBundleShortVersionString` | one to three whole numbers separated by dots, with no `v`, and optionally a pre-release suffix, as in `1.2.0-beta.1`; by default 0.1. It names the zip `package` writes, suffix and all, while `Info.plist` has its numbers alone, `1.2.0`, as macOS requires
+| `build`, `--build 7` | `CFBundleVersion` | the build number, one to three whole numbers with no suffix; by default the version's numbers. Set it to tell builds of one version apart, such as a beta from the release that follows it
 | `copyright`, `--copyright TEXT` | `NSHumanReadableCopyright` | shown in the app's About panel
 | `category`, `--category CATEGORY` | `LSApplicationCategoryType` | an App Store category, `public.app-category.` and its name, such as `utilities` or `developer-tools`
 | `minimum_macos`, `--minimum-macos 13.0` | `LSMinimumSystemVersion` | the oldest macOS the app opens on; by default 11.0, the oldest the platform runs on, and never earlier
@@ -477,10 +479,23 @@ git tag v1.0.0
 git push origin v1.0.0
 ----
 
-The workflow runs the app's recorded cases on a macOS runner, then packages
-the app on Linux with `--version 1.0.0` (the tag without its `v`), and
-attaches `<name>-1.0.0.zip` to the tag's GitHub release, creating the
-release if there is none. With no secrets it seals the app ad hoc. To sign
+Each of its steps is one command: the workflow runs the app's recorded
+cases on a macOS runner (`roc macos.roc test`), then packages the app on
+Linux (`roc macos.roc ci package`), and attaches `<name>-1.0.0.zip` to the
+tag's GitHub release, creating the release if there is none
+(`roc macos.roc ci release`). A tag with a suffix, such as `v1.0.0-beta.1`,
+makes `<name>-1.0.0-beta.1.zip` and a GitHub pre-release; the app's
+`Info.plist` says 1.0.0.
+
+`ci package` is `package` deciding for itself, so that the workflow needs no
+script: the version is the tag without its `v` (or the version "Run
+workflow" was given, as `RELEASE_VERSION`); it signs or notarizes according
+to which secrets are set, and says in the run's summary which are missing;
+it decodes the certificate to a file only the job can read, removed
+afterwards; it installs a pinned `rcodesign`, checked against its SHA-256,
+when it signs with a certificate; and the zip's entries carry the last
+commit's time. `roc macos.roc ci --help` describes it. With no secrets it
+seals the app ad hoc. To sign
 and notarize it, add these secrets to the repository (Settings > Secrets
 and variables > Actions), or to its `release` environment (Settings >
 Environments), which the packaging job runs in and which you can limit to
@@ -497,9 +512,10 @@ tags or to a reviewer's approval:
 | `MACOS_NOTARY_KEY` | the `.p8` file's contents
 |===
 
-With only the first two, the app is signed but not notarized. The workflow
-installs the Roc nightly the platform release was tested with and a pinned,
-checksummed `rcodesign`; every action is pinned by its full commit SHA, the
+With only the first two, the app is signed but not notarized; some of the
+notary secrets without the rest is refused. The workflow installs the Roc
+nightly the platform release was tested with; every action is pinned by its
+full commit SHA, the
 jobs that see the secrets have a read-only token, and the one job that
 writes the release sees no secret. "Run workflow" on the Actions tab
 packages a version you give as a workflow artifact, and publishes nothing.
