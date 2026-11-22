@@ -1,0 +1,10 @@
+# The rules of Blueprint.roc's repository_policy that name no Blueprint value.
+# roc-policy reads this file only while its SHA-256 is the one Blueprint.roc
+# records, so a change here is a reviewed change there too.
+profile = {
+	schema_version: 2,
+	rules: [
+		{ id: "no-pin", kind: NoCompilerPin, include: ["platform/**/*.roc", "examples/**/*.roc", "bench/**/*.roc", "glue/**/*.roc", "cli/**/*.roc"] },
+		{ id: "examples-platform", kind: Dependency, include: ["examples/**/main.roc"], name: "pf", value: "../../platform/main.roc" },
+	],
+}

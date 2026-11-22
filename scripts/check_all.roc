@@ -19,7 +19,8 @@ import src/Repo
 ## The `check` task, the pull-request gate: `blueprint run check` runs every
 ## stage, and `blueprint run check -- STAGE...` the named ones, in order.
 ##
-## - `pins`: only the scripts pin a compiler, and they pin `roc-stable`.
+## - `pins`: only the scripts pin a compiler, and they pin `roc-stable`
+##   (`roc-policy check`, from Blueprint.roc's `repository_policy`).
 ## - `engine`: the engine modules match their recorded roc-signals digests.
 ## - `fmt`: `roc fmt --check` over the platform, glue, examples and the
 ##   `macos.roc` tool (`cli/`), and `roc-stable fmt --check` over the scripts.
@@ -27,10 +28,16 @@ import src/Repo
 ## - `tool`: `cli/Bundle.roc` is what `scripts/src/Release.roc` generates for
 ##   a checkout (`tool --update` writes it), `scripts/src/Recorded.roc` is a
 ##   copy of `cli/Recorded.roc`, and `roc test` on the tool.
-## - `build`: `scripts/build.sh`, with the latest nightly as `roc`.
+## - `glue`: the committed glue in host/ is what `glue/SwiftGlue.roc`
+##   generates with the `roc` on PATH (`scripts/build.roc -- glue --check`).
+## - `build`: `scripts/build.roc`, with the latest nightly as `roc`: the host
+##   (reused when its fingerprint matches), the linker inputs and every
+##   example.
 ## - `test`: `roc test` on the platform root and on every example.
 ## - `examples`: every example's recorded scripted runs; `examples --update`
 ##   records what they print now.
+## - `bench`: every harness under `bench/` (`bench/<name>/run.sh --smoke`),
+##   built and run at a token size, so it never goes stale.
 ## - `bundle`: the platform bundle from the inputs `build` made, and an
 ##   author's first steps against it with the `macos.roc` tool: `init`,
 ##   `build` and `test` a counter (`scripts/bundle.roc --prebuilt --test`).
@@ -46,38 +53,62 @@ main! = |raw_args| {
 			return Err(Exit(2))
 		}
 	}
+	colour = { out: colour!(1), err: colour!(2) }
 	var $problems = []
 	for stage in chosen.stages {
 		note!("== ${stage}")
 		start = Monotonic.now!()
-		found = run_stage!(stage, chosen.update)?
-		note!("== ${stage}: ${if (found.is_empty()) "passed" else "failed"} in ${Repo.millis(Monotonic.elapsed!(start).to_millis())}")
+		found = run_stage!(stage, chosen.update, colour.out)?
+		result = Repo.paint(if (found.is_empty()) "passed" else "failed", colour.out)
+		note!("== ${stage}: ${result} in ${Repo.millis(Monotonic.elapsed!(start).to_millis())}")
 		$problems = $problems.concat(found.map(|problem| "${stage}: ${problem}"))
 	}
 	if $problems.is_empty() {
-		note!("check: passed (${Str.join_with(chosen.stages, ", ")})")
+		note!("check: ${Repo.paint("passed", colour.out)} (${Str.join_with(chosen.stages, ", ")})")
 		Ok({})
 	} else {
-		warn!("\nFailed")
+		warn!("\n${Repo.paint("Failed", colour.err)}")
 		for problem in $problems {
 			warn!("  ${problem}")
 		}
-		warn!("check: ${$problems.len().to_str()} problems")
+		warn!("check: ${Repo.paint("failed", colour.err)} with ${$problems.len().to_str()} problems")
 		Err(Exit(1))
 	}
 }
 
-run_stage! : Str, Bool => Try(List(Str), _)
-run_stage! = |stage, update|
+## Whether to colour what is written to file descriptor `fd` (1 or 2).
+## Colour is an aid, never the only signal: the word is always printed, and
+## it is left plain when `NO_COLOR` is set or nobody is watching a terminal.
+colour! : U8 => Bool
+colour! = |fd| {
+	no_colour = match Env.var_str!(OsStr.from_str("NO_COLOR")) {
+		Ok(value) => !value.is_empty()
+		Err(_) => Bool.False
+	}
+	if no_colour {
+		Bool.False
+	} else {
+		# `test` inherits this script's descriptors, and -t asks whether one is a terminal.
+		match Cmd.new("test").args(["-t", OsStr.from_str(fd.to_str())]).inherit_stdio().run!() {
+			Ok(output) => output.status == Exited(0)
+			Err(_) => Bool.False
+		}
+	}
+}
+
+run_stage! : Str, Bool, Bool => Try(List(Str), _)
+run_stage! = |stage, update, colour|
 	match stage {
 		"pins" => pins!()
 		"engine" => engine!()
-		"fmt" => fmt!()
+		"fmt" => fmt!(colour)
 		"tool" => tool!(update)
-		"scripts" => Ok(run!("roc-stable", ["test", "scripts/check_all.roc"])?.concat(run!("roc-stable", ["test", "scripts/bundle.roc"])?).concat(run!("roc-stable", ["test", "scripts/release.roc"])?).concat(run!("roc-stable", ["test", "scripts/record_demos.roc"])?))
+		"scripts" => scripts!()
+		"glue" => run!("roc-stable", ["scripts/build.roc", "--", "glue", "--check"])
 		"build" => build!()
 		"test" => test!()
-		"examples" => examples!(update)
+		"examples" => examples!(update, colour)
+		"bench" => bench!()
 		"bundle" => run!("roc-stable", ["scripts/bundle.roc", "--", "--prebuilt", "--test"])
 		_ => Ok(["no such stage"])
 	}
@@ -90,23 +121,17 @@ tracked! = |paths| {
 	Ok(listed.split_on("\n").keep_if(|line| !line.is_empty()))
 }
 
+## The compiler pins, as `repository_policy` in Blueprint.roc states them:
+## roc-policy checks every Roc header, and no file outside the scripts names
+## a compiler for the whole repository.
 pins! : () => Try(List(Str), _)
 pins! = || {
-	tag = match Repo.stable_tag(Path.read_utf8!(Path.utf8("Blueprint.roc"))?) {
-		Ok(found) => found
-		Err(NoTag) => return Ok(["Blueprint.roc names no roc-stable nightly"])
-	}
-	var $files = []
-	for path in tracked!(["*.roc"])? {
-		$files = $files.append({ path, text: Path.read_utf8!(Path.utf8(path))? })
-	}
-	var $problems = Repo.pin_problems(tag, $files)
-	for path in [".roc-version", ".github/roc-nightly.json"] {
+	var $problems = run!("roc-policy", ["check", "--root", "."])?
+	for path in Repo.stray_pins {
 		if Path.exists!(Path.utf8(path))? {
 			$problems = $problems.append("${path} pins a compiler; only the scripts under scripts/ may")
 		}
 	}
-	note!("${$files.len().to_str()} Roc files; the scripts pin ${tag}")
 	Ok($problems)
 }
 
@@ -120,13 +145,13 @@ engine! = || {
 	Ok(missing.map(|path| "tests/engine-modules.sha256 records no digest for ${path}").concat(digests))
 }
 
-fmt! : () => Try(List(Str), _)
-fmt! = || {
-	sources = tracked!(["platform", "glue", "examples", "cli"])?.keep_if(|path| path.ends_with(".roc"))
+fmt! : Bool => Try(List(Str), _)
+fmt! = |colour| {
+	sources = tracked!(["platform", "glue", "examples", "bench", "cli"])?.keep_if(|path| path.ends_with(".roc"))
 	var $checked = []
 	for path in sources {
 		match Repo.fmt_skip(path) {
-			Ok(reason) => note!(" SKIP ${path}: ${reason}")
+			Ok(reason) => note!(" ${Repo.paint("SKIP", colour)} ${path}: ${reason}")
 			Err(Checked) => {
 				$checked = $checked.append(path)
 			}
@@ -159,13 +184,35 @@ tool! = |update| {
 }
 
 build! : () => Try(List(Str), _)
-build! = || run_with!(Cmd.new("bash").args(["scripts/build.sh"]).env("ROC", "roc"), "scripts/build.sh")
+build! = || run_with!(Cmd.new("roc-stable").args(["scripts/build.roc"]).env("ROC", "roc"), "scripts/build.roc")
+
+## The `expect`s of every script, and so of every module under scripts/src.
+scripts! : () => Try(List(Str), _)
+scripts! = || {
+	var $problems = []
+	for script in Repo.scripts {
+		$problems = $problems.concat(run!("roc-stable", ["test", script])?)
+	}
+	Ok($problems)
+}
 
 test! : () => Try(List(Str), _)
 test! = || {
 	var $problems = run!("roc", ["test", "platform/main.roc"])?
 	for example in examples_present!()? {
 		$problems = $problems.concat(run!("roc", ["test", "examples/${example}/main.roc"])?)
+	}
+	Ok($problems)
+}
+
+## Every harness under `bench/`: built and run at a token size with
+## `run.sh --smoke`, which fails unless the run does what it measures.
+bench! : () => Try(List(Str), _)
+bench! = || {
+	harnesses = tracked!(["bench"])?.keep_if(|path| path.ends_with("/run.sh"))
+	var $problems = []
+	for script in harnesses {
+		$problems = $problems.concat(run_with!(Cmd.new("bash").args([script, "--smoke"].map(OsStr.from_str)).env("ROC", "roc"), "${script} --smoke")?)
 	}
 	Ok($problems)
 }
@@ -179,8 +226,8 @@ examples_present! = || {
 
 ## Every recorded case of every example: the built app, run with the case's
 ## `ROC_SCRIPT` steps, must exit 0 having printed exactly the recorded output.
-examples! : Bool => Try(List(Str), _)
-examples! = |update| {
+examples! : Bool, Bool => Try(List(Str), _)
+examples! = |update, colour| {
 	var $cases = []
 	var $problems = []
 	for example in examples_present!()? {
@@ -212,7 +259,7 @@ examples! = |update| {
 			Ok(Recorded) => "SAVE"
 			Err(_) => "FAIL"
 		}
-		note!(Repo.progress({ index: $index, total: $cases.len(), name: "${case.example}/${case.name}", outcome: label, ms }))
+		note!(Repo.progress({ index: $index, total: $cases.len(), name: "${case.example}/${case.name}", outcome: Repo.paint(label, colour), ms }))
 		match outcome {
 			Ok(_) => {
 				$passed = $passed + 1

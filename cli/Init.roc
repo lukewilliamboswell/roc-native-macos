@@ -1,6 +1,10 @@
+import cli.Env
 import cli.Path
 import cli.Stdout
+import App
 import Bundle
+import Meta
+import Workflow
 
 ## `init [DIR]`: create an app, a counter with two recorded cases, in `DIR`
 ## (by default, this directory). It writes only files that are not there
@@ -12,10 +16,10 @@ Init :: [].{
 	## file it is copied from.
 	Step : { path : Str, contents : [Text(Str), CopyOf(Str)] }
 
-	## Every file `init` writes into `dir`. `main.roc` names the release's
-	## platform.
-	plan : Str -> List(Step)
-	plan = |dir| {
+	## Every file `init` writes into `dir`, for the app whose name is `name`.
+	## `main.roc` names the release's platform.
+	plan : Str, Str -> List(Step)
+	plan = |dir, name| {
 		tool = if (dir == ".") [] else [{ path: "macos.roc", contents: CopyOf("macos.roc") }]
 		scaffold = Bundle.scaffold.map(
 			|file| {
@@ -23,14 +27,19 @@ Init :: [].{
 				{ path: file.path, contents: Text(text) }
 			},
 		)
-		tool.concat(scaffold).append({ path: ".gitignore", contents: Text(gitignore) })
+		tool.concat(scaffold).concat([
+			{ path: Meta.file, contents: Text(Meta.starter(name)) },
+			{ path: ".gitignore", contents: Text(gitignore) },
+			{ path: Workflow.path, contents: Text(Workflow.text) },
+		])
 	}
 
 	## Create the app, after checking that no file it writes already exists
 	## and, for a new directory, that there is a `macos.roc` here to copy.
 	run! : Str => Try({}, _)
 	run! = |dir| {
-		steps = Init.plan(dir)
+		location = if (dir == ".") Env.cwd!()?.display() else dir.drop_suffix("/")
+		steps = Init.plan(dir, App.app_name(App.last_part(location)))
 		for step in steps {
 			target = Init.place(dir, step.path)
 			if Path.exists!(Path.utf8(target))? {
@@ -76,14 +85,15 @@ Init :: [].{
 	summary : Str -> Str
 	summary = |dir| {
 		next = if (dir == ".") "  roc macos.roc run" else "  cd ${dir}\n  roc macos.roc run"
-		"Created a counter app on roc-native-macos ${Bundle.version}:\n\n  main.roc    the app: its state, view and program\n  tests/      recorded runs of it, which `roc macos.roc test` checks\n  macos.roc   the tool, which builds, runs and tests it\n  .gitignore  keeps build output out of version control\n\nNext, run the app (on an Apple silicon Mac; `build` works anywhere):\n\n${next}"
+		"Created a counter app on roc-native-macos ${Bundle.version}:\n\n  main.roc     the app: its state, view and program\n  tests/       recorded runs of it, which `roc macos.roc test` checks\n  macos.json   its name, bundle identifier and version\n  macos.roc    the tool, which builds, runs, tests and packages it\n  .gitignore   keeps build output out of version control\n  .github/     a workflow that packages it when you push a tag such as v1.0.0\n\nNext, run the app (on an Apple silicon Mac; `build` and `package` work anywhere):\n\n${next}"
 	}
 }
 
 gitignore =
-	\\# Written by `roc macos.roc`: the build directory and the app.
+	\\# Written by `roc macos.roc`: the build directory, the app and its zip.
 	\\/.macos/
 	\\/*.app/
+	\\/dist/
 	\\
 
 ## The scaffold names the release's platform, not a path.
@@ -95,9 +105,19 @@ expect {
 ## A new directory gets a copy of the tool; this directory already has it.
 ## Every plan writes the app, its recorded cases and the `.gitignore`.
 expect {
-	new = Init.plan("my-app").map(|step| step.path)
-	here = Init.plan(".").map(|step| step.path)
-	new.first() == Ok("macos.roc") and here.first() == Ok("main.roc") and new.drop_first(1) == here and here.contains(".gitignore") and here.any(|path| path.starts_with("tests/") and path.ends_with(".script"))
+	new = Init.plan("my-app", "my-app").map(|step| step.path)
+	here = Init.plan(".", "my-app").map(|step| step.path)
+	new.first() == Ok("macos.roc")
+		and here.first() == Ok("main.roc")
+		and new.drop_first(1) == here
+		and [".gitignore", "macos.json", ".github/workflows/release.yml"].all(|path| here.contains(path))
+		and here.any(|path| path.starts_with("tests/") and path.ends_with(".script"))
+}
+
+## The starter metadata names the app.
+expect {
+	starter = Init.plan(".", "my-app").keep_if(|step| step.path == "macos.json").first().map_ok(|step| step.contents)
+	starter == Ok(Text(Meta.starter("my-app"))) and Meta.starter("my-app").contains("\"id\": \"com.example.my-app\"")
 }
 
 expect [Init.place("my-app/", "main.roc"), Init.place(".", "tests/a.script")] == ["my-app/main.roc", "tests/a.script"]

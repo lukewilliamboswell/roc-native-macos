@@ -1,13 +1,19 @@
-# Built by scripts/build.sh
+# Built by scripts/build.roc (the glue in host/ is committed)
 platform/targets/arm64mac/libhost.a
+platform/targets/arm64mac/libhost.fingerprint
 platform/targets/macos-sysroot/
-host/roc_swift_abi.h
-host/RocGlue.swift
-# Example binaries and their .app bundles (examples/<name>/<name>.app)
+# Example binaries and their .app bundles (examples/<name>/<name>.app); their
+# sources and assets/ stay tracked
 examples/*/*
 examples/*/*.app/
 !examples/*/*.roc
 !examples/*/demo.script
+!examples/*/assets/
+# The bench harnesses' binaries (bench/<name>/<name>), beside their sources
+bench/*/*
+!bench/*/*.roc
+!bench/*/*.adoc
+!bench/*/*.sh
 
 # Blueprint's generated environment and links
 .blueprint/

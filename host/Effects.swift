@@ -18,10 +18,11 @@ extension Host {
                 let now = Int64(Date().timeIntervalSince1970 * 1000)
                 var payload: [UInt8] = [5]
                 for i in 0..<8 { payload.append(UInt8(truncatingIfNeeded: now >> (8 * Int64(i)))) }
-                self.send(EngineInstance.effectNode, id, payload)
+                self.send(EngineInstance.effectNode, id, payload, as: .timer)
             }
             RunLoop.main.add(timer, forMode: .common)
             timers[id] = timer
+            bench?.timerStarted(self)
         case 2, 17: // local and session storage reads: answered one task later
             let key = r.str()
             let value = kind == 2 ? LocalStorage.get(key) : SessionStorage.values[key]

@@ -38,6 +38,9 @@ roc macos.roc run
 release, and two recorded runs of it in `tests/`. `run` builds `counter.app`
 and starts it. Edit `main.roc` and run it again; `roc macos.roc build` builds
 the app on any system, and `roc macos.roc test` runs its recorded cases.
+`roc macos.roc package` zips the app for people to download, signed and
+notarized with a Developer ID if you have one, and the workflow `init` writes
+does that on GitHub when you push a tag ([Ship your app](docs/apps.adoc#ship-your-app)).
 
 An app is one `main.roc`. A smaller counter than the one `init` writes:
 
@@ -71,8 +74,10 @@ view = |count|
 ```
 
 [Build an app](docs/apps.adoc) covers the tool, writing an app, testing it
-with recorded runs, and sharing it. [The `Ui` reference](docs/ui.adoc) lists
+with recorded runs, and shipping it. [The `Ui` reference](docs/ui.adoc) lists
 every builder with its signature, what it draws and the events it sends.
+Both are chapters of [the manual](https://lukewilliamboswell.github.io/roc-native-macos/)
+([PDF](https://lukewilliamboswell.github.io/roc-native-macos/roc-native-macos.pdf)).
 
 ## Examples
 
@@ -94,6 +99,7 @@ describes.
 </tr>
 <tr>
 <td width="33%" valign="top"><a href="examples/file-inspector/"><img src="docs/images/file-inspector.gif" width="100%" alt="The file-inspector example running"></a><br><a href="examples/file-inspector/"><code>file-inspector</code></a>: dropped files: sizes, digests, previews</td>
+<td width="33%" valign="top"><a href="examples/about/"><img src="docs/images/about.gif" width="100%" alt="The about example running"></a><br><a href="examples/about/"><code>about</code></a>: images from the app's assets, and its icon</td>
 </tr>
 </table>
 

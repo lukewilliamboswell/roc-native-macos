@@ -1,0 +1,52 @@
+name: Publish linker inputs
+
+# The trusted publisher of the macOS linker inputs. A maintainer dispatches it
+# from main with the number of a same-repository pull request that changes
+# them. roc-automation's actions/publish-build-inputs dispatches
+# link-inputs.yml at that pull request's exact head, verifies the run, its
+# artifact and its attestations, publishes the archive as the immutable
+# release linker-inputs-sha256-<manifest digest>, and commits only
+# link-inputs.lock.json to the pull request. It checks out nothing and runs no
+# code from the pull request. Merge that pull request with a merge commit.
+
+on:
+  workflow_dispatch:
+    inputs:
+      pull-request:
+        description: Open same-repository pull request that changes the linker inputs
+        type: string
+        required: true
+      producer-run:
+        description: Successful producer run for the exact pull request head (empty builds a new candidate)
+        type: string
+        required: false
+        default: ''
+
+permissions: {}
+
+concurrency:
+  group: publish-link-inputs
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Publish the attested candidate and commit its lock
+    if: github.ref == 'refs/heads/main' && github.repository == 'lukewilliamboswell/roc-native-macos'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    permissions:
+      actions: write
+      attestations: read
+      contents: write
+      pull-requests: read
+    steps:
+      - uses: lukewilliamboswell/roc-automation/actions/publish-build-inputs@acc5efdcd929b38e665cd3ae6e694d1c4887f9c7
+        with:
+          pull-request: ${{ inputs.pull-request }}
+          producer-workflow: link-inputs.yml
+          producer-run: ${{ inputs.producer-run }}
+          candidate-artifact: link-input-release
+          lock-path: link-inputs.lock.json
+          release-prefix: linker-inputs
+        env:
+          GH_TOKEN: ${{ github.token }}

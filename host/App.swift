@@ -34,6 +34,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             window.makeKeyAndOrderFront(nil)
             NSApp.activate(ignoringOtherApps: true)
         }
+        host.bench?.shown(host)
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ app: NSApplication) -> Bool { true }
@@ -58,6 +59,7 @@ extension Host {
 @main
 struct Main {
     static func main() {
+        Bench.launched = Bench.now()
         let app = NSApplication.shared
         app.setActivationPolicy(.regular)
         let menu = NSMenu()

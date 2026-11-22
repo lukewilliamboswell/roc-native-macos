@@ -256,6 +256,41 @@ Release := [].{
 	compare_text : Str, Str -> [Before, Same, After]
 	compare_text = |a, b| Release.compare_numbers(a.to_utf8().map(U8.to_u64), b.to_utf8().map(U8.to_u64))
 
+	## What `roc bump --expect` must check before `version` is released,
+	## given the latest final release (empty when there is none). A first
+	## release has nothing to compare with. A version past the latest's
+	## breaking boundary (the major, or before 1.0 the minor) permits every
+	## API change, as roc-automation's release utility accepts without a diff.
+	## Otherwise the API comparison decides.
+	bump_plan : Str, Str -> Try([FirstRelease, NewBoundary, Compare], [NotAfter])
+	bump_plan = |version, latest|
+		if latest.is_empty() {
+			Ok(FirstRelease)
+		} else if Release.compare_versions(version, latest) != After {
+			Err(NotAfter)
+		} else if Release.compare_numbers(Release.boundary(version), Release.boundary(latest)) == After {
+			Ok(NewBoundary)
+		} else {
+			Ok(Compare)
+		}
+
+	## The breaking-change boundary of a version: `[major]`, or `[0, minor]`
+	## before 1.0.
+	boundary : Str -> List(U64)
+	boundary = |version| {
+		numbers = Release.number_part(version).split_on(".").map(|part| U64.from_str(part) ?? 0)
+		match numbers {
+			[0, minor, ..] => [0, minor]
+			[major, ..] => [major]
+			[] => []
+		}
+	}
+
+	## A version without its prerelease suffix: `0.2.0-rc1` is `0.2.0`, the
+	## number `roc bump --expect` takes.
+	number_part : Str -> Str
+	number_part = |version| version.split_on("-").first() ?? version
+
 	## The release notes, from `docs/releases/<version>.adoc`, as the
 	## Markdown body of the GitHub release. The source opens with
 	## `= roc-native-macos <version>` and writes the bundle's URL as
@@ -379,3 +414,14 @@ expect {
 		and served.map_ok(|text| text.contains("\tmacos: \"http://localhost:1/macos-T.tar.zst\",\n")) == Ok(Bool.True)
 		and Release.served_launcher(launcher, "macos-U.tar.zst", "http://localhost:1/macos-U.tar.zst") == Err(NoReleaseUrl)
 }
+
+## A first release compares with nothing; a new breaking boundary needs no
+## diff; within one, the API comparison decides; an older version is refused.
+expect Release.bump_plan("0.1.0", "") == Ok(FirstRelease)
+expect Release.bump_plan("0.2.0", "0.1.3") == Ok(NewBoundary)
+expect Release.bump_plan("1.0.0-rc1", "0.9.0") == Ok(NewBoundary)
+expect Release.bump_plan("0.1.4", "0.1.3") == Ok(Compare)
+expect Release.bump_plan("1.3.0", "1.2.0") == Ok(Compare)
+expect Release.bump_plan("0.1.3", "0.1.3") == Err(NotAfter)
+expect Release.bump_plan("0.1.0", "0.2.0") == Err(NotAfter)
+expect Release.number_part("0.2.0-rc1") == "0.2.0" and Release.number_part("0.2.0") == "0.2.0"
