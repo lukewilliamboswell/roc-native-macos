@@ -8,7 +8,8 @@
 ## vocabulary apps use, built only on `Engine`.
 ##
 ## Only the page instance's entry points are provided: no workers, ports,
-## files or crypto keys, and no hosted functions.
+## files or crypto keys, and no hosted functions. The declarations
+## (`roc_engine_keys`) cross without roc-signals' section 12.
 platform ""
 	requires {
 		[Store : st] for main : Engine.Program(st)
@@ -19,6 +20,7 @@ platform ""
 		"roc_engine_drop": drop_for_host,
 		"roc_engine_event": event_for_host,
 		"roc_engine_init": init_for_host,
+		"roc_engine_keys": keys_for_host,
 		"roc_engine_version": version_for_host,
 	}
 	hosted {}
@@ -77,7 +79,16 @@ release = |handle| {
 version_for_host : () -> U32
 version_for_host = || Core.driver(main).version
 
-## Mount with the boot bytes (empty bytes: every default).
+## The program's declaration sections (2, 5, 6, 10, 11 and 14), which tell
+## the host what to read before mount: storage keys, media queries, the zone
+## span and the startup profile. roc-signals appends section 12 (protocol
+## facts, a CBOR item) here with `ProtocolFacts.append_declaration`; this
+## host binds no roles from it and would need the cbor package to build it,
+## so the declarations cross as the engine writes them.
+keys_for_host : () -> List(U8)
+keys_for_host = || (Core.driver(main).keys)()
+
+## Mount with the boot bytes the host read for those declarations.
 init_for_host : List(U8) -> Step
 init_for_host = |boot| {
 	(state, cmds, work) = (Core.driver(main).init)(boot)

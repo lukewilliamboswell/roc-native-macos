@@ -14,7 +14,15 @@ Swift and draws real AppKit controls: no browser, no HTML, no web view.
 ```sh
 scripts/build.sh                # glue, Swift host, linker stubs, every example
 ./examples/counter/counter      # or stopwatch, todos
+open examples/counter/counter.app
 ```
+
+Each example is built twice over: the bare binary, and a minimal `.app`
+bundle beside it (`Contents/MacOS/<name>` and an `Info.plist` with
+`CFBundleIdentifier` `dev.roc.native.<name>`). Launched from the bundle,
+AppKit has a bundle identifier, so it no longer warns that it cannot index
+window tabs. The two keep separate `UserDefaults` domains (`todos` versus
+`dev.roc.native.todos`), so they do not share saved values.
 
 It needs the Roc 0.1.0 RC1 compiler (`~/roc-macos_apple_silicon-0.1.0_RC1/roc`,
 or set `ROC=`), Xcode's `swiftc` and Apple silicon.
@@ -35,9 +43,12 @@ app (Roc)  ──Ui / Engine──▶  engine (Core.roc, pure Roc)
   `Seq`, `MarkupAdvice`, `SignalCore`) are byte-identical copies of roc-signals
   `a13ff70e`. Nothing in the engine was changed.
 - **Platform root.** `platform/main.roc` is a trimmed copy of roc-signals'
-  root. It provides only `roc_engine_init`, `roc_engine_event`,
-  `roc_engine_drop` and `roc_engine_version`, with no hosted functions, workers,
-  ports, files or crypto.
+  root. It provides only `roc_engine_keys`, `roc_engine_init`,
+  `roc_engine_event`, `roc_engine_drop` and `roc_engine_version`, with no
+  hosted functions, workers, ports, files or crypto. `roc_engine_keys`
+  returns the engine's declarations without roc-signals' section 12
+  (protocol facts): that CBOR item needs the cbor package and
+  `ProtocolFacts`, and this host binds no roles from it.
 - **`Ui.roc`.** The native vocabulary apps use. Each builder is a plain
   `Engine.element` with a native element name (`ui-vstack`, `ui-button`,
   `ui-text-field`, `ui-checkbox`, `ui-slider`, …). A control's state crosses
@@ -49,12 +60,43 @@ app (Roc)  ──Ui / Engine──▶  engine (Core.roc, pure Roc)
   - move, remove and clear;
   - row templates (`TEMPLATE`/`INST`) and their holes;
   - `FX` timers and intervals, and `CANCEL`;
-  - storage, via `UserDefaults`.
+  - local storage, via `UserDefaults`, and session storage, in memory for
+    the life of the process.
 
   It keeps a node tree mirroring what the engine built and gives each `ui-*`
   element one AppKit view. It routes AppKit actions back as turns: `click`,
   `input`, `change` and `submit`. Any other command or effect is a clear fatal
   error, not a silent skip.
+
+## Boot and lifecycle
+
+Before mount the host reads the program's declarations (`roc_engine_keys`:
+storage keys, media queries, zone span, startup profile) and sends real
+boot facts (`host/Boot.swift`, Appendix B "Boot"):
+
+| Section | Value |
+|---|---|
+| 1 location | `/` |
+| 2 local storage | the declared keys that exist in `UserDefaults` |
+| 3, 4 online, visible | true |
+| 6 media | `(prefers-color-scheme: dark)` / `light` from the system setting; any other query false |
+| 7 time | now, in ms |
+| 8 seed | 16 bytes from `arc4random_buf` |
+| 9 languages | `Locale.preferredLanguages` (1–16, each ≤ 64 bytes; `en-US` if none) |
+| 10 time zone | `TimeZone.current` over the declared days each side of now, with its transitions |
+| 11 session storage | the declared keys this process has stored |
+| 13 mount root | an HTML `div`, or a profile-1 program's declared root |
+| 14 startup | profile 0, or profile 1 fresh with no entry |
+
+So `todos` saves its table under the local key `todos` and reads it back at
+the next launch (`Engine.boot_storage`, `Engine.watch_changes`).
+
+Quitting, or closing the window, invalidates the timers and calls
+`roc_engine_drop` once; no turn runs after it. A Roc crash or a host fatal
+error prints the message, shows it in an alert, then exits with status 1.
+Under `ROC_SCRIPT` it never shows the alert. The modal loop
+runs no turns, so a timer cannot re-enter Roc after a crash. `dbg` still
+prints to stderr.
 
 ## Glue
 
@@ -110,8 +152,9 @@ ROC_SCRIPT="type:Buy milk;enter;toggle:Buy milk;click:Done;dump;quit" ./examples
 ```
 
 Steps: `click:<title>`, `type:<text>` (first text field), `enter` (submit its
-form), `toggle:<checkbox title>`, `wait:<ms>`, `dump`, `quit`. `ROC_TRACE=1`
-logs effect requests and cancellations; `ROC_POISON=1` fills every new allocation
+form), `toggle:<checkbox title>`, `wait:<ms>`, `dump`, `quit` (through the
+same teardown as quitting). `ROC_TRACE=1`
+logs effect requests, cancellations and the teardown (`DROP`); `ROC_POISON=1` fills every new allocation
 with `Z`, to expose reads of uninitialised memory. A scripted run never takes
 keyboard focus.
 
@@ -124,7 +167,7 @@ format over the scripted driver, or a `ui-*` oracle, are the two options.
 | Example | Shows |
 |---|---|
 | `counter` | Local state (`Engine.state`), buttons, a readout |
-| `todos` | A store with a table, `table_view` rows (row templates), a form with Return-to-submit, checkboxes, `when`, and `expect` tests (`roc test examples/todos/main.roc`) |
+| `todos` | A store with a table, `table_view` rows (row templates), a form with Return-to-submit, checkboxes, `when`, saving to local storage and reading it back at boot, and `expect` tests (`roc test examples/todos/main.roc`) |
 | `stopwatch` | Store cells, an interval effect owned by `watch_latest` (Stop cancels it), and an `each` list of laps |
 
 ## Findings
