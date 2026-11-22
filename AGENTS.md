@@ -58,8 +58,8 @@ from the compiler's layout facts. They are committed, and the check's `glue`
 stage fails when they are not what the `roc` on PATH generates: regenerate
 them with `blueprint run build -- glue` and commit the diff with any host
 change it needs. Do not hand-edit them, or hand-encode a Roc value in Swift. A list's `capacity_or_alloc_ptr` stores the capacity shifted
-left one bit, and its low bit marks a seamless slice. Getting this wrong was
-the spike's one real crash. Build lists with `RocList.ownedBytes` / `.bytes` /
+left one bit, and its low bit marks a seamless slice; a raw length makes an
+odd-length payload read as a slice and crash. Build lists with `RocList.ownedBytes` / `.bytes` /
 `.empty`, and call entry points through the typed `Roc.*` functions. When a
 provided procedure needs a new shape, extend SwiftGlue so it generates the
 shape, rather than working around it in the host. SwiftGlue fails generation

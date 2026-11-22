@@ -301,7 +301,9 @@ same one CI runs on `macos-15`. Its stages, in order:
 | `bundle` | the bundle from the `build` stage's inputs, and its consumer test: `macos.roc` `init`, `build` and `test` against it
 |===
 
-`check -- STAGE...` runs only the named stages. On a terminal the result words (`PASS`, `FAIL`, `SKIP`, `passed`, `failed`) are coloured; `NO_COLOR` or a redirected output leaves them plain, and the word is always printed.
+`check -- STAGE...` runs only the named stages. On a terminal the result
+words (`PASS`, `FAIL`, `SKIP`, `passed`, `failed`) are coloured; `NO_COLOR`
+or a redirected output leaves them plain, and the word is always printed.
 
 [#releasing]
 == Releasing
@@ -465,69 +467,49 @@ Check both appearances with `ROC_APPEARANCE=dark` and a screenshot
 (`window`, then `screencapture -l<number> -o`).
 
 [#findings]
-== Findings
+[#findings]
+== Constraints to build with
+
+These hold for the compilers and the host as they are; each is a rule to
+follow when changing the platform.
 
 List capacity encoding:: In `capacity_or_alloc_ptr` a list stores
-`capacity << 1`; the low bit marks a seamless slice. The first host stored
-the raw length, so any odd-length payload read as a slice with a bogus
-allocation pointer and crashed in `roc_llvm_rc_decref`. Two-byte clicks
-passed by luck. The Zig glue gets this right; the C glue offers no
-constructor, hence SwiftGlue, which now replaces the C glue entirely.
+`capacity << 1`, and the low bit marks a seamless slice. A host that stores
+the raw length makes every odd-length payload read as a slice with a bogus
+allocation pointer. Build lists only with SwiftGlue's helpers.
+Handles in host memory:: Roc frees a `Box(U64)` at its payload minus 8 with
+alignment 8, where the glue's layout facts put it, so a box minted in a host
+table (not from `roc_alloc`) is released through `roc_dealloc`, as the
+browser host's blob heap is. A list of such boxes needs the 16-byte header
+(element count, then refcount), which Roc reads when it releases a seamless
+slice of the list; the 8-byte header of a byte list is wrong for it.
 Single-field record builder:: `{ a: Engine.cell(…) }.Engine.Cells` with one
-field is unimplemented in RC1, but `roc build` compiles it to a runtime error
-instead of failing. `roc test` reports it.
-`watch` vs `watch_latest`:: `watch` never cancels what it issued; a
-start/stop interval needs `watch_latest`.
-Handles in host memory work as in Wasm:: RC1's native code frees a
-`Box(U64)` at its payload minus 8 with alignment 8, exactly where the glue
-facts put it, so a box minted in a host table (not from `roc_alloc`) is
-released through `roc_dealloc` like the browser host's blob heap, and the
-same token encoding carries over unchanged. A list of such boxes must be
-built with the 16-byte header (element count, then refcount), which Roc reads
-when it releases a seamless slice of the list. A host that wrote the 8-byte
-header of a byte list would work until such a slice was released.
-Props records work:: A nominal record of `??` defaulted fields as a function
-argument (`Ui.vstack({ align: Fill }, kids)`, `Ui.scroll({}, rows)`) checks,
-builds and runs correctly in RC1, for every field type `Ui` uses: tag unions,
-nested and nominal records (`padding: Each({ top: 4 })`), functions,
-handlers and signals (`enabled : Signal(ctx, Bool) ?? Engine.const(Bool.True)`).
-`{}` takes every default, and partial literals take them inside a `map`
-lambda and through `Engine.const` too.
-An unannotated props value takes no defaults:: `card = { padding: All(4) }`
-is inferred as its own closed record, so passing it where `Ui.BoxProps` is
-expected fails to type-check ("missing these fields"), and `{ ..card,
-radius: 4 }` says the field does not exist. Annotated (`card : Ui.BoxProps`)
-it works. Themes are annotated for this reason.
-Props error messages (compiler, not reported upstream):: A misspelt field
-(`{ spaceing: 12 }`) gets a type mismatch whose found type lists the
-misspelling beside the real fields, with no "did you mean" hint, though a
-misspelt tag gets one ("Maybe Centre should be Center?"). A literal missing
-a required field gets `Hint: This record is missing these fields`, which
-wrongly lists the defaulted fields it also omits.
+field is unimplemented in RC1-era compilers, but `roc build` compiles it to a
+runtime error instead of failing. `roc test` reports it; give a store at
+least two cells.
+`watch` and `watch_latest`:: `watch` never cancels what it issued; a
+start/stop effect such as an interval needs `watch_latest`.
+Props records:: A nominal record of `??` defaulted fields as an argument
+(`Ui.vstack({ align: Fill }, kids)`) takes every default for `{}` and for the
+fields a literal omits, for every field type `Ui` uses, inside a `map` lambda
+and through `Engine.const` too. An unannotated value such as
+`card = { padding: All(4) }` is inferred as its own closed record and takes
+no defaults: passing it where `Ui.BoxProps` is expected fails to type-check,
+so themes are annotated (`card : Ui.BoxProps`).
 A text literal is a constant signal:: `Signal` has `from_quote` and
 `from_interpolation`, so `Ui.text("Hi", {})` and `Ui.text("${count} left", {})`
 need no `Engine.const`, but a `Str` held in a name does.
 Attributes arrive in any order:: A template row's views are made and then
 given every attribute from a dictionary, so a host handler must not depend
-on another attribute having been applied first. `title-display` (an
-`NSButton`'s `imagePosition`) is reapplied after any title, bezel or size
-change for this reason; before that, icon-only buttons in rows drew their
-titles over their symbols.
-No `Str` order:: `Str` has no `order_relative_to` in RC1, so `Engine.sort_by`
-cannot sort rows by a name; `contacts` sorts by key.
-Host costs, not engine costs:: For 10k rows the engine's turns are
-milliseconds; the host was seconds until it stopped removing children one
-O(n) scan at a time (removals now compact once per batch) and stopped
-creating AppKit views for list rows nobody had scrolled to.
-A bundle is fetched only over https, or http to localhost:: RC1 rejects a
-local `.tar.zst` path as a platform ("that package does not have a platform
-header") and any `http` URL that is not localhost. A server listening on
-`127.0.0.1` alone was not reached for `http://localhost:…`; one listening on
-`::` was, so serve the bundle with `--bind ::`. RC1 also rejects an
-absolute platform path. Current compilers (`src/unbundle/download.zig`)
-accept plain `http` for the hosts `localhost`, `127.0.0.1` and `[::1]`, and
-connect to `localhost` on the first loopback address it resolves to, which
-is `::1` on macOS; a dual-stack server on `::` serves both.
+on another attribute having been applied first. `title-display` is
+reapplied after any title, bezel or size change for this reason.
+No `Str` order:: `Str` has no ordering in RC1, so `Engine.sort_by` cannot
+sort rows by a name; `contacts` sorts by key.
+A bundle is fetched only over https, or http to localhost:: Roc rejects a
+local `.tar.zst` path as a platform and an absolute platform path, and
+accepts plain `http` only for `localhost`, `127.0.0.1` and `[::1]`. It
+connects to `localhost` on the first loopback address it resolves to, `::1`
+on macOS, so serve a bundle on `::` (`--bind ::`), which serves both.
 The same inputs bundle to the same name:: `libhost.a` is byte-reproducible
 (each object compiled to a fixed relative path under `build/host`, since
 Swift hashes an object's output path into its `__swift_modhash`; every

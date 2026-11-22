@@ -506,8 +506,8 @@ It covers only the shapes this platform uses (byte lists, opaque boxes,
 lists of boxes of an integer, integers, records of those, unit) and 64-bit
 hosts. It fails generation, naming the entry point, on anything else,
 including hosted functions. The list helpers were the point: the stock C glue
-leaves list construction to the host, and a hand-written encoding was this
-spike's one real crash (see xref:contributing.adoc#findings[Findings]).
+leaves list construction to the host, and a hand-written list encoding is
+easy to get wrong (see xref:contributing.adoc#findings[Constraints to build with]).
 
 [#linker-inputs]
 == Linker inputs: no Apple SDK files
