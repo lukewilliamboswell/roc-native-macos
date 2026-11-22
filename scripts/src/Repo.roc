@@ -34,18 +34,11 @@ Repo := [].{
 	stray_pins : List(Str)
 	stray_pins = [".roc-version", ".github/roc-nightly.json"]
 
-	## The sources `roc fmt --check` does not check yet, by path prefix, with
-	## the reason. Each is printed as a SKIP line on every run.
-	##
-	## TODO: format these, then delete this list. They were written before the
-	## formatter gate, and reformatting them while the concurrent feature
-	## branches that edit them are open would conflict with every one of them.
+	## The sources `roc fmt --check` skips, by path prefix, each printed as a
+	## SKIP line on every run. Empty: every source is formatted. A skip is
+	## temporary, and its reason names the issue that tracks it.
 	fmt_skips : List({ prefix : Str, reason : Str })
-	fmt_skips = [
-		{ prefix: "platform/main.roc", reason: "not yet formatted; format after the open feature branches merge" },
-		{ prefix: "glue/", reason: "not yet formatted; format after the open feature branches merge" },
-		{ prefix: "examples/", reason: "not yet formatted; format after the open feature branches merge" },
-	]
+	fmt_skips = []
 
 	## Why `roc fmt --check` skips a path, if it does.
 	fmt_skip : Str -> Try(Str, [Checked])
@@ -112,7 +105,7 @@ expect Repo.paint("failed", Bool.True) == "\u(001b)[31mfailed\u(001b)[0m"
 expect Repo.paint("SKIP", Bool.True) == "\u(001b)[33mSKIP\u(001b)[0m"
 
 expect Repo.fmt_skip("platform/Core.roc") == Err(Checked)
-expect Repo.fmt_skip("examples/todos/main.roc").is_ok()
+expect Repo.fmt_skip("examples/todos/main.roc") == Err(Checked)
 
 expect (Repo.millis(12), Repo.millis(1204), Repo.millis(10000), Repo.millis(1002003)) == ("12ms", "1_204ms", "10_000ms", "1_002_003ms")
 

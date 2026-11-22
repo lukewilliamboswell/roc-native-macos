@@ -278,7 +278,7 @@ same one CI runs on `macos-15`. Its stages, in order:
 
 | `pins` | `roc-policy check` (roc-automation's source-policy utility) with `repository_policy` from `Blueprint.roc`: the scripts pin `roc-stable`, nothing else pins a compiler, and every example names `../../platform/main.roc`
 | `engine` | the engine modules match their roc-signals digests (`tests/engine-modules.sha256`)
-| `fmt` | `roc fmt --check` over the platform, glue, examples and tool (the not-yet-formatted files are skipped, and each skip prints), and `roc-stable fmt --check` over the scripts
+| `fmt` | `roc fmt --check` over the platform, glue, examples and tool, and `roc-stable fmt --check` over the scripts
 | `scripts` | the scripts' `expect` tests
 | `tool` | `cli/Bundle.roc` is current (`tool --update` writes it), `scripts/src/Recorded.roc` copies `cli/Recorded.roc`, and `roc test cli/main.roc`
 | `build` | `scripts/build.sh` with the `roc` on PATH
