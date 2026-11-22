@@ -36,6 +36,7 @@ extension Host {
             case "dump":
                 say("---"); dump(root, 0)
             case "quit":
+                teardownEffects()
                 exit(0)
             default:
                 fatal("script: unknown step \(step)")

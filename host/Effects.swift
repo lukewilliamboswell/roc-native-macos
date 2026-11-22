@@ -7,6 +7,8 @@ extension Host {
 
     func effect(id: UInt32, kind: UInt8, _ r: inout Reader) {
         switch kind {
+        case 1: // HTTP, performed off the main thread (host/Http.swift)
+            startHttp(id: id, &r)
         case 3, 4: // timer, interval
             let ms = r.u32()
             let repeats = kind == 4
@@ -33,5 +35,26 @@ extension Host {
         default:
             fatal("effect kind \(kind) is not supported by this host")
         }
+    }
+
+    /// CANCEL: stop whatever the id names. Nothing it would have answered
+    /// reaches the engine afterwards.
+    func cancelEffect(id: UInt32) {
+        if let timer = timers.removeValue(forKey: id) { timer.invalidate(); return }
+        _ = cancelHttp(id: id)
+    }
+
+    /// Teardown: cancel everything in flight, so nothing is delivered after it.
+    func teardownEffects() {
+        for timer in timers.values { timer.invalidate() }
+        timers.removeAll()
+        cancelAllHttp()
+    }
+
+    func makeHttpTransport() -> HttpTransport {
+        let transport = HttpTransport()
+        transport.finished = { [weak self] id, task, payload in self?.finishHttp(id: id, task: task, payload) }
+        transport.progressed = { [weak self] id, task, payload in self?.progressHttp(id: id, task: task, payload) }
+        return transport
     }
 }
