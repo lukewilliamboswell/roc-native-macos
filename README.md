@@ -13,7 +13,7 @@ engine: state lives in signals and stores, and the view is a tree of `Ui`
 builders. The platform draws it with real AppKit controls (no browser, no
 HTML, no web view) and updates only what changed.
 
-<img src="docs/images/todos.png" width="360" alt="The todos example: a text field, an Add button, filter buttons and a list of to-dos with checkboxes">
+<img src="docs/images/todos.png" width="440" alt="The todos example: a large title with the count left, a text field and Add button, a segmented filter, and a list of to-dos with checkboxes and trash buttons">
 
 ## Quick start
 
@@ -42,16 +42,16 @@ main = Engine.program(|| Engine.state(0, view))
 view : State(In(Root, I64), I64) -> Elem(In(Root, I64))
 view = |count|
 	Ui.vstack(
-		{},
+		{ spacing: 16, align: Center, width: AtLeast(320) },
 		[
-			Ui.title("Counter"),
-			Ui.readout_s(count.signal().map(|n| n.to_str())),
+			Ui.text("Counter", { style: Headline, color: SecondaryLabel }),
+			Ui.text("${count.signal()}", { size: Fixed(64), weight: Light, design: MonospacedDigits }),
 			Ui.hstack(
-				{},
+				{ spacing: 12 },
 				[
-					Ui.button("−", count.update(|n| n - 1)),
-					Ui.button("Reset", count.update(|_| 0)),
-					Ui.button("+", count.update(|n| n + 1)),
+					Ui.button("−", { on_press: count.update(|n| n - 1), icon: Symbol("minus"), title_display: Hidden }),
+					Ui.button("Reset", { on_press: count.update(|_| 0) }),
+					Ui.button("+", { on_press: count.update(|n| n + 1), icon: Symbol("plus"), title_display: Hidden }),
 				],
 			),
 		],
@@ -104,15 +104,22 @@ fails at run time with current compilers (`roc test` reports it).
 **The view.** Every builder in `Ui` is a native control: stacks, forms,
 scroll areas, lists backed by `NSTableView`, labels, buttons, text fields,
 checkboxes, sliders, pop-up menus, segmented controls and tabs, SF Symbols,
-progress bars, keyboard shortcuts, file pickers and drop zones. Layout and
-text style are props records of defaulted fields, given first:
-`Ui.vstack({ spacing: 12, align: Fill }, kids)`,
-`Ui.text({ font: Caption, color: Secondary }, "Saved")`. A builder whose
-name ends in `_s` follows a signal: `Ui.label_s(count.signal().map(|n| n.to_str()))`.
+progress bars, keyboard shortcuts, file pickers and drop zones, and `box`
+surfaces. Each takes its subject first and a props record of defaulted
+fields beside it (containers take their children last); name only what
+differs: `Ui.text("Saved", { style: Caption1, color: SecondaryLabel })`,
+`Ui.vstack({ spacing: 12, align: Fill }, kids)`. Looks are AppKit's own:
+text styles, semantic colours that follow dark mode, control sizes, bezels
+and SF Symbols. State is a signal and looks are values: a literal text is a
+constant and `"${count} left"` follows `count`; when a look must follow state
+too, the `_s` form takes the props as a signal,
+`Ui.text_s(total, over.map(|o| if (o) { color: Red } else {}))`. An app
+shares a look as a plain annotated value, `theme : Theme`, not a stylesheet.
 
-**Events.** A control takes a handler that returns writes to state:
-`Ui.button("Reset", Engine.handle(|_| [cells.elapsed_ms.set(0)]))`. A text
-field's handler receives the text, a checkbox's its new state.
+**Events.** Handlers are props fields that return writes to state:
+`Ui.button("Reset", { on_press: Engine.handle(|_| [cells.elapsed_ms.set(0)]) })`.
+A text field's `on_input` receives the text, a checkbox's `on_change` its
+new state.
 
 **Effects.** HTTP requests, timers and intervals, file reads and digests
 are asks that a watch site issues when a signal changes, and whose answers
@@ -143,13 +150,13 @@ documented in roc-signals.
 
 | Example | Shows |
 |---|---|
-| [`counter`](examples/counter/main.roc) | Local state (`Engine.state`), buttons, a readout |
-| [`todos`](examples/todos/main.roc) | A store with a table, `table_view` rows (row templates) in a `Ui.scroll`, a form with Return-to-submit, a Command-N shortcut, checkboxes, `when`, saving to local storage and reading it back at boot, and `expect` tests (`roc test examples/todos/main.roc`) |
-| [`gallery`](examples/gallery/main.roc) | `tabs` over pages, a dropdown, a text area, SF Symbols, progress bars, styled text, Command-N/Command-K shortcuts |
-| [`contacts`](examples/contacts/main.roc) | 10,000 generated rows in a `Ui.list` (`NSTableView`), a search field filtering through the `table_view` query, row selection |
-| [`stopwatch`](examples/stopwatch/main.roc) | Store cells, an interval effect owned by `watch_latest` (Stop cancels it), and an `each` list of laps |
-| [`http-fetch`](examples/http-fetch/main.roc) | `Engine.http` under `watch_latest`: Fetch, Cancel (a pure cancel), a second Fetch superseding the first, an optional 2 s timeout, and transfer progress (`with_progress`) |
-| [`file-inspector`](examples/file-inspector/main.roc) | `Ui.file_button` and `Ui.drop_zone` delivering `File` handles; for an inspected file its SHA-256 (`sha256`), its first 200 bytes as text or "binary" (`slice`, `read_bytes`), its URL (`object_url`) and "Save copy…" (`File.save`); Clear releases the handles |
+| [`counter`](examples/counter/main.roc)<br><img src="docs/images/counter.png" width="200" alt="counter"> | Local state (`Engine.state`), icon buttons, a large monospaced readout |
+| [`todos`](examples/todos/main.roc)<br><img src="docs/images/todos.png" width="200" alt="todos"> | A store with a table, `table_view` rows (row templates) in a `Ui.scroll` inside a `box`, a form with Return-to-submit, a segmented filter, a Command-N shortcut, done rows greyed by `text_s`, an empty state, a shared `Theme`, saving to local storage and reading it back at boot, and `expect` tests |
+| [`gallery`](examples/gallery/main.roc)<br><img src="docs/images/gallery.png" width="200" alt="gallery"> | `tabs` over labelled sections: a dropdown, a slider and progress bar, a text area, text styles, semantic and adaptive colours, SF Symbols, Command-N/Command-K shortcuts |
+| [`contacts`](examples/contacts/main.roc)<br><img src="docs/images/contacts.png" width="200" alt="contacts"> | 10,000 generated rows in a sidebar `Ui.list` (`NSTableView`), a search field filtering through the `table_view` query, a detail pane for the selected row |
+| [`stopwatch`](examples/stopwatch/main.roc)<br><img src="docs/images/stopwatch.png" width="200" alt="stopwatch"> | Store cells, an interval effect owned by `watch_latest` (Stop cancels it), a default button, and an `each` list of laps with splits, the fastest and slowest coloured |
+| [`http-fetch`](examples/http-fetch/main.roc)<br><img src="docs/images/http-fetch.png" width="200" alt="http-fetch"> | `Engine.http` under `watch_latest`: Fetch, Cancel (a pure cancel), a second Fetch superseding the first, an optional 2 s timeout, transfer progress (`with_progress`), and a status badge whose colour follows the answer (`box_s`) |
+| [`file-inspector`](examples/file-inspector/main.roc)<br><img src="docs/images/file-inspector.png" width="200" alt="file-inspector"> | `Ui.file_button` and a `Ui.drop_zone` delivering `File` handles, sizes in KB and MB; for an inspected file its SHA-256 (`sha256`), its first 200 bytes as text or "binary" (`slice`, `read_bytes`), its URL (`object_url`) and "Save Copy…" (`File.save`); Clear releases the handles |
 
 The examples name the platform by its path in the checkout
 (`../../platform/main.roc`). To run them, build the platform first:

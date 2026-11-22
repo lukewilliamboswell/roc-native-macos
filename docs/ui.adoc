@@ -129,6 +129,7 @@ table gives other defaults. Sizes are points.
 | `DropZoneProps(ctx)` | `on_drop : Engine.FilesHandler(ctx)` (required), `padding : Insets ?? All(16)`, `radius : U32 ?? 10`, `width : Length ?? Fill`, `height`
 |===
 
+[#ui-looks]
 == Looks
 
 The shared types, all inside `Ui` (`Ui.Length`, `Ui.Color`, …):

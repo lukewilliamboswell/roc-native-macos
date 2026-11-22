@@ -125,9 +125,9 @@ calls. Steps run every 100 ms; `dump` prints the live view tree:
 
 [source,sh]
 ----
-ROC_SCRIPT="type:Buy milk;enter;toggle:Buy milk;click:Done;dump;quit" ./examples/todos/todos
+ROC_SCRIPT="type:Buy milk;enter;toggle:Buy milk;choose:Done;dump;quit" ./examples/todos/todos
 ROC_TRACE=1 ROC_SCRIPT="type:https://example.com;enter;wait:3000;dump;quit" ./examples/http-fetch/http-fetch
-ROC_SAVE_DIR=/tmp ROC_SCRIPT="files:$PWD/README.md;click:Inspect;wait:300;dump;click:Save copy…;wait:200;quit" \
+ROC_SAVE_DIR=/tmp ROC_SCRIPT="files:$PWD/README.md;click:Inspect;wait:300;dump;click:Save Copy…;wait:200;quit" \
   ./examples/file-inspector/file-inspector
 ----
 
@@ -146,7 +146,8 @@ ROC_SAVE_DIR=/tmp ROC_SCRIPT="files:$PWD/README.md;click:Inspect;wait:300;dump;c
 | `files:<path>,<path>…` | gives files as if picked on the first file button or drop zone, with no panel
 | `drop:<path>,…` | gives files as if dropped on the first drop zone
 | `wait:<ms>` | waits
-| `dump` | prints the window size, then the view tree; a list shows its visible rows
+| `dump` | prints the window size, then the view tree; a list shows its visible rows, and a text, box or drop zone the look attributes that differ from the usual (`{color=secondary-label text-style=caption1}`)
+| `window` | prints `window <number>`, for `screencapture -l<number>`
 | `quit` | quits, through the same teardown as quitting
 |===
 
@@ -159,6 +160,7 @@ ROC_SAVE_DIR=/tmp ROC_SCRIPT="files:$PWD/README.md;click:Inspect;wait:300;dump;c
 | `ROC_SAVE_DIR` | where a scripted save writes; without it a scripted save is skipped
 | `ROC_MAX_FILE_BYTES` | lowers the host's file ceiling, to check `TooLarge`
 | `ROC_STORAGE_SUITE=<name>` | a `UserDefaults` suite for local storage; otherwise a scripted run's local storage is in memory
+| `ROC_APPEARANCE=dark` (or `light`) | draws the app in that appearance whatever the system's, to check both looks
 |===
 
 A scripted run never takes keyboard focus, never opens a panel and never
@@ -268,10 +270,26 @@ blueprint run release -- notes 0.0.1-dryrun build/release build/release-notes.md
 [#styling]
 == Styling
 
-Styling is deliberately minimal: stack spacing, padding and alignment, and a
-font and semantic colour on text. A fuller API (props records in AppKit's
-own vocabulary for every builder) is proposed, not implemented, in
-link:styling.md[Styling: design].
+Apps style elements through props records in AppKit's own vocabulary; the
+API is in xref:ui.adoc#ui-looks[the Ui reference] and the attribute grammar and
+AppKit mapping in xref:architecture.adoc#looks[Looks]. Adding a look:
+
+. a defaulted field on the props type in `Ui.roc` whose type is a tag union
+  (or a number with a real native default), with a "platform decides" tag
+  such as `Auto` or `Standard` rather than a magic zero;
+. a word function outside the `Ui := [].{ … }` block, and an `expect` for
+  its words;
+. an `applyAttr` case in `host/Views.swift` that parses the word and calls
+  `fatal` on anything else, independent of the order attributes arrive in
+  (a template row applies them in dictionary order);
+. any new AppKit symbol in `host/interfaces.json`, by documented ownership;
+  watch for Swift type metadata (a stored `NSEdgeInsets` or `[CGFloat]`
+  names CGFloat's descriptor in `libswiftCoreGraphics`, which the stubs do
+  not link);
+. a row in `docs/ui.adoc` and `docs/architecture.adoc`.
+
+Check both appearances with `ROC_APPEARANCE=dark` and a screenshot
+(`window`, then `screencapture -l<number> -o`).
 
 [#findings]
 == Findings
@@ -297,7 +315,31 @@ when it releases a seamless slice of the list. A host that wrote the 8-byte
 header of a byte list would work until such a slice was released.
 Props records work:: A nominal record of `??` defaulted fields as a function
 argument (`Ui.vstack({ align: Fill }, kids)`, `Ui.scroll({}, rows)`) checks,
-builds and runs correctly in RC1.
+builds and runs correctly in RC1, for every field type `Ui` uses: tag unions,
+nested and nominal records (`padding: Each({ top: 4 })`), functions,
+handlers and signals (`enabled : Signal(ctx, Bool) ?? Engine.const(Bool.True)`).
+`{}` takes every default, and partial literals take them inside a `map`
+lambda and through `Engine.const` too.
+An unannotated props value takes no defaults:: `card = { padding: All(4) }`
+is inferred as its own closed record, so passing it where `Ui.BoxProps` is
+expected fails to type-check ("missing these fields"), and `{ ..card,
+radius: 4 }` says the field does not exist. Annotated (`card : Ui.BoxProps`)
+it works. Themes are annotated for this reason.
+Props error messages (compiler, not reported upstream):: A misspelt field
+(`{ spaceing: 12 }`) gets a type mismatch whose found type lists the
+misspelling beside the real fields, with no "did you mean" hint, though a
+misspelt tag gets one ("Maybe Centre should be Center?"). A literal missing
+a required field gets `Hint: This record is missing these fields`, which
+wrongly lists the defaulted fields it also omits.
+A text literal is a constant signal:: `Signal` has `from_quote` and
+`from_interpolation`, so `Ui.text("Hi", {})` and `Ui.text("${count} left", {})`
+need no `Engine.const`, but a `Str` held in a name does.
+Attributes arrive in any order:: A template row's views are made and then
+given every attribute from a dictionary, so a host handler must not depend
+on another attribute having been applied first. `title-display` (an
+`NSButton`'s `imagePosition`) is reapplied after any title, bezel or size
+change for this reason; before that, icon-only buttons in rows drew their
+titles over their symbols.
 No `Str` order:: `Str` has no `order_relative_to` in RC1, so `Engine.sort_by`
 cannot sort rows by a name; `contacts` sorts by key.
 Host costs, not engine costs:: For 10k rows the engine's turns are

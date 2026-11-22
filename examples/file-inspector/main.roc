@@ -6,7 +6,7 @@ import pf.Ui
 ## A file inspector: pick files in an open panel or drop them from the
 ## Finder. The app holds each one as a handle (a `File`), never its bytes,
 ## and lists them; inspecting one asks the host for its SHA-256 digest and
-## its first bytes as text and a URL that shows it, and "Save copy…" saves
+## its first bytes as text and a URL that shows it, and "Save Copy…" saves
 ## it through a save panel.
 ## Clearing the list drops the handles, and the host lets the files go.
 main : Engine.Program(_)
