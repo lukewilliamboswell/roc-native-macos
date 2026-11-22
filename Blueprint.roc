@@ -28,7 +28,23 @@ import pf.Recipes
 # The scripts' tooling compiler (`roc-stable`): every script's `roc` header
 # field names this release, and `check` fails until they match. It is the
 # same release roc-signals' scripts use.
-roc_stable_program = Fetch("roc-stable", Recipes.roc_nightly("nightly-2026-11-14-a87808d"))
+tooling = { compiler: "nightly-2026-11-14-a87808d" }
+
+roc_stable_program = Fetch("roc-stable", Recipes.roc_nightly(tooling.compiler))
+
+# The compiler-pin rules `check`'s `pins` stage enforces with roc-policy,
+# roc-automation's source-policy utility: every script under scripts/ pins
+# `roc-stable`, nothing the package compiler builds pins a compiler, and every
+# example names the platform by its checkout path, which the examples archive
+# rewrites to the release URL. The rules that name no value of this file are
+# in the profile, which roc-policy reads only at the digest recorded here.
+repository_policy = {
+	schema_version: 2,
+	roots: ["platform", "examples", "glue", "cli", "scripts"],
+	profiles: [{ name: "repository", path: "tests/repository-policy.roc.txt", definition: "profile", sha256: "a20d5cbdb54bbff8ebc1c1c0be7f497d1573ca9ff074707413336b6ff7495898" }],
+	rules: [{ id: "tooling/pin", kind: CompilerPin, include: ["scripts/**/*.roc"], value: tooling.compiler }],
+	overrides: [],
+}
 
 config = [
 	Name("roc-native-macos"),
@@ -36,7 +52,12 @@ config = [
 	Environment(
 		"dev",
 		[
-			Programs([roc_stable_program]),
+			# roc-policy checks the compiler pins (`check`'s `pins` stage); it
+			# is a released roc-automation utility, locked by digest.
+			Programs([
+				roc_stable_program,
+				Fetch("roc-policy", Recipes.file("https://github.com/lukewilliamboswell/roc-automation/releases/download/tools-0.12.0/roc-policy-{system}")),
+			]),
 			# Every bundle the scripts depend on, including dependencies of
 			# dependencies: `roc-stable deps scripts/check_all.roc` lists them.
 			RocPackages([

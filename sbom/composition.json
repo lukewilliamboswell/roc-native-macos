@@ -151,6 +151,11 @@
       "reason": "Pinned compiler that runs repository scripts; it does not build the bundle"
     },
     {
+      "input": "program:roc-policy:aarch64-darwin",
+      "component": "",
+      "reason": "roc-automation's source-policy utility, which checks the compiler pins in the check gate; it does not build the bundle"
+    },
+    {
       "input": "roc-package:7brgwR8YUqfeGrkdfF1V4GPPN7DnP7ftqub9KcrTEZtr",
       "component": "",
       "reason": "Package the repository scripts import (https://github.com/roc-lang/basic-cli/releases/download/0.28.1/7brgwR8YUqfeGrkdfF1V4GPPN7DnP7ftqub9KcrTEZtr.tar.zst); scripts do not ship"

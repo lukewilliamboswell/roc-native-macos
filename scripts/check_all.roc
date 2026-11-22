@@ -19,7 +19,8 @@ import src/Repo
 ## The `check` task, the pull-request gate: `blueprint run check` runs every
 ## stage, and `blueprint run check -- STAGE...` the named ones, in order.
 ##
-## - `pins`: only the scripts pin a compiler, and they pin `roc-stable`.
+## - `pins`: only the scripts pin a compiler, and they pin `roc-stable`
+##   (`roc-policy check`, from Blueprint.roc's `repository_policy`).
 ## - `engine`: the engine modules match their recorded roc-signals digests.
 ## - `fmt`: `roc fmt --check` over the platform, glue, examples and the
 ##   `macos.roc` tool (`cli/`), and `roc-stable fmt --check` over the scripts.
@@ -90,23 +91,17 @@ tracked! = |paths| {
 	Ok(listed.split_on("\n").keep_if(|line| !line.is_empty()))
 }
 
+## The compiler pins, as `repository_policy` in Blueprint.roc states them:
+## roc-policy checks every Roc header, and no file outside the scripts names
+## a compiler for the whole repository.
 pins! : () => Try(List(Str), _)
 pins! = || {
-	tag = match Repo.stable_tag(Path.read_utf8!(Path.utf8("Blueprint.roc"))?) {
-		Ok(found) => found
-		Err(NoTag) => return Ok(["Blueprint.roc names no roc-stable nightly"])
-	}
-	var $files = []
-	for path in tracked!(["*.roc"])? {
-		$files = $files.append({ path, text: Path.read_utf8!(Path.utf8(path))? })
-	}
-	var $problems = Repo.pin_problems(tag, $files)
-	for path in [".roc-version", ".github/roc-nightly.json"] {
+	var $problems = run!("roc-policy", ["check", "--root", "."])?
+	for path in Repo.stray_pins {
 		if Path.exists!(Path.utf8(path))? {
 			$problems = $problems.append("${path} pins a compiler; only the scripts under scripts/ may")
 		}
 	}
-	note!("${$files.len().to_str()} Roc files; the scripts pin ${tag}")
 	Ok($problems)
 }
 
