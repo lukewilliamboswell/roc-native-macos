@@ -7,3 +7,4 @@ host/RocGlue.swift
 examples/*/*
 examples/*/*.app/
 !examples/*/*.roc
+.claude/
