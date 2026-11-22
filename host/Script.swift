@@ -36,7 +36,7 @@ extension Host {
             case "dump":
                 say("---"); dump(root, 0)
             case "quit":
-                NSApp.terminate(nil)  // through teardown, as a person quitting would
+                NSApp.terminate(nil)  // through teardown (effects, then the engine), as a person quitting would
             default:
                 fatal("script: unknown step \(step)")
             }

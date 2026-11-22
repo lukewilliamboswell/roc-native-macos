@@ -36,10 +36,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 }
 
 extension Host {
-    /// Teardown: stop every timer, then release the engine (`roc_engine_drop`)
-    /// once. No turn runs after it.
+    /// Teardown: cancel every effect in flight (HTTP transfers, then timers),
+    /// then release the engine (`roc_engine_drop`) once. No turn runs after it.
     func stop() {
         guard !halted, !engine.dropped else { return }
+        teardownEffects()
         for timer in timers.values { timer.invalidate() }
         timers.removeAll()
         engine.drop()

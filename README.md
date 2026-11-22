@@ -13,7 +13,7 @@ Swift and draws real AppKit controls: no browser, no HTML, no web view.
 
 ```sh
 scripts/build.sh                # glue, Swift host, linker stubs, every example
-./examples/counter/counter      # or stopwatch, todos
+./examples/counter/counter      # or stopwatch, todos, http-fetch
 open examples/counter/counter.app
 ```
 
@@ -60,6 +60,8 @@ app (Roc)  ──Ui / Engine──▶  engine (Core.roc, pure Roc)
   - move, remove and clear;
   - row templates (`TEMPLATE`/`INST`) and their holes;
   - `FX` timers and intervals, and `CANCEL`;
+  - `FX` HTTP (kind 1) through `URLSession`, with timeouts, cancellation
+    and transfer progress (see [Effects and threads](#effects-and-threads));
   - local storage, via `UserDefaults`, and session storage, in memory for
     the life of the process.
 
@@ -91,12 +93,88 @@ boot facts (`host/Boot.swift`, Appendix B "Boot"):
 So `todos` saves its table under the local key `todos` and reads it back at
 the next launch (`Engine.boot_storage`, `Engine.watch_changes`).
 
-Quitting, or closing the window, invalidates the timers and calls
+Quitting, or closing the window, cancels every effect in flight and calls
 `roc_engine_drop` once; no turn runs after it. A Roc crash or a host fatal
 error prints the message, shows it in an alert, then exits with status 1.
 Under `ROC_SCRIPT` it never shows the alert. The modal loop
 runs no turns, so a timer cannot re-enter Roc after a crash. `dbg` still
 prints to stderr.
+
+## Effects and threads
+
+Roc runs on the main thread only. An effect that blocks or waits (HTTP now;
+files and anything later) follows the same rules, which play the part
+roc-signals' Workers play on the web: the work leaves the thread, Roc
+does not.
+
+1. **Nothing Roc owns crosses a thread.** The `FX` operands are decoded on
+   the main thread into a plain Swift value (`HttpRequest`). The engine
+   state, the command and work lists and every Roc allocation stay on the
+   main thread.
+2. **Work runs on the effect's own queue.** `URLSession` performs HTTP with
+   its delegate on a private serial `OperationQueue`. State that queue
+   owns (each transfer's buffer and redirect count) is touched only there;
+   state the main thread owns (`Host.flights`: the task, its timers) only
+   there. They meet in two places: the main thread hands a task over with
+   `queue.addOperation`, which also resumes it, so no callback precedes the
+   hand-over; the queue hands back a finished, already encoded result
+   payload (`[UInt8]`: status, headers, body) with `DispatchQueue.main.async`.
+3. **The main thread decides whether a result exists.** A payload enters
+   Roc only if its id is still tracked, by the same task. `CANCEL`, a
+   timeout and teardown untrack the id *first*, then cancel the task, so a
+   completion that races them is dropped on the main thread and never
+   reaches the engine (which would also drop it, as stale). Even a request
+   refused before it starts (a bad URL) answers one task later through the
+   same check, so a `CANCEL` later in the same batch still wins.
+4. **One result, one turn, through the UI's queue.** Results enter through
+   `Host.send`, as AppKit events do, which queues while a batch is being
+   applied: a completion never re-enters Roc mid-batch.
+5. **Teardown cancels everything in flight** (`teardownEffects`, from `Host.stop` on
+   `applicationWillTerminate`, which the scripted `quit` also reaches), and invalidates the
+   session.
+
+HTTP bounds and mappings:
+
+- **Timeout.** `timeout_ms` (0 = none, capped at 600 s by the engine and
+  again by the host) is a main-thread `Timer`; on expiry the id is
+  untracked, the task cancelled and `Timeout` (tag 7) delivered.
+  URLSession's own idle timeout is set to the same 600 s cap and, if it
+  fires, is a `Network` error.
+- **Body size.** The host reads at most 16 MiB (`maxHttpBodyBytes`) of a
+  response body, checked against `Content-Length` and as bytes arrive; past
+  it the transfer is stopped and answered `Network("response body is larger
+  than the host's … limit")`. The protocol sets no limit for a text body.
+- **Text.** The body crosses as tag 1's `body:rest`, which the engine
+  requires to be UTF-8. As Fetch's `text()` does, the host decodes it as
+  UTF-8 with replacement (U+FFFD) and drops a leading BOM, whatever the
+  `charset`. Header names are lowercased and sorted, as Fetch's `Headers`
+  iterates them.
+- **URLs and redirects.** Only absolute `http(s)` URLs are fetched (there is
+  no page to resolve a relative one against); anything else is `Network`.
+  Redirects are followed to `http(s)` only, at most 20 times (URLSession
+  stops a loop sooner, at 16); otherwise `Network`.
+- **Request body.** Sent only for a method other than `GET`/`HEAD` and a
+  non-empty body, as roc-signals' runtime does.
+- **Cache.** `Default` → `useProtocolCachePolicy`; `NoStore` →
+  `reloadIgnoringLocalCacheData`, and the response is not stored
+  (`willCacheResponse` answers nil); `Reload` →
+  `reloadIgnoringLocalCacheData`; `NoCache` → `reloadIgnoringLocalCacheData`
+  too (URLSession has no conditional-revalidation policy, so this is
+  stricter than Fetch's); `ForceCache` → `returnCacheDataElseLoad`.
+- **Credentials.** A native app has no page origin, so every request is
+  cross-origin: `SameOrigin` sends and stores no cookies
+  (`httpShouldHandleCookies = false`), `Include` uses the shared cookie
+  store. Authentication challenges get URLSession's default handling.
+- **Progress** (tag 26) is reported only when the engine asked for it
+  (`progress_ms > 0`, which it sets only for a site with a progress
+  handler). The queue posts each count to the main thread; there one waiting
+  report per request is replaced in place and delivered by one sampling
+  timer every `progress_ms`. Completion, cancellation and timeout discard a
+  waiting report, so none follows the final result. `Receiving` counts
+  decoded bytes; its total is `Known` only for a `Content-Length` without a
+  `Content-Encoding`. `Sending` reports a request body.
+- **Not yet:** kind 15 (a response body as a file) and kind 12 (a file as
+  the body) need the file heap; they remain a clear fatal error.
 
 ## Glue
 
@@ -151,6 +229,10 @@ AppKit calls. Steps run every 100 ms; `dump` prints the live view tree:
 ROC_SCRIPT="type:Buy milk;enter;toggle:Buy milk;click:Done;dump;quit" ./examples/todos/todos
 ```
 
+```sh
+ROC_TRACE=1 ROC_SCRIPT="type:https://example.com;enter;wait:3000;dump;quit" ./examples/http-fetch/http-fetch
+```
+
 Steps: `click:<title>`, `type:<text>` (first text field), `enter` (submit its
 form), `toggle:<checkbox title>`, `wait:<ms>`, `dump`, `quit` (through the
 same teardown as quitting). `ROC_TRACE=1`
@@ -169,6 +251,7 @@ format over the scripted driver, or a `ui-*` oracle, are the two options.
 | `counter` | Local state (`Engine.state`), buttons, a readout |
 | `todos` | A store with a table, `table_view` rows (row templates), a form with Return-to-submit, checkboxes, `when`, saving to local storage and reading it back at boot, and `expect` tests (`roc test examples/todos/main.roc`) |
 | `stopwatch` | Store cells, an interval effect owned by `watch_latest` (Stop cancels it), and an `each` list of laps |
+| `http-fetch` | `Engine.http` under `watch_latest`: Fetch, Cancel (a pure cancel), a second Fetch superseding the first, an optional 2 s timeout, and transfer progress (`with_progress`) |
 
 ## Findings
 

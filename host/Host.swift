@@ -27,6 +27,9 @@ final class Host: NSObject, NSTextFieldDelegate {
     var refs: [UInt32: Node] = [:]
     var templates: [UInt32: Template] = [:]
     var timers: [UInt32: Timer] = [:]
+    /// HTTP requests in flight, main-thread state (host/Http.swift).
+    var flights: [UInt32: HttpFlight] = [:]
+    lazy var http: HttpTransport = makeHttpTransport()
     var byView: [ObjectIdentifier: Node] = [:]
     /// Nodes whose view needs its children or text refreshed after a batch.
     var dirty: [Node] = []
@@ -200,7 +203,7 @@ final class Host: NSObject, NSTextFieldDelegate {
             case 14: // CANCEL id
                 let id = r.u32()
                 trace("CANCEL id \(id)")
-                timers.removeValue(forKey: id)?.invalidate()
+                cancelEffect(id: id)
             case 15: // NAV mode url
                 _ = r.u8(); _ = r.str()
             case 16: // STORAGE op key [value]
