@@ -1,6 +1,6 @@
----
+--- 360x394
 ui-vstack [1 views]
-  ui-vstack [4 views]
+  ui-vstack [5 views]
     ui-title "To-do"
     ui-form [1 views]
       ui-hstack [2 views]
@@ -12,15 +12,16 @@ ui-vstack [1 views]
         ui-button "Open"
         ui-button "Done"
       ui-divider
-      ui-vstack [1 views]
+      ui-scroll [1 views, 226pt high]
         ui-hstack [3 views]
           ui-checkbox "Buy milk" [x]
           ui-spacer
           ui-button "Remove"
     ui-label "1 item left"
----
+    ui-shortcut
+--- 360x394
 ui-vstack [1 views]
-  ui-vstack [4 views]
+  ui-vstack [5 views]
     ui-title "To-do"
     ui-form [1 views]
       ui-hstack [2 views]
@@ -32,9 +33,10 @@ ui-vstack [1 views]
         ui-button "Open"
         ui-button "Done"
       ui-divider
-      ui-vstack [1 views]
+      ui-scroll [1 views, 226pt high]
         ui-hstack [3 views]
           ui-checkbox "Walk the dog" [ ]
           ui-spacer
           ui-button "Remove"
     ui-label "1 item left"
+    ui-shortcut

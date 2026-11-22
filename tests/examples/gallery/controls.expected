@@ -1,0 +1,26 @@
+key cmd+n (heard)
+key cmd+n (heard)
+--- 360x281
+ui-vstack [1 views]
+  ui-vstack [5 views]
+    ui-title "Gallery"
+    ui-label "Native AppKit controls driven by the roc-signals engine"
+    ui-vstack [2 views]
+      ui-segmented [Controls] Text Shortcuts
+      ui-vstack [6 views]
+        ui-hstack [3 views]
+          ui-image leaf.fill
+          ui-label "Fruit"
+          ui-dropdown "Cherry" of ["Apple", "Banana", "Cherry"]
+        ui-label "You picked Cherry"
+        ui-divider
+        ui-hstack [3 views]
+          ui-label "Level"
+          ui-slider 40.0
+          ui-label "40"
+        ui-progress 40/100
+        ui-hstack [2 views]
+          ui-checkbox "Working" [ ]
+          ui-progress idle
+    ui-shortcut
+    ui-shortcut

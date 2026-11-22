@@ -31,12 +31,14 @@ view : () -> Elem(Engine.StoreRoot(_))
 view = || {
 	request = cells.request.signal()
 	Ui.vstack(
+		{},
 		[
 			Ui.title("HTTP fetch"),
 			Ui.form(
 				Engine.handle_by(starting(), |next, _| started(next)),
 				[
 					Ui.hstack(
+						{},
 						[
 							Ui.text_field("URL", cells.url.signal(), Engine.handle(|typed| [cells.url.set(typed)])),
 							Ui.submit_button("Fetch"),

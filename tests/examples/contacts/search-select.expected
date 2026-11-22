@@ -1,0 +1,28 @@
+--- 406x493
+ui-vstack [1 views]
+  ui-vstack [4 views]
+    ui-title "Contacts"
+    ui-hstack [2 views]
+      ui-text-field "ada"
+      ui-label "371 of 10000"
+    ui-list [371 rows, 15 with views, row 2 selected, 360pt high]
+      rows 0–8 visible
+      ui-row [2 views]
+        ui-image person.crop.circle
+        ui-vstack [2 views]
+          ui-label "Ada A. Lovelace"
+          ui-label "ada.lovelace0@example.com · Amsterdam"
+      ui-row [2 views]
+        ui-image person.crop.circle
+        ui-vstack [2 views]
+          ui-label "Ada A. Turing"
+          ui-label "ada.turing27@example.com · Dublin"
+      ui-row [2 views]
+        ui-image person.crop.circle
+        ui-vstack [2 views]
+          ui-label "Ada A. Liskov"
+          ui-label "ada.liskov54@example.com · Lisbon"
+      …
+    ui-hstack [2 views]
+      ui-image person.crop.circle.fill
+      ui-label "Ada A. Liskov <ada.liskov54@example.com>, Lisbon"

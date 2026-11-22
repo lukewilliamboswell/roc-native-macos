@@ -1,4 +1,4 @@
----
+--- 360x145
 ui-vstack [1 views]
   ui-vstack [3 views]
     ui-title "Counter"

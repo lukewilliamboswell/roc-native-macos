@@ -57,9 +57,32 @@ final class Node {
     var text = ""
     var attrs: [String: String] = [:]
     weak var parent: Node?
-    var children: [Node] = []
+    /// The children, in order. A detached child stays in `storage` until
+    /// the children are next read, so removing many children of one parent
+    /// in a batch (a list's rows) costs one pass, not one pass each.
+    var children: [Node] {
+        compact()
+        return storage
+    }
+    private var storage: [Node] = []
+    private var stale = 0
+
+    private func compact() {
+        if stale > 0 {
+            storage.removeAll { $0.parent !== self }
+            stale = 0
+        }
+    }
+
+    /// Drop every child (the caller forgets them).
+    func removeAllChildren() {
+        for child in storage where child.parent === self { child.parent = nil }
+        storage = []
+        stale = 0
+    }
+
     /// Event type → (handler number, payload kind).
-    var listeners: [String: (handler: UInt32, kind: UInt8)] = [:]
+    var listeners: [String: (handler: UInt32, kind: UInt8, policies: UInt32)] = [:]
     /// A row root's hole targets, by the template's hole index.
     var holes: [(node: Node, attr: String?)] = []
     var view: NSView?
@@ -85,19 +108,22 @@ final class Node {
         return copy
     }
 
-    func append(_ child: Node) { child.parent = self; children.append(child) }
+    func append(_ child: Node) { insert(child, before: nil) }
 
+    /// Insert `child` before `before` (searched from the end, where a
+    /// growing list's anchor is), or last.
     func insert(_ child: Node, before: Node?) {
+        compact()
         child.parent = self
-        if let before, let i = children.firstIndex(where: { $0 === before }) {
-            children.insert(child, at: i)
+        if let before, let i = storage.lastIndex(where: { $0 === before }) {
+            storage.insert(child, at: i)
         } else {
-            children.append(child)
+            storage.append(child)
         }
     }
 
     func detach() {
-        parent?.children.removeAll { $0 === self }
+        parent?.stale += 1
         parent = nil
     }
 

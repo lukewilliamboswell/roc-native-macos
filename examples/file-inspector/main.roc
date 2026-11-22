@@ -34,9 +34,11 @@ view : () -> Elem(Engine.StoreRoot(_))
 view = || {
 	selected = cells.selected.signal()
 	Ui.vstack(
+		{},
 		[
 			Ui.title("File inspector"),
 			Ui.hstack(
+				{},
 				[
 					Ui.file_button("Choose files…", Engine.handle(received)),
 					Ui.button("Clear", Engine.handle(|_| [cells.files.set([]), cells.selected.set(Nothing), cells.refused.set(0)])),
@@ -45,11 +47,13 @@ view = || {
 			Ui.drop_zone("Drop files here", Engine.handle(received)),
 			Ui.label_s({ files: cells.files.signal(), refused: cells.refused.signal() }.Signal.map(summary)),
 			Ui.vstack(
+				{},
 				[
 					Engine.each(
 						cells.files.signal().map(|files| files.map_with_index(|file, index| { file, index })),
 						|item| item.index.to_str(),
 						|row| Ui.hstack(
+							{},
 							[
 								Ui.label_s(row.item().map(|item| describe(item.file))),
 								Ui.spacer(),
@@ -63,6 +67,7 @@ view = || {
 			Engine.when(
 				selected.map(|s| s != Nothing),
 				|| Ui.vstack(
+					{},
 					[
 						Ui.label_s(selected.map(|s| match s { Picked(f) => "Inspecting ${f.name()}" Nothing => "" })),
 						Ui.label_s(cells.digest.signal().map(|d| "SHA-256: ${d}")),

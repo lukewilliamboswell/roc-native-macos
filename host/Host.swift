@@ -37,6 +37,14 @@ final class Host: NSObject, NSTextFieldDelegate {
     var dirty: [Node] = []
     var applying = false
     var queued: [(UInt32, UInt32, [UInt8])] = []
+    /// Live document key declarations, in the order they were mounted.
+    var documentKeys: [Node] = []
+    /// Layout constraints the host made for a view, by view and purpose.
+    var constraints: [ObjectIdentifier: [String: NSLayoutConstraint]] = [:]
+    /// Whether the last sync found a scroll area or list (the window then
+    /// stops growing to fit its content).
+    var flexible = false
+    var keyMonitor: Any?
 
     init(window: NSWindow) {
         self.window = window
@@ -45,10 +53,9 @@ final class Host: NSObject, NSTextFieldDelegate {
         nodes[0] = root
         let stack = NSStackView()
         stack.orientation = .vertical
-        stack.alignment = .leading
-        stack.spacing = 12
-        stack.edgeInsets = NSEdgeInsets(top: 20, left: 20, bottom: 20, right: 20)
         root.view = stack
+        // The app's root element fills the window.
+        for (name, value) in [("spacing", "12"), ("padding", "20"), ("align", "fill")] { setAttr(root, name, value) }
         stack.translatesAutoresizingMaskIntoConstraints = false
         let content = NSView()
         content.addSubview(stack)
@@ -65,7 +72,11 @@ final class Host: NSObject, NSTextFieldDelegate {
     func start() {
         let v = engine.version
         if v != 23 { fatal("engine speaks protocol \(v), this host speaks 23") }
-        apply(engine.mount())
+        timed { engine.mount() }
+        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .keyUp]) { [weak self] event in
+            guard let self, event.window === self.window else { return event }
+            return self.key(event) ? nil : event
+        }
     }
 
     // MARK: Turns
@@ -73,10 +84,10 @@ final class Host: NSObject, NSTextFieldDelegate {
     func send(_ node: UInt32, _ handler: UInt32, _ payload: [UInt8]) {
         if halted || engine.dropped { return }
         if applying { queued.append((node, handler, payload)); return }
-        apply(engine.event(node: node, handler: handler, payload: payload))
+        timed { engine.event(node: node, handler: handler, payload: payload) }
         while !queued.isEmpty {
             let (n, h, p) = queued.removeFirst()
-            apply(engine.event(node: n, handler: h, payload: p))
+            timed { engine.event(node: n, handler: h, payload: p) }
         }
     }
 
@@ -101,6 +112,16 @@ final class Host: NSObject, NSTextFieldDelegate {
             }
             cursor = node.parent
         }
+    }
+
+    /// Run one engine call and apply its batch; `ROC_TRACE=1` reports how
+    /// long each half took.
+    func timed(_ call: () -> [UInt8]) {
+        let start = Date()
+        let batch = call()
+        let engineDone = Date()
+        apply(batch)
+        trace("turn: engine \(Int(engineDone.timeIntervalSince(start) * 1000)) ms, host \(Int(Date().timeIntervalSince(engineDone) * 1000)) ms, \(batch.count) bytes")
     }
 
     // MARK: The batch
@@ -139,10 +160,14 @@ final class Host: NSObject, NSTextFieldDelegate {
                     default: fatal("unknown hole kind \(hole.kind)")
                     }
                 }
-                row.walk { n in
-                    self.makeView(n)
-                    n.attrs.forEach { self.applyAttr(n, $0.key, $0.value) }
-                    self.dirty.append(n)
+                // A list's row gets its views when the table first shows it.
+                let into = before == 0 ? node(parent) : (node(before).parent ?? node(parent))
+                if !(into.view is ListBox) {
+                    row.walk { n in
+                        self.makeView(n)
+                        n.attrs.forEach { self.applyAttr(n, $0.key, $0.value) }
+                        self.dirty.append(n)
+                    }
                 }
                 insert(row, parent: parent, before: before)
             case 2: // TEXT node hole str
@@ -158,13 +183,15 @@ final class Host: NSObject, NSTextFieldDelegate {
                 guard let parent = n.parent else { break }
                 n.detach()
                 parent.insert(n, before: before == 0 ? nil : node(before))
+                (parent.view as? ListBox)?.moved(n, in: parent)
                 markChildren(parent)
             case 5: // REMOVE node
                 remove(node(r.u32()))
             case 6: // CLEAR parent site
                 let parent = node(r.u32()); _ = r.u32()
                 for child in parent.children { forget(child) }
-                parent.children.removeAll()
+                parent.removeAllChildren()
+                (parent.view as? ListBox)?.cleared()
                 markChildren(parent)
             case 7: // TEMPLATE tpl len bytes
                 let tpl = r.u32()
@@ -189,13 +216,14 @@ final class Host: NSObject, NSTextFieldDelegate {
                 insert(n, parent: parent, before: before)
             case 11: // LISTEN node handler type kind policies
                 let n = node(r.u32()), handler = r.u32(), type = r.str(), kind = r.u8()
-                _ = r.u32()
-                n.listeners[type] = (handler, kind)
+                let policies = r.u32()
+                if kind == 4, policies & 16 != 0, !documentKeys.contains(where: { $0 === n }) { documentKeys.append(n) }
+                n.listeners[type] = (handler, kind, policies)
             case 12: // SETTEXT node text
                 let n = node(r.u32()), t = r.str()
                 if case .element = n.kind {
                     for child in n.children { forget(child) }
-                    n.children = []
+                    n.removeAllChildren()
                     let t2 = Node(.text); t2.text = t; n.append(t2)
                 } else {
                     n.text = t
@@ -229,7 +257,7 @@ final class Host: NSObject, NSTextFieldDelegate {
                 save(token: token, start: start, len: len, name: name)
             case 21: // PROP node prop value
                 let n = node(r.u32()), prop = r.u8(), value = r.str()
-                setAttr(n, prop == 2 ? "checked" : "value", value)
+                setAttr(n, Host.propertyName(prop), value)
             case 22: // HPROP node hole value
                 let row = node(r.u32()), hole = row.holes[Int(r.u8())]
                 setAttr(hole.node, hole.attr ?? "value", r.str())
@@ -276,6 +304,16 @@ final class Host: NSObject, NSTextFieldDelegate {
         if ProcessInfo.processInfo.environment["ROC_TRACE"] != nil { fputs(line() + "\n", __stderrp) }
     }
 
+    /// The attribute an element property row (`PROP`, `HPROP`) stands for.
+    static func propertyName(_ prop: UInt8) -> String {
+        switch prop {
+        case 2: return "checked"
+        case 4: return "keymap-down"
+        case 5: return "keymap-up"
+        default: return "value"
+        }
+    }
+
     func node(_ id: UInt32) -> Node {
         guard let n = nodes[id] else { fatal("command names unknown node \(id)") }
         return n
@@ -286,11 +324,13 @@ final class Host: NSObject, NSTextFieldDelegate {
         let b: Node? = before == 0 ? nil : node(before)
         if let b, let bp = b.parent { p = bp } else { p = node(parent) }
         p.insert(n, before: b)
+        (p.view as? ListBox)?.inserted(n, in: p)
         markChildren(p)
     }
 
     func remove(_ n: Node) {
         let parent = n.parent
+        (parent?.view as? ListBox)?.removed(n)
         n.detach()
         forget(n)
         if let parent { markChildren(parent) }
@@ -300,7 +340,13 @@ final class Host: NSObject, NSTextFieldDelegate {
     func forget(_ n: Node) {
         n.walk { d in
             if let id = d.id, nodes[id] === d { nodes.removeValue(forKey: id) }
-            if let v = d.view { byView.removeValue(forKey: ObjectIdentifier(v)); v.removeFromSuperview() }
+            if let v = d.view {
+                byView.removeValue(forKey: ObjectIdentifier(v))
+                if let inner = (v as? NSScrollView)?.documentView { byView.removeValue(forKey: ObjectIdentifier(inner)) }
+                constraints.removeValue(forKey: ObjectIdentifier(v))
+                v.removeFromSuperview()
+            }
+            if !documentKeys.isEmpty { documentKeys.removeAll { $0 === d } }
         }
         refs = refs.filter { entry in
             var inside = false
