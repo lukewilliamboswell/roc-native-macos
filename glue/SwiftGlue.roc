@@ -18,13 +18,22 @@
 ##     refcounted elements. Both come from the compiler's layout facts, and
 ##     the header checks them with static assertions;
 ##   - one typed Swift function per provided procedure, named after it,
-##     whose comment states the ownership the call transfers.
+##     whose comment states the ownership the call transfers, and a
+##     `…Guarded` twin that calls it under a jump point (`roc_guarded_*` in
+##     the header), so a host can unwind a crash or a cancellation out of
+##     that call alone (`roc_guard_unwind`) instead of ending the process;
+##   - for the hosted functions, the `RocHostedFunctions` protocol, one
+##     typed static requirement per hosted function, and one `@_cdecl`
+##     export per hosted symbol that forwards to the host's conformance,
+##     `RocHosted`, so the host implements each one with Swift types and
+##     never spells a C signature itself.
 ##
 ## Only the shapes this platform uses are supported: byte lists, opaque
 ## boxes, lists of boxes of an integer (handles), integers, records of
-## those, and the unit type. Hosted functions are
-## not supported. Any other shape fails the generation with its name. Layout
-## assertions are emitted for 64-bit hosts; a 32-bit host is refused.
+## those, and the unit type; a hosted function takes integers and byte
+## lists and returns an integer, a byte list or a box of an integer. Any
+## other shape fails the generation with its name. Layout assertions are
+## emitted for 64-bit hosts; a 32-bit host is refused.
 app [make_glue] { pf: platform glue }
 
 import pf.Types
@@ -38,10 +47,17 @@ make_glue : List(Types) -> Try(List(File), Str)
 make_glue = |types_list| {
 	input = GlueInput.from_types(types_list)
 	table = TypeTable.from_list(input.types)
-	if !input.hosted_functions.is_empty() {
-		return Err("SwiftGlue: hosted functions are not supported yet")
+	var $hosted_protocol = ""
+	var $hosted_exports = ""
+	var $hosted_decls = ""
+	for func in input.hosted_functions {
+		h = hosted_glue(table, func.name, func.ffi_symbol, func.arg_type_ids, func.ret_type_id, func.type_str)?
+		$hosted_protocol = Str.concat($hosted_protocol, h.requirement)
+		$hosted_exports = Str.concat($hosted_exports, h.export)
+		$hosted_decls = Str.concat($hosted_decls, h.decl)
 	}
 	var $wrappers = ""
+	var $guards = ""
 	var $externs = ""
 	var $records = ""
 	var $named = []
@@ -59,6 +75,7 @@ make_glue = |types_list| {
 					}
 				}
 				$wrappers = Str.concat($wrappers, procedure(table, entry.name, entry.ffi_symbol, func.args, func.ret)?)
+				$guards = Str.concat($guards, guarded_decl(table, entry.name, entry.ffi_symbol, func.args, func.ret)?)
 				$externs = Str.concat($externs, extern_decl(table, entry.name, entry.ffi_symbol, func.args, func.ret)?)
 				if is_record(table, func.ret) {
 					name = record_name(entry.name)
@@ -74,8 +91,10 @@ make_glue = |types_list| {
 			ProvidedData(_) => return Err("SwiftGlue: provided data (${entry.name}) is not supported")
 		}
 	}
-	header = Str.join_with([header_prelude, Str.join_with($handles.map(handle_asserts), ""), $records, runtime_decls, $externs, "#endif\n"], "")
-	swift = Str.join_with([prelude, Str.join_with($handles.map(handle_helpers), ""), "\n/// The platform's provided procedures.\nenum Roc {\n", $wrappers, "}\n"], "")
+	hosted_header = if ($hosted_decls.is_empty()) "" else Str.concat("\n// Hosted symbols: the host defines them (RocGlue.swift exports each one\n// and forwards it to the host's `RocHosted`); compiled Roc calls them.\n", $hosted_decls)
+	header = Str.join_with([header_prelude, Str.join_with($handles.map(handle_asserts), ""), $records, runtime_decls, $externs, hosted_header, guard_prelude, $guards, "#endif\n"], "")
+	hosted_swift = if ($hosted_protocol.is_empty()) "" else Str.join_with([hosted_prelude, $hosted_protocol, "}\n\n/// The host's implementation must meet every requirement.\nprivate let rocHostedConformance: RocHostedFunctions.Type = RocHosted.self\n\n", $hosted_exports], "")
+	swift = Str.join_with([prelude, Str.join_with($handles.map(handle_helpers), ""), "\n/// The platform's provided procedures.\nenum Roc {\n", $wrappers, "}\n", hosted_swift], "")
 	Ok([{ name: "roc_swift_abi.h", content: header }, { name: "RocGlue.swift", content: swift }])
 }
 
@@ -89,6 +108,7 @@ header_prelude =
 	\\#include <stddef.h>
 	\\#include <stdint.h>
 	\\#include <stdbool.h>
+	\\#include <setjmp.h>
 	\\
 	\\#if UINTPTR_MAX != UINT64_MAX
 	\\#error "SwiftGlue emits layouts for 64-bit hosts only"
@@ -225,6 +245,29 @@ prelude =
 	\\
 	\\    /// Whether this list is a seamless slice into another allocation.
 	\\    var isSeamlessSlice: Bool { capacity_or_alloc_ptr & 1 != 0 }
+	\\
+	\\    /// Release the host's one reference to a `List(U8)` it owns (a hosted
+	\\    /// function's list argument, or a list a provided procedure returned).
+	\\    /// The refcount word sits just before the allocation's elements (a
+	\\    /// seamless slice keeps that address, tagged in the low bit, in place
+	\\    /// of its capacity); 0 marks static data, never freed. When the last
+	\\    /// reference goes the allocation is freed with `roc_dealloc`. Do not
+	\\    /// use the list afterwards.
+	\\    func releaseBytes() {
+	\\        let data: UnsafeMutableRawPointer
+	\\        if isSeamlessSlice {
+	\\            guard let at = UnsafeMutableRawPointer(bitPattern: UInt(capacity_or_alloc_ptr & ~1)) else { return }
+	\\            data = at
+	\\        } else {
+	\\            guard let elements else { return }
+	\\            data = elements
+	\\        }
+	\\        let word = MemoryLayout<Int>.size
+	\\        let count = (data - word).load(as: Int.self)
+	\\        if count == 0 { return }
+	\\        (data - word).storeBytes(of: count - 1, as: Int.self)
+	\\        if count == 1 { roc_dealloc(data - word, word) }
+	\\    }
 	\\}
 	\\
 
@@ -246,6 +289,23 @@ procedure = |table, name, symbol, args, ret| {
 		RocRecord(_) => record_name(name)
 		_ => swift_type(table, name, ret)?
 	}
+	call_args = Str.join_with($call.map(|c| ", ${c}"), "")
+	zero = match table.get(ret) {
+		RocBox(_) => "nil"
+		_ => "${ret_swift}()"
+	}
+	guarded_params = Str.join_with(["_ jump: UnsafeMutablePointer<jmp_buf>"].concat($params), ", ")
+	guarded = match table.get(ret) {
+		RocUnit =>
+			\\    static func ${camel(name)}Guarded(${guarded_params}) -> Bool {
+			\\        roc_guarded_${symbol}(jump${call_args})
+			\\    }
+		_ =>
+			\\    static func ${camel(name)}Guarded(${guarded_params}) -> ${ret_swift}? {
+			\\        var out: ${ret_swift} = ${zero}
+			\\        return roc_guarded_${symbol}(jump, &out${call_args}) ? out : nil
+			\\    }
+	}
 	Ok(
 		\\    /// `${name}` (`${symbol}`). Every refcounted argument (list or box)
 		\\    /// moves into Roc: do not use or release it after the call. The
@@ -255,9 +315,165 @@ procedure = |table, name, symbol, args, ret| {
 		\\        ${symbol}(${Str.join_with($call, ", ")})
 		\\    }
 		\\
+		\\    /// `${name}` under the jump point `jump` (`roc_guarded_${symbol}`):
+		\\    /// as `${camel(name)}`, except that `roc_guard_unwind(jump)` from
+		\\    /// inside the call comes back here with no result (nil, or false),
+		\\    /// abandoning everything the call held. The arguments move into
+		\\    /// Roc either way.
+		\\${guarded}
+		\\
 		\\
 	)
 }
+
+## A provided procedure under a jump point: the header's `roc_guarded_*`.
+## The jump point is taken in this C frame, which then calls Roc directly,
+## so unwinding to it skips only Roc frames and the frame of the runtime
+## symbol or hosted function that unwinds. It is never inlined: a frame
+## that called `_setjmp` must not become part of its (Swift) caller.
+guarded_decl : TypeTable, Str, Str, List(U64), U64 -> Try(Str, Str)
+guarded_decl = |table, name, symbol, args, ret| {
+	var $params = []
+	var $call = []
+	var $index = 0.U64
+	for arg in args {
+		$params = $params.append(", ${c_type(table, name, arg)?} arg${$index.to_str()}")
+		$call = $call.append("arg${$index.to_str()}")
+		$index = $index + 1
+	}
+	call = "${symbol}(${Str.join_with($call, ", ")})"
+	params = Str.join_with($params, "")
+	match table.get(ret) {
+		RocUnit => Ok("static __attribute__((noinline)) bool roc_guarded_${symbol}(jmp_buf *_Nonnull jump${params}) {\n    if (_setjmp(*jump) != 0) return false;\n    ${call};\n    return true;\n}\n\n")
+		RocRecord(_) => Ok("static __attribute__((noinline)) bool roc_guarded_${symbol}(jmp_buf *_Nonnull jump, ${record_name(name)} *_Nonnull out${params}) {\n    if (_setjmp(*jump) != 0) return false;\n    *out = ${call};\n    return true;\n}\n\n")
+		_ => {
+			ret_c = c_type(table, name, ret)?
+			Ok("static __attribute__((noinline)) bool roc_guarded_${symbol}(jmp_buf *_Nonnull jump, ${ret_c} *_Nonnull out${params}) {\n    if (_setjmp(*jump) != 0) return false;\n    *out = ${call};\n    return true;\n}\n\n")
+		}
+	}
+}
+
+guard_prelude : Str
+guard_prelude =
+	\\
+	\\// Guarded calls. `roc_guarded_<symbol>` takes a jump point and calls the
+	\\// provided symbol; `roc_guard_unwind`, called on the same thread from a
+	\\// runtime symbol or a hosted function while that call runs, returns to
+	\\// it, abandoning the Roc frames between. Only a host that then discards
+	\\// everything the abandoned call held (its whole heap) may unwind.
+	\\static inline _Noreturn void roc_guard_unwind(jmp_buf *_Nonnull jump) { _longjmp(*jump, 1); }
+	\\
+	\\
+
+## One hosted function: its C declaration, its typed requirement in
+## `RocHostedFunctions` and the `@_cdecl` export that forwards to it.
+HostedGlue : { decl : Str, requirement : Str, export : Str }
+
+## The C declaration, Swift requirement and export of a hosted function, or
+## the generation error naming it. A unit argument is not ABI-visible.
+hosted_glue : TypeTable, Str, Str, List(U64), U64, Str -> Try(HostedGlue, Str)
+hosted_glue = |table, name, symbol, arg_ids, ret, type_str| {
+	var $c = []
+	var $swift = []
+	var $call = []
+	var $index = 0.U64
+	for arg in arg_ids {
+		match table.get(arg) {
+			RocUnit => {}
+			_ => {
+				param = "arg${$index.to_str()}"
+				$c = $c.append("${hosted_c(table, name, arg)?} ${param}")
+				$swift = $swift.append("_ ${param}: ${hosted_swift(table, name, arg)?}")
+				$call = $call.append(param)
+				$index = $index + 1
+			}
+		}
+	}
+	(ret_c, ret_swift) = match table.get(ret) {
+		RocBox(_) =>
+			match handle_box(table, name, ret) {
+				Ok(_) => ("void *_Nonnull", "UnsafeMutableRawPointer")
+				Err(e) => return Err(e)
+			}
+		_ => (hosted_c(table, name, ret)?, hosted_swift(table, name, ret)?)
+	}
+	method = hosted_method(name)
+	c_params = if ($c.is_empty()) "void" else Str.join_with($c, ", ")
+	swift_params = Str.join_with($swift, ", ")
+	call = Str.join_with($call, ", ")
+	requirement =
+		\\    /// `${name} : ${type_str}` (`${symbol}`). A list argument is the
+		\\    /// host's to release (`releaseBytes`); a list or box it returns
+		\\    /// moves to Roc.
+		\\    static func ${method}(${swift_params}) -> ${ret_swift}
+		\\
+		\\
+	export =
+		\\@_cdecl("${symbol}")
+		\\public func ${symbol}_export(${swift_params}) -> ${ret_swift} {
+		\\    RocHosted.${method}(${call})
+		\\}
+		\\
+		\\
+	Ok({ decl: "${ret_c} ${symbol}(${c_params}); // ${name} : ${type_str}\n", requirement, export })
+}
+
+hosted_prelude : Str
+hosted_prelude =
+	\\
+	\\/// The platform's hosted functions, each a static requirement the host
+	\\/// meets in its `RocHosted` type; the exports below are the symbols
+	\\/// compiled Roc calls, and each forwards to it.
+	\\protocol RocHostedFunctions {
+	\\
+
+## `Hosted.append_file!` is `hostedAppendFile`.
+hosted_method : Str -> Str
+hosted_method = |name| {
+	words = plain(name).split_on(".").fold([], |acc, part| acc.concat(part.split_on("_")))
+	match words {
+		[first, .. as rest] => Str.concat(lowered(first), Str.join_with(rest.map(capitalized), ""))
+		[] => name
+	}
+}
+
+lowered : Str -> Str
+lowered = |word| {
+	bytes = word.to_utf8()
+	match bytes {
+		[first, .. as rest] if first >= 'A' and first <= 'Z' => Str.from_utf8(List.concat([first + 32], rest)) ?? word
+		_ => word
+	}
+}
+
+## The C spelling of a hosted function's argument or result.
+hosted_c : TypeTable, Str, U64 -> Try(Str, Str)
+hosted_c = |table, name, type_id|
+	match table.get(type_id) {
+		RocList(element) =>
+			match table.get(element) {
+				RocU8 => Ok("RocList")
+				_ => Err("SwiftGlue: hosted function ${name} uses a list of something other than U8")
+			}
+		RocBox(_) => Err("SwiftGlue: hosted function ${name} takes a box")
+		RocRecord(_) => Err("SwiftGlue: hosted function ${name} uses a record")
+		_ => c_type(table, name, type_id)
+	}
+
+## The Swift spelling of a hosted function's argument or result.
+hosted_swift : TypeTable, Str, U64 -> Try(Str, Str)
+hosted_swift = |table, name, type_id|
+	match table.get(type_id) {
+		RocList(element) =>
+			match table.get(element) {
+				RocU8 => Ok("RocList")
+				_ => Err("SwiftGlue: hosted function ${name} uses a list of something other than U8")
+			}
+		RocBox(_) => Err("SwiftGlue: hosted function ${name} takes a box")
+		RocRecord(_) => Err("SwiftGlue: hosted function ${name} uses a record")
+		_ => swift_type(table, name, type_id)
+	}
+
 
 ## The Swift spelling of an argument or result type.
 swift_type : TypeTable, Str, U64 -> Try(Str, Str)
@@ -469,17 +685,21 @@ handle_helpers = |h| {
 }
 
 ## The name the C glue gives an entry point's record type: `init_for_host`
-## is `InitForHost`.
+## is `InitForHost`, and `ask_for_host!` is `AskForHost`.
 record_name : Str -> Str
-record_name = |name| Str.join_with(name.split_on("_").map(capitalized), "")
+record_name = |name| Str.join_with(plain(name).split_on("_").map(capitalized), "")
 
-## `event_for_host` is `eventForHost`.
+## `event_for_host` is `eventForHost`, and `work_for_host!` is `workForHost`.
 camel : Str -> Str
 camel = |name|
-	match name.split_on("_") {
+	match plain(name).split_on("_") {
 		[first, .. as rest] => Str.concat(first, Str.join_with(rest.map(capitalized), ""))
 		[] => name
 	}
+
+## A Roc name without the `!` an effectful one ends with.
+plain : Str -> Str
+plain = |name| if (name.ends_with("!")) Str.from_utf8(name.to_utf8().drop_last(1)) ?? name else name
 
 capitalized : Str -> Str
 capitalized = |word| {
@@ -491,4 +711,8 @@ capitalized = |word| {
 }
 
 expect record_name("init_for_host") == "InitForHost"
+expect record_name("ask_for_host!") == "AskForHost"
 expect camel("event_for_host") == "eventForHost"
+expect camel("work_for_host!") == "workForHost"
+expect hosted_method("Hosted.append_file!") == "hostedAppendFile"
+expect hosted_method("Hosted.mint!") == "hostedMint"
