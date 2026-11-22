@@ -83,6 +83,14 @@ extension Host {
                 let prevented = deliverKey(down: true, key: name, code: code, flags: flags, target: nil, inText: false)
                 _ = deliverKey(down: false, key: name, code: code, flags: flags, target: nil, inText: false)
                 say("key \(arg)\(prevented ? " (heard)" : "")")
+            case "pool":
+                // `pool:N`: at most N worker threads, so a recorded case runs
+                // the same on any machine. Before the first job.
+                guard let n = Int(arg), n >= 1, work.slots.isEmpty else { fatal("script: pool:\(arg) needs a count of at least 1, before any job runs") }
+                work.limit = n
+            case "workers":
+                // The pool's counts so far.
+                say(work.summary)
             case "window":
                 // The window number, for `screencapture -l<number>`.
                 say("window \(window.windowNumber)")

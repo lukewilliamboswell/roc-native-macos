@@ -25,7 +25,7 @@ import CommonCrypto
 // MARK: - The handle table
 
 /// A file the host holds for a handle: plain Swift data, safe to hand to a
-/// background job.
+/// background job or to another instance's table.
 struct FileEntry {
     /// The file's absolute path. A non-sandboxed app needs no
     /// security-scoped bookmark to read it again later.
@@ -33,55 +33,69 @@ struct FileEntry {
     let size: UInt64
     let name: String
     let mime: String
+    /// A file a worker job built (`Files.build!`) is a temporary file of the
+    /// host's; every entry naming it shares this, and the file is removed
+    /// when the last one goes (Workers.swift).
+    var backing: TempFile? = nil
 }
 
-/// The host's `Box(U64)` file handles, after roc-signals'
+/// The most handles one instance holds at once, as in the browser host
+/// (design.md, "Boundedness"): the page's files, or a worker job's files and
+/// builders. Files an event carries beyond the page's free slots are refused
+/// (`Received.refused`); a job past it is a `resource_limit` fault.
+let handleCapacity = 64
+
+/// One instance's `Box(U64)` handles, after roc-signals'
 /// `resources.Heap(.blob, 64, _)`. Each slot is one box laid out as the glue
 /// reports `Box(U64)` (`RocBoxU64`): a refcount word, then the token. Roc
 /// increments and decrements the refcount like any box and frees the slot's
 /// address with `roc_dealloc`, which offers it here first (`route`): an
 /// address in the table retires its slot instead of being freed. Retired
-/// slots keep their entry until `drainReleased`, after the batch.
+/// slots keep their entry until `drainReleased`, after the call.
 ///
-/// Only the main thread touches it: Roc runs only there, so `roc_dealloc`
-/// reaches it only there, and `route` checks that.
-final class FileHandles {
-    /// The most file handles live at once, as in the browser host (design.md,
-    /// "Boundedness"). Files an event carries beyond the free slots are
-    /// refused (`Received.refused`).
-    static let capacity = 64
-
+/// A table belongs to one instance and is touched only on that instance's
+/// thread: the page's (`fileHandles`) on the main thread, a worker
+/// instance's on its worker thread (Workers.swift). `roc_dealloc` offers an
+/// address only to the table of the instance running on its thread.
+final class HandleTable {
     /// A token: generation, kind (1, a file) and slot index + 1, as
     /// resources.zig encodes them, so a stale or foreign token never resolves.
-    private static let indexBits: UInt64 = 16
-    private static let kindBits: UInt64 = 8
-    private static let kind: UInt64 = 1
+    private let indexBits: UInt64 = 16
+    private let kindBits: UInt64 = 8
+    private let kind: UInt64 = 1
 
     private let table: UnsafeMutableRawPointer
-    private var entries: [FileEntry?] = Array(repeating: nil, count: capacity)
-    private var tokens: [UInt64] = Array(repeating: 0, count: capacity)
-    private var generations: [UInt64] = Array(repeating: 0, count: capacity)
-    private var retired: [Bool] = Array(repeating: false, count: capacity)
+    private var entries: [Held?] = Array(repeating: nil, count: handleCapacity)
+    private var tokens: [UInt64] = Array(repeating: 0, count: handleCapacity)
+    private var generations: [UInt64] = Array(repeating: 0, count: handleCapacity)
+    private var retired: [Bool] = Array(repeating: false, count: handleCapacity)
     private(set) var liveCount = 0
 
     init() {
         var raw: UnsafeMutableRawPointer? = nil
-        let bytes = RocBoxU64.stride * FileHandles.capacity
-        if posix_memalign(&raw, max(RocBoxU64.alignment, 16), bytes) != 0 || raw == nil { fatal("cannot allocate the file handle table") }
+        let bytes = RocBoxU64.stride * handleCapacity
+        if posix_memalign(&raw, max(RocBoxU64.alignment, 16), bytes) != 0 || raw == nil { fatal("cannot allocate a handle table") }
         memset(raw!, 0, bytes)
         table = raw!
     }
 
-    var free: Int { FileHandles.capacity - liveCount }
+    /// A worker instance's table goes with the instance, after its Roc heap:
+    /// nothing refers to its slots by then.
+    deinit { Darwin.free(table) }
 
-    /// Mint a handle owning `entry`: a unique box Roc will own, or nil when
+    var free: Int { handleCapacity - liveCount }
+
+    /// Where the slots start, and how many bytes they span.
+    var slots: UnsafeMutableRawPointer { table }
+    var slotBytes: Int { RocBoxU64.stride * handleCapacity }
+
+    /// Mint a handle owning `value`: a unique box Roc will own, or nil when
     /// every slot is taken.
-    func mint(_ entry: FileEntry) -> UnsafeMutableRawPointer? {
-        for index in 0..<FileHandles.capacity where entries[index] == nil {
+    func mint(_ value: Held) -> UnsafeMutableRawPointer? {
+        for index in 0..<handleCapacity where entries[index] == nil {
             generations[index] += 1
-            let token = generations[index] << (FileHandles.indexBits + FileHandles.kindBits)
-                | FileHandles.kind << FileHandles.indexBits | UInt64(index + 1)
-            entries[index] = entry
+            let token = generations[index] << (indexBits + kindBits) | kind << indexBits | UInt64(index + 1)
+            entries[index] = value
             tokens[index] = token
             liveCount += 1
             return RocBoxU64.initialize(at: table + index * RocBoxU64.stride, token)
@@ -89,32 +103,59 @@ final class FileHandles {
         return nil
     }
 
+    /// Whether `ptr` lies among this table's slots.
+    func contains(_ ptr: UnsafeMutableRawPointer) -> Bool {
+        let offset = ptr - table
+        return offset >= 0 && offset < RocBoxU64.stride * handleCapacity
+    }
+
     /// Offer an address `roc_dealloc` is freeing: true when it is a handle's
     /// (now retired), false when it is not this table's. An address inside
     /// the table that is not a live handle's is a fatal corruption.
     func route(_ ptr: UnsafeMutableRawPointer) -> Bool {
+        guard contains(ptr) else { return false }
         let offset = ptr - table
-        guard offset >= 0, offset < RocBoxU64.stride * FileHandles.capacity else { return false }
-        if pthread_main_np() == 0 { fatal("a file handle was released off the main thread") }
         let index = offset / RocBoxU64.stride
         guard offset % RocBoxU64.stride == 0, entries[index] != nil, !retired[index],
               RocBoxU64.value(of: ptr + RocBoxU64.headerBytes) == tokens[index]
-        else { fatal("roc_dealloc of a file handle that is not live (offset \(offset))") }
+        else { fatal("roc_dealloc of a handle that is not live (offset \(offset))") }
         retired[index] = true
         return true
     }
 
+    private func slot(_ token: UInt64) -> Int? {
+        let index = Int(token & ((1 << indexBits) - 1)) - 1
+        guard index >= 0, index < handleCapacity, tokens[index] == token else { return nil }
+        return index
+    }
+
+    /// What a live (or retired, not yet drained) handle's token names.
+    func held(_ token: UInt64) -> Held? {
+        guard let index = slot(token) else { return nil }
+        return entries[index]
+    }
+
     /// The file a live (or retired, not yet drained) handle's token names.
     func entry(_ token: UInt64) -> FileEntry? {
-        let index = Int(token & ((1 << FileHandles.indexBits) - 1)) - 1
-        guard index >= 0, index < FileHandles.capacity, tokens[index] == token else { return nil }
-        return entries[index]
+        if case .file(let entry) = held(token) { return entry }
+        return nil
+    }
+
+    /// Mint a handle for a file.
+    func mint(_ entry: FileEntry) -> UnsafeMutableRawPointer? { mint(.file(entry)) }
+
+    /// Replace what a live handle names; false when `token` names none.
+    @discardableResult
+    func update(_ token: UInt64, _ value: Held) -> Bool {
+        guard let index = slot(token), entries[index] != nil else { return false }
+        entries[index] = value
+        return true
     }
 
     /// Free the slots Roc released since the last drain; returns their tokens.
     func drainReleased() -> [UInt64] {
         var released: [UInt64] = []
-        for index in 0..<FileHandles.capacity where retired[index] {
+        for index in 0..<handleCapacity where retired[index] {
             released.append(tokens[index])
             retired[index] = false
             entries[index] = nil
@@ -125,7 +166,11 @@ final class FileHandles {
     }
 }
 
-/// The one handle table; `roc_dealloc` routes through it.
+/// The page's file handles.
+typealias FileHandles = HandleTable
+
+/// The page instance's handle table; `roc_dealloc` on the main thread offers
+/// every address to it.
 let fileHandles = FileHandles()
 
 // MARK: - Jobs off the main thread
@@ -231,7 +276,9 @@ extension Host {
     /// Drop the entries of handles Roc released, once the batch that may
     /// name them has been applied and its effects resolved.
     func releaseFiles() {
-        for token in fileHandles.drainReleased() { trace("file released \(token)") }
+        let released = fileHandles.drainReleased()
+        for token in released { trace("file released \(token)") }
+        releaseWorkStates(released)
     }
 
     // MARK: Effects (FX 11, 13, 14)
