@@ -34,11 +34,11 @@ extension Host {
             case 2: attr = r.expandedName()
             case 3:
                 let handler = r.u8(), type = r.str(), payloadKind = r.u8()
-                _ = r.u32()
+                let policies = r.u32()
                 var target = root
                 for i in path { target = target.children[i] }
-                target.listeners[type] = (UInt32(handler), payloadKind)
-            case 6: attr = r.u8() == 2 ? "checked" : "value"
+                target.listeners[type] = (UInt32(handler), payloadKind, policies)
+            case 6: attr = Host.propertyName(r.u8())
             default: break
             }
             holes.append(Template.Hole(kind: kind, path: path, attr: attr))

@@ -5,7 +5,8 @@ import pf.Ui
 
 ## A to-do list, after the roc-signals tutorial: a table of to-dos in the
 ## store, a form that adds one, a filtered view of the table whose rows each
-## own a checkbox and a remove button, and a count of what is left.
+## own a checkbox and a remove button, in a scroll area, and a count of
+## what is left. Command-N adds the draft as Return does.
 main : Engine.Program(_)
 main = Engine.program_store({}, |_boot| store, |_boot| view())
 
@@ -26,12 +27,14 @@ view : () -> Elem(Engine.StoreRoot(_))
 view = || {
 	todos = cells.todos.signal()
 	Ui.vstack(
+		{ spacing: 10, align: Fill },
 		[
 			Ui.title("To-do"),
 			Ui.form(
 				Engine.handle_by(adding(), |at, _| added(at)),
 				[
 					Ui.hstack(
+						{},
 						[
 							Ui.text_field("What needs doing?", cells.draft.signal(), Engine.handle(|typed| [cells.draft.set(typed)])),
 							Ui.submit_button("Add"),
@@ -42,8 +45,10 @@ view = || {
 			Engine.state(
 				All,
 				|showing| Ui.vstack(
+					{ align: Fill },
 					[
 						Ui.hstack(
+							{},
 							[
 								Ui.button("All", showing.update(|_| All)),
 								Ui.button("Open", showing.update(|_| Open)),
@@ -51,20 +56,21 @@ view = || {
 							],
 						),
 						Ui.divider(),
-						Ui.vstack(
-							[
-								Engine.table_view(
-									cells.todos,
-									{ query: showing.signal(), plan, window: Engine.const(Engine.every_row) },
-									|key, todo| row(key, todo),
-								),
-							],
+						Ui.scroll(
+							{ height: 200 },
+							Engine.table_view(
+								cells.todos,
+								{ query: showing.signal(), plan, window: Engine.const(Engine.every_row) },
+								|key, todo| row(key, todo),
+							),
 						),
 					],
 				),
 			),
 			Engine.when(todos.map(|table| table.len() == 0), || Ui.label("Nothing to do."), || Engine.text("")),
-			Ui.label_s(todos.map(remaining)),
+			Ui.text_s({ font: Caption, color: Secondary }, todos.map(remaining)),
+			# Command-N adds the draft too, from anywhere in the window.
+			Ui.shortcut([Ui.command("n")], Engine.handle_by(adding(), |at, _| added(at))),
 		],
 	)
 }
@@ -75,6 +81,7 @@ row : Signal(r, U64), State(r, Todo) -> Elem(r)
 	where [r.store : () -> Engine.Reach(r, _)]
 row = |key, todo|
 	Ui.hstack(
+		{},
 		[
 			Ui.checkbox(todo.signal().map(|t| t.title), todo.signal().map(|t| t.done), todo.set_value(|held, checked| { ..held, done: checked })),
 			Ui.spacer(),

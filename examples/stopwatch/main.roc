@@ -24,10 +24,12 @@ view : () -> Elem(Engine.StoreRoot(_))
 view = || {
 	running = cells.running.signal()
 	Ui.vstack(
+		{},
 		[
 			Ui.title("Stopwatch"),
 			Ui.readout_s(cells.elapsed_ms.signal().map(clock)),
 			Ui.hstack(
+				{},
 				[
 					Ui.button_s(running.map(|on| if (on) "Stop" else "Start"), Engine.handle_by(running, |on, _| toggled(on))),
 					Ui.action_button(Engine.const("Lap"), running, Engine.handle_by(cells.elapsed_ms.signal(), |at, _| [cells.laps.update(|laps| laps.append(at))])),
@@ -37,6 +39,7 @@ view = || {
 			Ui.divider(),
 			Ui.label_s(cells.laps.signal().map(|laps| if (laps.is_empty()) "No laps yet" else "Laps")),
 			Ui.vstack(
+				{},
 				[
 					Engine.each(
 						cells.laps.signal().map(|laps| laps.map_with_index(|at, index| { number: index + 1, at })),
@@ -49,7 +52,7 @@ view = || {
 			# cancels the request (watch_latest supersedes it).
 			Engine.watch_latest(
 				running,
-				|on| if on [Engine.interval(47)] else [],
+				|on| if (on) [Engine.interval(47)] else [],
 				Engine.react_by(cells.last_tick.signal(), ticked),
 			),
 		],
@@ -76,6 +79,6 @@ clock = |ms| {
 	centis = (ms // 10) % 100
 	seconds = (ms // 1000) % 60
 	minutes = ms // 60000
-	pad = |n| if n < 10 "0${n.to_str()}" else n.to_str()
+	pad = |n| if (n < 10) "0${n.to_str()}" else n.to_str()
 	"${minutes.to_str()}:${pad(seconds)}.${pad(centis)}"
 }
