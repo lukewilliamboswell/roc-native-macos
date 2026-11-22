@@ -5,3 +5,9 @@ host/roc_swift_abi.h
 host/RocGlue.swift
 examples/*/*
 !examples/*/*.roc
+
+# Blueprint's generated environment and links
+.blueprint/
+
+# Agent worktrees
+.claude/worktrees/

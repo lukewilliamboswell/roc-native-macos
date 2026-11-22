@@ -1,0 +1,65 @@
+name: CI
+
+# The pull-request gate is `blueprint run check`, the same task a contributor
+# runs. It builds the Swift host and every example, so it runs on Apple
+# silicon macOS, the platform's one target (arm64mac). The examples are run
+# for real: `macos-15` hosted runners have a logged-in GUI session, so each
+# recorded ROC_SCRIPT case drives real AppKit controls. A scripted run never
+# takes keyboard focus.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  # The latest Roc nightly, resolved once so every job of a run uses the same
+  # `roc` (roc-automation's model: the package compiler floats; only the
+  # scripts' `roc-stable` is pinned, in Blueprint.roc).
+  nightly:
+    name: Resolve the Roc nightly
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      tag: ${{ steps.nightly.outputs.tag }}
+    steps:
+      - id: nightly
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: echo "tag=$(gh api repos/roc-lang/nightlies/releases/latest --jq .tag_name)" >> "$GITHUB_OUTPUT"
+
+  check:
+    name: Check
+    needs: nightly
+    runs-on: macos-15
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: lukewilliamboswell/roc-automation/actions/setup-blueprint@6c796f299012707d2e9bad23fd6449ed93f1f475
+        with:
+          cache: 'true'
+          cache-workload: dev
+      - uses: roc-lang/setup-roc@dd81390553b0a1236aedb61cdd4c0ed7cf7eaec4
+        with:
+          version: nightly
+          nightly-tag: ${{ needs.nightly.outputs.tag }}
+      - name: Report the compilers and the Swift toolchain
+        run: |
+          roc version
+          blueprint run tooling-version
+          swiftc --version
+      - run: blueprint check
+      - run: blueprint run check

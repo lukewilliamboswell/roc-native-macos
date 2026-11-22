@@ -1,0 +1,1 @@
+click:Start;wait:200;click:Lap;click:Stop;click:Reset;dump;quit

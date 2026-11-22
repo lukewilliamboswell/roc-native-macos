@@ -1,0 +1,40 @@
+---
+ui-vstack [1 views]
+  ui-vstack [4 views]
+    ui-title "To-do"
+    ui-form [1 views]
+      ui-hstack [2 views]
+        ui-text-field ""
+        ui-button "Add"
+    ui-vstack [3 views]
+      ui-hstack [3 views]
+        ui-button "All"
+        ui-button "Open"
+        ui-button "Done"
+      ui-divider
+      ui-vstack [1 views]
+        ui-hstack [3 views]
+          ui-checkbox "Buy milk" [x]
+          ui-spacer
+          ui-button "Remove"
+    ui-label "1 item left"
+---
+ui-vstack [1 views]
+  ui-vstack [4 views]
+    ui-title "To-do"
+    ui-form [1 views]
+      ui-hstack [2 views]
+        ui-text-field ""
+        ui-button "Add"
+    ui-vstack [3 views]
+      ui-hstack [3 views]
+        ui-button "All"
+        ui-button "Open"
+        ui-button "Done"
+      ui-divider
+      ui-vstack [1 views]
+        ui-hstack [3 views]
+          ui-checkbox "Walk the dog" [ ]
+          ui-spacer
+          ui-button "Remove"
+    ui-label "1 item left"
