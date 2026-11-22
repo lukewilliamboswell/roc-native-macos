@@ -61,13 +61,28 @@ Bundle := [].{
 	]
 
 	## How the consumer test packages the counter `init` made, in its
-	## directory: the version overrides the starter `macos.json`'s.
+	## directory: as the release workflow `init` wrote does, with no secrets,
+	## for a pushed pre-release tag, whose version overrides the starter
+	## `macos.json`'s.
 	package_args : List(Str)
-	package_args = ["package", "--version", "1.0.0"]
+	package_args = ["ci", "package"]
 
-	## The zip that makes, relative to the counter's directory.
+	## The GitHub Actions variables that run sees: a pushed tag.
+	package_env : List((Str, Str))
+	package_env = [("GITHUB_ACTIONS", "true"), ("GITHUB_REF_TYPE", "tag"), ("GITHUB_REF_NAME", "v1.0.0-rc.1"), ("RELEASE_VERSION", "")]
+
+	## The zip that makes, relative to the counter's directory: its name
+	## keeps the pre-release suffix.
 	package_zip : Str
-	package_zip = "dist/counter-1.0.0.zip"
+	package_zip = "dist/counter-1.0.0-rc.1.zip"
+
+	## What the packaged `Info.plist` must say: the version's numbers alone,
+	## and the build number following them.
+	package_plist : List(Str)
+	package_plist = [
+		"<key>CFBundleShortVersionString</key><string>1.0.0</string>",
+		"<key>CFBundleVersion</key><string>1.0.0</string>",
+	]
 
 	## The recorded case run on the program extracted from the zip.
 	package_case : Str

@@ -111,7 +111,7 @@ App := [].{
 		icon = App.icon!()?
 		{ name, program } = App.compile!()?
 		meta = Meta.resolve(Meta.over(flags, written), name)
-		bundle = "${name}.app"
+		bundle = "${Meta.bundle_name(meta.name)}.app"
 		if Path.exists!(Path.utf8(bundle))? {
 			Path.delete_all!(Path.utf8(bundle))?
 		}
@@ -127,7 +127,7 @@ App := [].{
 			NoIcon => Bool.False
 		}
 		Path.write_utf8!(Path.utf8("${bundle}/Contents/Info.plist"), App.info_plist(meta, name, has_icon))?
-		Stdout.line!("Built ${bundle}: ${meta.name} ${meta.version} (${meta.id}), for Apple silicon Macs with macOS ${meta.minimum_macos} or later.")?
+		Stdout.line!("Built ${bundle}: ${meta.name} ${meta.release} (${meta.id}), for Apple silicon Macs with macOS ${meta.minimum_macos} or later.")?
 		Ok({ bundle, name, meta })
 	}
 

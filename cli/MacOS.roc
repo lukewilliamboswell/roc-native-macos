@@ -6,6 +6,7 @@ import Bundle
 import Cases
 import Init
 import Meta
+import Ci
 import Package
 
 ## The `macos.roc` tool: create, build, run, test and package a
@@ -22,11 +23,11 @@ import Package
 MacOS :: [].{
 
 	## What the user asked for.
-	Command : [Help, CommandHelp(Str), Init(Str), Build(Meta.Fields), Run(Meta.Fields), Test({ update : Bool }), Package(Package.Options)]
+	Command : [Help, CommandHelp(Str), Init(Str), Build(Meta.Fields), Run(Meta.Fields), Test({ update : Bool }), Package(Package.Options), CiPackage(Meta.Fields), CiRelease]
 
 	## The commands, in the order `help` lists them.
 	commands : List(Str)
-	commands = ["init", "build", "run", "test", "package"]
+	commands = ["init", "build", "run", "test", "package", "ci"]
 
 	## Run the tool on the arguments `roc macos.roc` passed it. Every failure
 	## is explained in a sentence on standard error and ends the program with
@@ -41,7 +42,9 @@ MacOS :: [].{
 			Ok(Build(chosen)) => App.build!(chosen).map_ok(|_| {})
 			Ok(Run(chosen)) => App.run!(chosen)
 			Ok(Test({ update })) => Cases.run!(update)
-			Ok(Package(chosen)) => Package.run!(chosen)
+			Ok(Package(chosen)) => Package.run!(chosen, Package.environment!()).map_ok(|_| {})
+			Ok(CiPackage(fields)) => Ci.package!(fields)
+			Ok(CiRelease) => Ci.release!()
 			Err(problem) => Err(problem)
 		}
 		match outcome {
@@ -66,6 +69,8 @@ MacOS :: [].{
 			["build", .. as rest] => MacOS.options("build", rest, nothing).map_ok(|chosen| Build(chosen.fields))
 			["run", .. as rest] => MacOS.options("run", rest, nothing).map_ok(|chosen| Run(chosen.fields))
 			["package", .. as rest] => MacOS.options("package", rest, nothing).map_ok(|chosen| Package(chosen))
+			["ci", "package", .. as rest] => MacOS.options("ci package", rest, nothing).map_ok(|chosen| CiPackage(chosen.fields))
+			["ci", "release"] => Ok(CiRelease)
 			["test"] => Ok(Test({ update: Bool.False }))
 			["test", "--update"] => Ok(Test({ update: Bool.True }))
 			[command, .. as extra] if MacOS.commands.contains(command) => Err(UnexpectedArguments({ command, extra }))
@@ -103,6 +108,8 @@ MacOS :: [].{
 		\\  roc macos.roc run              Build it and start it, its output in this terminal.
 		\\  roc macos.roc test [--update]  Build it and run its recorded cases, tests/*.script.
 		\\  roc macos.roc package          Build it, sign it and zip it, as dist/<name>-<version>.zip.
+		\\  roc macos.roc ci package       Package it in CI, signing it as the secrets allow.
+		\\  roc macos.roc ci release       Attach dist/*.zip to the pushed tag's GitHub release.
 		\\
 		\\<name> is the app's directory. The app's metadata is in macos.json beside
 		\\main.roc: its name, bundle identifier (by default com.example.<name>),
@@ -176,7 +183,35 @@ MacOS :: [].{
 				\\or its contents). MACOS_SIGN_TOOL=codesign or rcodesign picks the tool.
 				\\SOURCE_DATE_EPOCH, if set, is the time the zip's entries carry.
 				\\
+				\\The zip is named for the app's name and version. A version may have a
+				\\pre-release suffix, as 1.0.0-beta.1 does: the zip's name keeps it, and the
+				\\app's Info.plist has 1.0.0.
+				\\
 				\\${metadata_help}
+			"ci" =>
+				\\Package the app in a CI run, and attach it to a GitHub release.
+				\\
+				\\Usage: roc macos.roc ci package [METADATA FLAGS]
+				\\       roc macos.roc ci release
+				\\
+				\\The workflow init writes, .github/workflows/release.yml, runs these, so that
+				\\each of its steps is one command.
+				\\
+				\\ci package runs package for the run. The version is --version, else
+				\\RELEASE_VERSION, else the pushed tag without its v (v1.0.0-beta.1 is
+				\\1.0.0-beta.1). With MACOS_SIGN_P12_BASE64 (a .p12 certificate, base64) or
+				\\MACOS_SIGN_P12 or MACOS_SIGN_IDENTITY it signs with that Developer ID, and
+				\\with all three MACOS_NOTARY_* it also notarizes; it says so when they are
+				\\not set, and refuses part of a notary key. It decodes the certificate to a
+				\\file only you can read, removed afterwards. When signing needs rcodesign
+				\\and none is on PATH, it installs rcodesign ${Ci.rcodesign_version}, checked
+				\\against its SHA-256, in RUNNER_TEMP. SOURCE_DATE_EPOCH, when unset, is the
+				\\last commit's time.
+				\\
+				\\ci release attaches dist/*.zip to the release of the pushed tag
+				\\(GITHUB_REF_NAME, in GITHUB_REPOSITORY) with gh, which reads GH_TOKEN. It
+				\\creates the release when there is none, as a pre-release for a tag with a
+				\\suffix, and replaces zips of the same name.
 			"test" =>
 				\\Build the app and run its recorded cases.
 				\\
@@ -200,6 +235,7 @@ MacOS :: [].{
 			"init" => "Use it as `roc macos.roc init [DIR]`."
 			"build" | "run" => "Use it as `roc macos.roc ${command} [METADATA FLAGS]`; `roc macos.roc ${command} --help` lists the flags."
 			"package" => "Use it as `roc macos.roc package [--sign] [--notarize] [METADATA FLAGS]`; `roc macos.roc package --help` lists the flags."
+			"ci" | "ci package" => "Use it as `roc macos.roc ci package [METADATA FLAGS]` or `roc macos.roc ci release`; ci decides how to sign from the secrets that are set. `roc macos.roc ci --help` describes them."
 			"test" => "Use it as `roc macos.roc test [--update]`."
 			_ => "`roc macos.roc help` describes it."
 		}
@@ -218,7 +254,8 @@ MacOS :: [].{
 		given = "${MacOS.source(field, from)}, \"${value}\","
 		match field {
 			"id" => "${given} is not a bundle identifier: it needs two or more parts separated by dots, made of letters, digits and hyphens, such as com.example.counter."
-			"version" | "build" => "${given} is not a version: write one to three whole numbers separated by dots, such as 1.2.0, with no v or suffix."
+			"version" => "${given} is not a version: write one to three whole numbers separated by dots, such as 1.2.0, with no v, and optionally a pre-release suffix, such as 1.2.0-beta.1."
+			"build" => "${given} is not a build number: write one to three whole numbers separated by dots, such as 7 or 1.2.0, with no suffix."
 			"minimum_macos" => "${given} is not a macOS version this platform runs on: write ${Meta.oldest_macos} or later, such as 13.0."
 			"category" => "${given} is not an App Store category: write public.app-category. and the category's name, such as public.app-category.utilities."
 			_ => "${given} holds a control character, such as a tab or a line break, which an app's ${field} cannot."
@@ -230,7 +267,7 @@ MacOS :: [].{
 	explain : _ -> { text : Str, code : I32 }
 	explain = |problem|
 		match problem {
-			UnknownCommand(command) => { code: 2, text: "There is no command \"${command}\". The commands are init, build, run, test and package; `roc macos.roc help` describes them." }
+			UnknownCommand(command) => { code: 2, text: "There is no command \"${command}\". The commands are init, build, run, test, package and ci; `roc macos.roc help` describes them." }
 			UnexpectedArguments({ command, extra }) => { code: 2, text: "${command} does not take ${Str.join_with(extra.map(|a| "\"${a}\""), " ")}. ${MacOS.synopsis(command)}" }
 			BadField({ field, value, from }) => { code: if (from == Flag) 2 else 1, text: MacOS.bad_field(field, value, from) }
 			MetaMalformed({ line, expected }) => { code: 1, text: "${Meta.file} is not the JSON object the tool reads: on line ${line.to_str()} it expected ${expected}. It holds one object of text fields, such as { \"version\": \"1.2.0\" }." }
@@ -248,6 +285,17 @@ MacOS :: [].{
 			BadSourceDateEpoch(text) => { code: 1, text: "SOURCE_DATE_EPOCH is \"${text}\", which is not a number of seconds since 1970: set it to one, such as the last commit's time (git log -1 --format=%ct), or unset it." }
 			StepFailed(shown) => { code: 1, text: "Packaging stopped: `${shown}` failed, with its report above." }
 			TooLargeToZip(bundle) => { code: 1, text: "${bundle} is too large for a zip without Zip64, 4 GB or 65,535 files, so package cannot zip it." }
+			NoReleaseVersion(ref) => { code: 1, text: "ci package needs a version, and this run has none: it is for ${ref}, not a tag such as v1.0.0. Push a tag, or give one with --version or RELEASE_VERSION." }
+			PartialNotaryKey(missing) => { code: 1, text: "Some of the notary key's secrets are set, but not ${Str.join_with(missing, " or ")}: set all three to notarize, or none to sign without notarizing." }
+			BadP12Base64 => { code: 1, text: "MACOS_SIGN_P12_BASE64 is not base64: set it to the .p12 file's base64, as `base64 -i developer-id.p12` prints it." }
+			NoRcodesignHere => { code: 1, text: "Signing here needs rcodesign, and it is not released for this system: install it and put it on PATH." }
+			RcodesignDownload(url) => { code: 1, text: "Could not download rcodesign from ${url}: curl's report is above." }
+			RcodesignChecksum({ archive, expected, actual }) => { code: 1, text: "The downloaded ${archive} has SHA-256 ${actual}, not ${expected}, so it was not used." }
+			RcodesignUnpack(file) => { code: 1, text: "Could not unpack rcodesign from ${file}: tar's report is above." }
+			NotATag(ref) => { code: 1, text: "ci release attaches the zip to a pushed tag's release, and this run is for ${ref}: run it for a tag such as v1.0.0." }
+			NoRepository => { code: 1, text: "ci release needs GITHUB_REPOSITORY, the owner/name of the repository whose release it adds to, which GitHub Actions sets." }
+			GhMissing => { code: 1, text: "ci release uploads with GitHub's gh, which is not on PATH: install it (GitHub's runners have it)." }
+			NoZips => { code: 1, text: "There is no zip in ${Package.dist}/ to attach: run `roc macos.roc ci package` first, or download its artifact there." }
 			LinkInBundle(path) => { code: 1, text: "${path} is a symbolic link, which package does not zip: copy the file it names into assets/ instead." }
 			RocMissing => { code: 1, text: "The Roc compiler is not on your PATH as `roc`, so the app cannot be built. Install Roc ${Bundle.roc_version} (or a later nightly) and put it on your PATH as `roc`." }
 			NoMainRoc => { code: 1, text: "There is no main.roc here, so there is no app to build. Run this from your app's directory, or create an app with `roc macos.roc init my-app`." }
@@ -337,7 +385,7 @@ expect {
 	].map(MacOS.explain)
 	match actual {
 		[flag, file, unknown, malformed] =>
-			flag == { code: 2, text: "--version, \"v1.0\", is not a version: write one to three whole numbers separated by dots, such as 1.2.0, with no v or suffix." }
+			flag == { code: 2, text: "--version, \"v1.0\", is not a version: write one to three whole numbers separated by dots, such as 1.2.0, with no v, and optionally a pre-release suffix, such as 1.2.0-beta.1." }
 				and file.text.starts_with("macos.json's minimum_macos, \"10.15\", is not a macOS version")
 				and unknown.text.ends_with("the fields are name, id, version, build, copyright, category, minimum_macos.")
 				and malformed.text.starts_with("macos.json is not the JSON object the tool reads: on line 3 it expected a comma or the closing }.")
@@ -369,4 +417,18 @@ expect {
 expect {
 	explained = [BadIcon(NotSquare({ width: 1024.U32, height: 512.U32 })), BadIcon(UnsupportedSize(100.U32)), TwoIcons].map(|problem| MacOS.explain(problem).text)
 	explained.all(|text| text.starts_with("assets/")) and explained.first() == Ok("assets/icon.png is 1024 by 512 pixels, and an app's icon is square: make it 1024 by 1024 pixels.")
+}
+
+## ci packages with metadata flags and decides signing itself; ci release takes nothing.
+expect {
+	actual = [["ci", "package"], ["ci", "package", "--version", "1.0.0-beta.1"], ["ci", "release"], ["ci", "package", "--sign"], ["ci", "release", "--draft"], ["ci"]].map(MacOS.parse)
+	expected = [
+		Ok(CiPackage(Meta.none)),
+		Ok(CiPackage({ ..Meta.none, version: "1.0.0-beta.1" })),
+		Ok(CiRelease),
+		Err(UnexpectedArguments({ command: "ci package", extra: ["--sign"] })),
+		Err(UnexpectedArguments({ command: "ci", extra: ["release", "--draft"] })),
+		Err(UnexpectedArguments({ command: "ci", extra: [] })),
+	]
+	actual == expected
 }

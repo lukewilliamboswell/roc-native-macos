@@ -32,14 +32,36 @@ Package := [].{
 	secrets : Str
 	secrets = "${App.work}/secrets"
 
-	run! : Options => Try({}, _)
-	run! = |options| {
+	## What signing and packaging read from the environment, each empty when
+	## unset: `MACOS_SIGN_IDENTITY`, `MACOS_SIGN_P12`,
+	## `MACOS_SIGN_P12_PASSWORD`, `MACOS_SIGN_TOOL`, the three
+	## `MACOS_NOTARY_*` and `SOURCE_DATE_EPOCH`. `rcodesign` is the program
+	## run as rcodesign: `rcodesign` on PATH, or a path `ci` installed it at.
+	Environment : { identity : Str, p12 : Str, p12_password : Str, prefer : Str, notary_issuer : Str, notary_key_id : Str, notary_key : Str, source_date_epoch : Str, rcodesign : Str }
+
+	## The environment as it is.
+	environment! : () => Environment
+	environment! = || {
+		identity: env!("MACOS_SIGN_IDENTITY"),
+		p12: env!("MACOS_SIGN_P12"),
+		p12_password: env!("MACOS_SIGN_P12_PASSWORD"),
+		prefer: env!("MACOS_SIGN_TOOL"),
+		notary_issuer: env!("MACOS_NOTARY_ISSUER"),
+		notary_key_id: env!("MACOS_NOTARY_KEY_ID"),
+		notary_key: env!("MACOS_NOTARY_KEY"),
+		source_date_epoch: env!("SOURCE_DATE_EPOCH"),
+		rcodesign: "rcodesign",
+	}
+
+	## Build, sign and zip the app, and give the zip's path and metadata.
+	run! : Options, Environment => Try({ zip : Str, meta : Meta.Resolved }, _)
+	run! = |options, environment| {
 		developer = options.sign or options.notarize
 		# Everything that needs no build is decided first, so that a missing
 		# credential is reported before a long build.
-		here = here!()
+		here = here!(environment)
 		choice = Sign.choose(here, developer)?
-		notary = if (options.notarize) Ok(notary_key!()?) else Err(NotAsked)
+		notary = if (options.notarize) Ok(notary_key!(environment)?) else Err(NotAsked)
 		match (choice, notary) {
 			(Seal(Keychain(_)), Ok(_)) if !Cmd.check_available!("xcrun") => return Err(NotaryToolMissing)
 			_ => {}
@@ -49,7 +71,7 @@ Package := [].{
 				if !(Path.exists!(Path.utf8(file))?) {
 					return Err(NoP12File(file))
 				}
-				Ok(env!("MACOS_SIGN_P12_PASSWORD"))
+				Ok(environment.p12_password)
 			}
 			_ => Err(NoP12)
 		}
@@ -57,21 +79,49 @@ Package := [].{
 			Ok(text) if text.is_empty() => return Err(NoP12Password)
 			_ => {}
 		}
-		seconds = match env!("SOURCE_DATE_EPOCH") {
+		seconds = match environment.source_date_epoch {
 			"" => Zip.default_time
 			text => U64.from_str(text) ? |_| BadSourceDateEpoch(text)
 		}
-		{ bundle, name, meta } = App.build!(options.fields)?
-		zip = "${Package.dist}/${name}-${meta.version}.zip"
-		outcome = seal_and_zip!({ here, choice, notary, password, seconds, bundle, zip })
+		{ bundle, meta, .. } = App.build!(options.fields)?
+		zip = "${Package.dist}/${Meta.zip_name(meta.name, meta.release)}"
+		outcome = seal_and_zip!({ here, choice, notary, password, seconds, bundle, zip, rcodesign: environment.rcodesign })
+		Package.forget_secrets!()
+		signed = outcome?
+		bytes = Path.read_bytes!(Path.utf8(zip))?
+		Stdout.line!("Packaged ${zip} (${Package.size(bytes.len())}, sha256 ${Crypto.SHA256.hash(bytes).to_hex()}): ${meta.name} ${meta.release}, ${signed}.")?
+		Stdout.line!(Package.advice(choice, options.notarize))?
+		Ok({ zip, meta })
+	}
+
+	## Whether this is a Mac.
+	on_mac! : () => Bool
+	on_mac! = ||
+		match System.target!().os() {
+			MacOS(_) => Bool.True
+			_ => Bool.False
+		}
+
+	## Remove `.macos/secrets/` and everything in it.
+	forget_secrets! : () => {}
+	forget_secrets! = || {
 		if Path.exists!(Path.utf8(Package.secrets)) ?? Bool.False {
 			Path.delete_all!(Path.utf8(Package.secrets)) ?? {}
 		}
-		signed = outcome?
-		bytes = Path.size_in_bytes!(Path.utf8(zip))?
-		Stdout.line!("Packaged ${zip} (${Package.size(bytes)}): ${meta.name} ${meta.version}, ${signed}.")?
-		Stdout.line!(Package.advice(choice, options.notarize))?
-		Ok({})
+	}
+
+	## Write a secret to `.macos/secrets/<name>`, readable by its owner alone,
+	## and give its path.
+	secret! : Str, List(U8) => Try(Str, _)
+	secret! = |name, bytes| {
+		Path.create_all!(Path.utf8(Package.secrets))?
+		path = "${Package.secrets}/${name}"
+		Path.write_bytes!(Path.utf8(path), [])?
+		Path.set_permissions!(Path.utf8(path), OwnerOnly)?
+		if !bytes.is_empty() {
+			Path.write_bytes!(Path.utf8(path), bytes)?
+		}
+		Ok(path)
 	}
 
 	## A size in bytes, for a person: `1.9 MB`.
@@ -103,8 +153,8 @@ tenths = |bytes, unit, name| {
 
 ## Seal or sign the bundle, zip it, and notarize it if asked; then say who
 ## signed it.
-seal_and_zip! : { here : Sign.Here, choice : [Seal(Sign.Signer), Unsealed], notary : Try({ issuer : Str, key_id : Str, key : Str }, [NotAsked]), password : Try(Str, [NoP12]), seconds : U64, bundle : Str, zip : Str } => Try(Str, _)
-seal_and_zip! = |{ here, choice, notary, password, seconds, bundle, zip }| {
+seal_and_zip! : { here : Sign.Here, choice : [Seal(Sign.Signer), Unsealed], notary : Try({ issuer : Str, key_id : Str, key : Str }, [NotAsked]), password : Try(Str, [NoP12]), seconds : U64, bundle : Str, zip : Str, rcodesign : Str } => Try(Str, _)
+seal_and_zip! = |{ here, choice, notary, password, seconds, bundle, zip, rcodesign }| {
 	verify = here.mac and here.codesign
 	signer = match choice {
 		Unsealed => {
@@ -115,23 +165,23 @@ seal_and_zip! = |{ here, choice, notary, password, seconds, bundle, zip }| {
 		Seal(s) => s
 	}
 	password_file = match password {
-		Ok(text) => secret!("p12-password", text)?
+		Ok(text) => Package.secret!("p12-password", text.to_utf8())?
 		Err(NoP12) => ""
 	}
-	steps!(Sign.sign(signer, bundle, password_file))?
+	steps!(Sign.sign(signer, bundle, password_file), rcodesign)?
 	if verify {
-		steps!([Sign.verify(bundle)])?
+		steps!([Sign.verify(bundle)], rcodesign)?
 	}
 	write_zip!(bundle, zip, seconds)?
 	match notary {
 		Err(NotAsked) => Ok(Sign.describe(signer))
 		Ok({ issuer, key_id, key }) => {
-			key_file = if (Sign.is_pem(key)) secret!("AuthKey.p8", key)? else key
-			json = secret!("notary.json", "")?
+			key_file = if (Sign.is_pem(key)) Package.secret!("AuthKey.p8", key.to_utf8())? else key
+			json = Package.secret!("notary.json", [])?
 			Stdout.line!("Submitting ${zip} to Apple's notary service, and waiting for its answer (usually a few minutes)...")?
-			steps!(Sign.notarize(signer, { issuer, key_id, key_file, json }, { bundle, zip }))?
+			steps!(Sign.notarize(signer, { issuer, key_id, key_file, json }, { bundle, zip }), rcodesign)?
 			if verify {
-				steps!([Sign.verify(bundle)])?
+				steps!([Sign.verify(bundle)], rcodesign)?
 			}
 			# The ticket is stapled to the bundle, so zip it again.
 			write_zip!(bundle, zip, seconds)?
@@ -183,12 +233,14 @@ walk! = |dir| {
 	Ok($found)
 }
 
-## Run each step, showing it; each must succeed.
-steps! : List(Sign.Step) => Try({}, _)
-steps! = |list| {
+## Run each step, showing it; each must succeed. `rcodesign` is the program
+## run for a step of rcodesign's.
+steps! : List(Sign.Step), Str => Try({}, _)
+steps! = |list, rcodesign| {
 	for { program, args, shown } in list {
 		Stdout.line!("  ${shown}")?
-		ran = Cmd.new(OsStr.from_str(program)).args(args.map(OsStr.from_str)).inherit_stdio().run!()?
+		run = if (program == "rcodesign") rcodesign else program
+		ran = Cmd.new(OsStr.from_str(run)).args(args.map(OsStr.from_str)).inherit_stdio().run!()?
 		if ran.status != Exited(0) {
 			return Err(StepFailed(shown))
 		}
@@ -196,55 +248,32 @@ steps! = |list| {
 	Ok({})
 }
 
-## Write a secret to `.macos/secrets/<name>`, readable by its owner alone,
-## and give its path.
-secret! : Str, Str => Try(Str, _)
-secret! = |name, text| {
-	Path.create_all!(Path.utf8(Package.secrets))?
-	path = "${Package.secrets}/${name}"
-	Path.write_utf8!(Path.utf8(path), "")?
-	Path.set_permissions!(Path.utf8(path), OwnerOnly)?
-	if !text.is_empty() {
-		Path.write_utf8!(Path.utf8(path), text)?
-	}
-	Ok(path)
-}
-
-## The App Store Connect API key's parts, from the environment; all three
-## are needed.
-notary_key! : () => Try({ issuer : Str, key_id : Str, key : Str }, _)
-notary_key! = || {
-	var $missing = []
-	for name in Sign.notary_vars {
-		if env!(name).is_empty() {
-			$missing = $missing.append(name)
-		}
-	}
-	missing = $missing
+## The App Store Connect API key's parts; all three are needed.
+notary_key! : Package.Environment => Try({ issuer : Str, key_id : Str, key : Str }, _)
+notary_key! = |environment| {
+	given = [("MACOS_NOTARY_ISSUER", environment.notary_issuer), ("MACOS_NOTARY_KEY_ID", environment.notary_key_id), ("MACOS_NOTARY_KEY", environment.notary_key)]
+	missing = given.keep_if(|(_, value)| value.is_empty()).map(|(name, _)| name)
 	if !missing.is_empty() {
 		return Err(NoNotaryKey(missing))
 	}
-	key = env!("MACOS_NOTARY_KEY")
+	key = environment.notary_key
 	if !Sign.is_pem(key) and !(Path.exists!(Path.utf8(key))?) {
 		return Err(NoNotaryKeyFile(key))
 	}
-	Ok({ issuer: env!("MACOS_NOTARY_ISSUER"), key_id: env!("MACOS_NOTARY_KEY_ID"), key })
+	Ok({ issuer: environment.notary_issuer, key_id: environment.notary_key_id, key })
 }
 
-## The system, the signing tools on PATH, and the signing environment.
-here! : () => Sign.Here
-here! = || {
-	mac = match System.target!().os() {
-		MacOS(_) => Bool.True
-		_ => Bool.False
-	}
+## The system, the signing tools here, and the signing environment.
+here! : Package.Environment => Sign.Here
+here! = |environment| {
+	mac = Package.on_mac!()
 	{
 		mac,
 		codesign: mac and Cmd.check_available!("codesign"),
-		rcodesign: Cmd.check_available!("rcodesign"),
-		prefer: env!("MACOS_SIGN_TOOL"),
-		identity: env!("MACOS_SIGN_IDENTITY"),
-		p12: env!("MACOS_SIGN_P12"),
+		rcodesign: if (environment.rcodesign == "rcodesign") Cmd.check_available!("rcodesign") else Path.exists!(Path.utf8(environment.rcodesign)) ?? Bool.False,
+		prefer: environment.prefer,
+		identity: environment.identity,
+		p12: environment.p12,
 	}
 }
 

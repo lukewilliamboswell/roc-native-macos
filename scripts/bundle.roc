@@ -174,12 +174,14 @@ first_steps! = |root, dir, base_url| {
 	Ok({})
 }
 
-## `roc macos.roc package` the counter `init` made, twice, as an author
-## shares it: both zips must be the same bytes, hold exactly the entries
+## `roc macos.roc ci package` the counter `init` made, twice, as the release
+## workflow `init` wrote does for a pushed pre-release tag
+## with no secrets: both zips must be the same bytes, hold exactly the entries
 ## `Bundle.package_entries` names with their modes, pass `unzip -t`, and
 ## extract with `ditto` (as Archive Utility does) to an app whose seal
 ## `codesign --verify --strict` accepts and whose program runs a recorded
-## case. The workflow `init` wrote is linted when actionlint is on PATH.
+## case, and whose Info.plist has the tag's version. The workflow is linted
+## when actionlint is on PATH.
 package_counter! : Str => Try({}, Str)
 package_counter! = |dir| {
 	app_dir = "${dir}/counter"
@@ -188,7 +190,11 @@ package_counter! = |dir| {
 	shown = "roc macos.roc ${Str.join_with(Bundle.package_args, " ")} (in counter/)"
 	var $digests = []
 	for _ in ["first", "second"] {
-		step!(Cmd.new("roc").args(["macos.roc"].concat(Bundle.package_args).map(OsStr.from_str)).cwd(Path.utf8(app_dir)).env("XDG_CACHE_HOME", OsStr.from_str(cache)), shown) ? |_| "${shown} failed against the bundle"
+		command = Bundle.package_env.fold(
+			Cmd.new("roc").args(["macos.roc"].concat(Bundle.package_args).map(OsStr.from_str)).cwd(Path.utf8(app_dir)).env("XDG_CACHE_HOME", OsStr.from_str(cache)),
+			|cmd, (name, value)| cmd.env(OsStr.from_str(name), OsStr.from_str(value)),
+		)
+		step!(command, shown) ? |_| "${shown} failed against the bundle"
 		digest = Cmd.new("shasum").args(["-a", "256", OsStr.from_str(zip)]).capture!() ? |_| "could not take the digest of ${zip}"
 		$digests = $digests.append(digest.split_on(" ").first() ?? "")
 	}
@@ -209,8 +215,10 @@ package_counter! = |dir| {
 	extracted_app = "${extracted}/counter.app"
 	step!(Cmd.new("codesign").args(["--verify", "--strict", "--verbose=2", OsStr.from_str(extracted_app)]), "codesign --verify --strict the extracted counter.app") ? |_| "the extracted counter.app's seal does not verify"
 	plist = Path.read_utf8!(Path.utf8("${extracted_app}/Contents/Info.plist")) ? |error| "could not read the extracted Info.plist: ${Str.inspect(error)}"
-	if !plist.contains("<key>CFBundleShortVersionString</key><string>1.0.0</string>") {
-		return Err("the packaged counter.app's Info.plist does not have the version --version gave")
+	for line in Bundle.package_plist {
+		if !plist.contains(line) {
+			return Err("the packaged counter.app's Info.plist does not hold ${line}, for the tag v1.0.0-rc.1")
+		}
 	}
 	steps = Path.read_utf8!(Path.utf8("${app_dir}/tests/${Bundle.package_case}.script")) ? |error| "could not read the case: ${Str.inspect(error)}"
 	expected = Path.read_utf8!(Path.utf8("${app_dir}/tests/${Bundle.package_case}.expected")) ? |error| "could not read the case: ${Str.inspect(error)}"
