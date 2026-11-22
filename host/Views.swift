@@ -49,6 +49,8 @@ extension Host {
             spacer.setContentHuggingPriority(.init(1), for: .horizontal)
             spacer.setContentHuggingPriority(.init(1), for: .vertical)
             view = spacer
+        case "ui-file-button", "ui-drop-zone":
+            view = makeFileView(name)  // Files.swift
         default:
             fatal("<\(name)> is not a native element this host knows")
         }
@@ -139,8 +141,10 @@ extension Host {
                     stack.insertArrangedSubview(v, at: i)
                 }
             }
-        case let button as NSButton where owner.name == "ui-button":
+        case let button as NSButton where owner.name == "ui-button" || owner.name == "ui-file-button":
             button.title = owner.textContent
+        case let zone as DropZoneView:
+            zone.label.stringValue = owner.textContent
         case let label as NSTextField where !label.isEditable:
             label.stringValue = owner.textContent
         default:

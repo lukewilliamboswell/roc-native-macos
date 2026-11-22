@@ -28,6 +28,8 @@ extension Host {
             }
         case 5, 6, 7, 20, 22: // subscriptions this host never fires
             break
+        case 11, 13, 14: // file read, digest and URL (Files.swift)
+            fileEffect(id: id, kind: kind, &r)
         case 16, 18: // media and storage change subscriptions: never fire
             _ = r.str()
         default:

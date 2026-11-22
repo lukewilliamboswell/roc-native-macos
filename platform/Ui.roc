@@ -18,11 +18,14 @@ import Engine exposing [Elem, Handler, HandlerOf, Signal]
 ## | `text_field` | `ui-text-field` | editable `NSTextField` |
 ## | `checkbox` | `ui-checkbox` | `NSButton` (checkbox) |
 ## | `slider` | `ui-slider` | `NSSlider` |
+## | `file_button` | `ui-file-button` | `NSButton` opening an `NSOpenPanel` |
+## | `drop_zone` | `ui-drop-zone` | an `NSView` registered for dragged file URLs |
 ## | `divider` | `ui-divider` | `NSBox` separator |
 ## | `spacer` | `ui-spacer` | flexible empty `NSView` |
 ##
 ## Events: a button's `click`, a field's or slider's `input` (the new text),
-## a checkbox's `change` (its new state) and a form's `submit`.
+## a checkbox's `change` (its new state), a form's `submit`, and the files a
+## file button's `change` or a drop zone's `drop` delivers.
 Ui := [].{
 
 	## Children laid out top to bottom.
@@ -106,6 +109,18 @@ Ui := [].{
 			[Engine.attr("min", min.to_str()), Engine.attr("max", max.to_str()), Engine.attr_s("value", v.map(|n| n.to_str())), Engine.on("input", h)],
 			[],
 		)
+
+	## A push button titled `t` that opens an open panel (several files may
+	## be chosen); `handler` receives the chosen files as handles, never
+	## their bytes, in a `change` event. Read them with `Engine.read_utf8`,
+	## `Engine.sha256` and the other file requests.
+	file_button : Str, Engine.FilesHandler(ctx) -> Elem(ctx)
+	file_button = |t, h| Engine.element("ui-file-button", [Engine.on_files(Change, h)], [Engine.text(t)])
+
+	## A bordered area showing `t` that takes files dropped from the Finder;
+	## `handler` receives them as handles in a `drop` event.
+	drop_zone : Str, Engine.FilesHandler(ctx) -> Elem(ctx)
+	drop_zone = |t, h| Engine.element("ui-drop-zone", [Engine.on_files(Drop, h)], [Engine.text(t)])
 
 	## A horizontal separator line.
 	divider : () -> Elem(ctx)

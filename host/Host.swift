@@ -27,6 +27,8 @@ final class Host: NSObject, NSTextFieldDelegate {
     var refs: [UInt32: Node] = [:]
     var templates: [UInt32: Template] = [:]
     var timers: [UInt32: Timer] = [:]
+    /// File reads, digests and saves in flight (Files.swift).
+    let files = Files()
     var byView: [ObjectIdentifier: Node] = [:]
     /// Nodes whose view needs its children or text refreshed after a batch.
     var dirty: [Node] = []
@@ -100,6 +102,9 @@ final class Host: NSObject, NSTextFieldDelegate {
     // MARK: The batch
 
     func apply(_ batch: [UInt8]) {
+        // File handles Roc released during the call are dropped once the
+        // batch, whose commands may still name them, has been applied.
+        defer { releaseFiles() }
         guard !batch.isEmpty else { return }
         applying = true
         var r = Reader(batch)
@@ -199,7 +204,7 @@ final class Host: NSObject, NSTextFieldDelegate {
             case 14: // CANCEL id
                 let id = r.u32()
                 trace("CANCEL id \(id)")
-                timers.removeValue(forKey: id)?.invalidate()
+                if !cancelFileJob(id) { timers.removeValue(forKey: id)?.invalidate() }
             case 15: // NAV mode url
                 _ = r.u8(); _ = r.str()
             case 16: // STORAGE op key [value]
@@ -215,6 +220,9 @@ final class Host: NSObject, NSTextFieldDelegate {
                 default: break
                 }
                 if [1, 3, 5].contains(op), let view = target?.view { window.makeFirstResponder(view) }
+            case 20: // SAVE token start len name
+                let token = r.u64(), start = r.u64(), len = r.u64(), name = r.str()
+                save(token: token, start: start, len: len, name: name)
             case 21: // PROP node prop value
                 let n = node(r.u32()), prop = r.u8(), value = r.str()
                 setAttr(n, prop == 2 ? "checked" : "value", value)
