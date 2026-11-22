@@ -15,9 +15,9 @@
 # Two Roc compilers have two jobs (roc-automation's model): `roc-stable`,
 # pinned below, runs the scripts under scripts/; `roc`, the latest Roc
 # nightly, checks, builds and tests the platform and the examples. `roc` is
-# never pinned: CI installs it with roc-lang/setup-roc, and a contributor
-# installs a current nightly (or a release such as 0.1.0 RC1) as `roc`, so the
-# environment expects it on PATH.
+# never pinned: CI installs it with roc-automation's setup-roc-nightly, and a
+# contributor installs a current nightly (or a release such as 0.1.0 RC1) as
+# `roc`, so the environment expects it on PATH.
 #
 # The host is Swift and links AppKit, so the environment is Apple silicon
 # macOS only, and Xcode's `swiftc` comes from the machine.

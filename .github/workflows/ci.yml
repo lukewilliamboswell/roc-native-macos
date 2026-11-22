@@ -52,13 +52,12 @@ jobs:
       # and so what the stub audit accepts: select the reviewed Xcode, the
       # same one release.yml builds with.
       - uses: ./.github/actions/setup-xcode
-      - uses: lukewilliamboswell/roc-automation/actions/setup-blueprint@6c796f299012707d2e9bad23fd6449ed93f1f475
+      - uses: lukewilliamboswell/roc-automation/actions/setup-blueprint@acc5efdcd929b38e665cd3ae6e694d1c4887f9c7
         with:
           cache: 'true'
           cache-workload: dev
-      - uses: roc-lang/setup-roc@dd81390553b0a1236aedb61cdd4c0ed7cf7eaec4
+      - uses: lukewilliamboswell/roc-automation/actions/setup-roc-nightly@acc5efdcd929b38e665cd3ae6e694d1c4887f9c7
         with:
-          version: nightly
           nightly-tag: ${{ needs.nightly.outputs.tag }}
       - name: Report the compilers and the Swift toolchain
         run: |

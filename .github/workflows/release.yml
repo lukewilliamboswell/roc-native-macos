@@ -110,10 +110,9 @@ jobs:
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup-xcode
-      - uses: lukewilliamboswell/roc-automation/actions/setup-blueprint@6c796f299012707d2e9bad23fd6449ed93f1f475
-      - uses: roc-lang/setup-roc@dd81390553b0a1236aedb61cdd4c0ed7cf7eaec4
+      - uses: lukewilliamboswell/roc-automation/actions/setup-blueprint@acc5efdcd929b38e665cd3ae6e694d1c4887f9c7
+      - uses: lukewilliamboswell/roc-automation/actions/setup-roc-nightly@acc5efdcd929b38e665cd3ae6e694d1c4887f9c7
         with:
-          version: nightly
           nightly-tag: ${{ needs.validate.outputs.nightly-tag }}
           cache: 'false'
       - name: Report the compilers and the Swift toolchain
@@ -152,7 +151,7 @@ jobs:
       # manifest to the bundle's final bytes.
       - id: sbom
         name: Bind the bundle's SBOM sidecars
-        uses: lukewilliamboswell/roc-automation/actions/sbom-sidecars@6c796f299012707d2e9bad23fd6449ed93f1f475
+        uses: lukewilliamboswell/roc-automation/actions/sbom-sidecars@acc5efdcd929b38e665cd3ae6e694d1c4887f9c7
         with:
           files: ${{ steps.bundle.outputs.file }}
           version: ${{ needs.validate.outputs.version }}
@@ -207,9 +206,8 @@ jobs:
           - { runner: ubuntu-24.04-arm, system: aarch64-linux }
           - { runner: windows-2025, system: x86_64-windows }
     steps:
-      - uses: roc-lang/setup-roc@dd81390553b0a1236aedb61cdd4c0ed7cf7eaec4
+      - uses: lukewilliamboswell/roc-automation/actions/setup-roc-nightly@acc5efdcd929b38e665cd3ae6e694d1c4887f9c7
         with:
-          version: nightly
           nightly-tag: ${{ needs.validate.outputs.nightly-tag }}
           cache: 'false'
       # Everything lives under the runner's temporary directory, whose path
@@ -312,10 +310,9 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
-      - uses: lukewilliamboswell/roc-automation/actions/setup-blueprint@6c796f299012707d2e9bad23fd6449ed93f1f475
-      - uses: roc-lang/setup-roc@dd81390553b0a1236aedb61cdd4c0ed7cf7eaec4
+      - uses: lukewilliamboswell/roc-automation/actions/setup-blueprint@acc5efdcd929b38e665cd3ae6e694d1c4887f9c7
+      - uses: lukewilliamboswell/roc-automation/actions/setup-roc-nightly@acc5efdcd929b38e665cd3ae6e694d1c4887f9c7
         with:
-          version: nightly
           nightly-tag: ${{ needs.validate.outputs.nightly-tag }}
           cache: 'false'
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
@@ -417,7 +414,7 @@ jobs:
           name: release-notes
           path: notes
       - id: publish
-        uses: lukewilliamboswell/roc-automation/actions/publish-release@6c796f299012707d2e9bad23fd6449ed93f1f475
+        uses: lukewilliamboswell/roc-automation/actions/publish-release@acc5efdcd929b38e665cd3ae6e694d1c4887f9c7
         with:
           version: ${{ needs.validate.outputs.version }}
           prerelease: ${{ needs.validate.outputs.prerelease }}
