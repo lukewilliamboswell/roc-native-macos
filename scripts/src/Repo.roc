@@ -27,7 +27,7 @@ Repo := [].{
 	## never edited or reformatted here; `tests/engine-modules.sha256` holds
 	## their digests.
 	engine_modules : List(Str)
-	engine_modules = ["Core", "Engine", "Web", "EntryRoutes", "Url", "ReadyIndex", "Spelling", "Layout", "TableCore", "View", "Seq", "MarkupAdvice", "SignalCore"].map(|name| "platform/${name}.roc")
+	engine_modules = ["Core", "Engine", "Web", "EntryRoutes", "Url", "ReadyIndex", "Spelling", "Layout", "TableCore", "View", "Seq", "MarkupAdvice", "SignalCore", "Worker", "WorkerCodec", "Wire", "Files", "Hosted", "Effects"].map(|name| "platform/${name}.roc")
 
 	## The tag of the `roc-stable` release Blueprint.roc fetches.
 	stable_tag : Str -> Try(Str, [NoTag])
@@ -141,7 +141,7 @@ expect Repo.selection(["--", "examples", "--update"]) == Ok({ stages: ["examples
 expect Repo.selection(["test", "build"]) == Ok({ stages: ["build", "test"], update: Bool.False })
 expect Repo.selection(["bogus"]) == Err(Unknown("bogus"))
 
-expect Repo.engine_modules.len() == 13
+expect Repo.engine_modules.len() == 19
 
 expect Repo.stable_tag("x = Fetch(\"roc-stable\", Recipes.roc_nightly(\"nightly-2026-11-14-a87808d\"))") == Ok("nightly-2026-11-14-a87808d")
 expect Repo.stable_tag("config = []") == Err(NoTag)
