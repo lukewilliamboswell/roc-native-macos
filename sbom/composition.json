@@ -209,6 +209,21 @@
       "input": "task:tooling-version",
       "component": "",
       "reason": "Development or release task; the bundle's contents are stated by its components and archive members"
+    },
+    {
+      "input": "program:roc-docs:aarch64-darwin",
+      "component": "",
+      "reason": "roc-automation's documentation renderer, which builds the manual; it does not build the bundle"
+    },
+    {
+      "input": "task:docs",
+      "component": "",
+      "reason": "Development or release task; the bundle's contents are stated by its components and archive members"
+    },
+    {
+      "input": "task:docs-path",
+      "component": "",
+      "reason": "Development or release task; the bundle's contents are stated by its components and archive members"
     }
   ],
   "imported_documents": [],

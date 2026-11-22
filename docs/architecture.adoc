@@ -99,36 +99,80 @@ engine writes one only when its text changes. The words come from one pure
 function per type in `Ui.roc`, each with `expect`s. The host parses each
 value into its AppKit setting; a word outside the grammar is a fatal error.
 
-[cols="1,2,3",options="header"]
-|===
-| Attribute | Grammar | AppKit
+`width`, `height` (every element)::
+`auto`, `fill`, `fill-at-least:N`, `fixed:N`, `at-least:N`, `at-most:N`, `between:MIN:MAX`. AppKit: host-owned constraints (`==`, `>=`, `<=`, required); `fill` sets content hugging to 1 on that side, and across a stack pins the side to the stack's, inside its padding.
 
-| `width`, `height` (every element) | `auto`, `fill`, `fill-at-least:N`, `fixed:N`, `at-least:N`, `at-most:N`, `between:MIN:MAX` | host-owned constraints (`==`, `>=`, `<=`, required); `fill` sets content hugging to 1 on that side, and across a stack pins the side to the stack's, inside its padding
-| `squeeze` (every element) | `standard`, `yield`, `resist` | horizontal compression resistance: the view's own, 250 or 999
-| `spacing` | `N` | `NSStackView.spacing`
-| `padding` | `TOP LEADING BOTTOM TRAILING` | `NSStackView.edgeInsets`; a surface's child insets
-| `align` (vertical stack, form) | `leading`, `center`, `trailing`, `fill` | `NSStackView.alignment` `.leading`, `.centerX`, `.trailing`; `fill` pins every child's width
-| `align` (horizontal stack, row) | `top`, `center`, `bottom`, `first-baseline`, `fill` | `.top`, `.centerY`, `.bottom`, `.firstBaseline`; `fill` pins every child's height
-| `distribution` | `gravity`, `fill`, `fill-equally`, `fill-proportionally`, `equal-spacing`, `equal-centering` | `NSStackView.distribution`; `gravity` is `.gravityAreas` unless the stack must fill (below)
-| `text-style` | `large-title`, `title1` … `title3`, `headline`, `subheadline`, `body`, `callout`, `footnote`, `caption1`, `caption2` | `NSFont.preferredFont(forTextStyle:)`; on a symbol, `NSImage.SymbolConfiguration(textStyle:scale:)`
-| `font-size` | `standard`, `N` | the style's point size, or `N`
-| `weight` | `standard`, `light`, `regular`, `medium`, `semibold`, `bold`, `heavy` | `standard` keeps the style's font; otherwise `NSFont.systemFont(ofSize:weight:)`
-| `design` | `proportional`, `monospaced-digits`, `monospaced` | `monospacedDigitSystemFont(ofSize:weight:)`, `monospacedSystemFont(ofSize:weight:)`
-| `overflow` | `clip`, `truncate-head`, `truncate-middle`, `truncate-tail`, `wrap`, `wrap:N` | `lineBreakMode` and `maximumNumberOfLines`; a wrapping `Label` has no intrinsic width and sets `preferredMaxLayoutWidth` to the width it is given
-| `text-align` | `natural`, `leading`, `center`, `trailing`, `justified` | `NSTextField.alignment`
-| `color`, `fill` | `label`, `secondary-label`, … `clear`, or `adaptive:RRGGBB:RRGGBB` | `NSColor.labelColor`, `.secondaryLabelColor`, `.controlAccentColor`, `.systemRed`, …; `adaptive` is `NSColor(name:dynamicProvider:)` choosing between two sRGB colours by `bestMatch(from: [.aqua, .darkAqua])`
-| `border` | `none`, `line:W:COLOUR`, `dashed:W:COLOUR` | stroked by the surface
-| `radius` | `N` | the surface's corner radius
-| `bezel` (button) | `push`, `flexible-push`, `toolbar`, `accessory-bar`, `badge`, `circular`, `small-square`, `borderless` | `NSButton.bezelStyle`; `borderless` is `isBordered = false`
-| `bezel` (text field) | `square`, `rounded` | `NSTextField.bezelStyle`
-| `role` | `normal`, `default`, `cancel`, `destructive` | `keyEquivalent` Return or Escape; `hasDestructiveAction`
-| `icon` | `none`, `symbol:NAME` | `NSButton.image`, an SF Symbol
-| `title-display` | `visible`, `hidden` | `imagePosition` (`.imageOnly` hides the title, which still names the control to VoiceOver); reapplied after a title, bezel or size change, since attributes arrive in any order
-| `size` | `mini`, `small`, `regular`, `large` | `NSControl.controlSize`, with the font `NSFont.systemFontSize(for:)`
-| `enabled` | `true`, `false` | `NSControl.isEnabled`
-| `scale` (symbol) | `small`, `medium`, `large` | `NSImage.SymbolScale`
-| `opening-height` (scroll, list) | `N` | a height preference (priority 300) until the window has been sized for it, then 49
-|===
+`squeeze` (every element)::
+`standard`, `yield`, `resist`. AppKit: horizontal compression resistance: the view's own, 250 or 999.
+
+`spacing`::
+`N`. AppKit: `NSStackView.spacing`.
+
+`padding`::
+`TOP LEADING BOTTOM TRAILING`. AppKit: `NSStackView.edgeInsets`; a surface's child insets.
+
+`align` (vertical stack, form)::
+`leading`, `center`, `trailing`, `fill`. AppKit: `NSStackView.alignment` `.leading`, `.centerX`, `.trailing`; `fill` pins every child's width.
+
+`align` (horizontal stack, row)::
+`top`, `center`, `bottom`, `first-baseline`, `fill`. AppKit: `.top`, `.centerY`, `.bottom`, `.firstBaseline`; `fill` pins every child's height.
+
+`distribution`::
+`gravity`, `fill`, `fill-equally`, `fill-proportionally`, `equal-spacing`, `equal-centering`. AppKit: `NSStackView.distribution`; `gravity` is `.gravityAreas` unless the stack must fill (below).
+
+`text-style`::
+`large-title`, `title1` … `title3`, `headline`, `subheadline`, `body`, `callout`, `footnote`, `caption1`, `caption2`. AppKit: `NSFont.preferredFont(forTextStyle:)`; on a symbol, `NSImage.SymbolConfiguration(textStyle:scale:)`.
+
+`font-size`::
+`standard`, `N`. AppKit: the style's point size, or `N`.
+
+`weight`::
+`standard`, `light`, `regular`, `medium`, `semibold`, `bold`, `heavy`. AppKit: `standard` keeps the style's font; otherwise `NSFont.systemFont(ofSize:weight:)`.
+
+`design`::
+`proportional`, `monospaced-digits`, `monospaced`. AppKit: `monospacedDigitSystemFont(ofSize:weight:)`, `monospacedSystemFont(ofSize:weight:)`.
+
+`overflow`::
+`clip`, `truncate-head`, `truncate-middle`, `truncate-tail`, `wrap`, `wrap:N`. AppKit: `lineBreakMode` and `maximumNumberOfLines`; a wrapping `Label` has no intrinsic width and sets `preferredMaxLayoutWidth` to the width it is given.
+
+`text-align`::
+`natural`, `leading`, `center`, `trailing`, `justified`. AppKit: `NSTextField.alignment`.
+
+`color`, `fill`::
+`label`, `secondary-label`, … `clear`, or `adaptive:RRGGBB:RRGGBB`. AppKit: `NSColor.labelColor`, `.secondaryLabelColor`, `.controlAccentColor`, `.systemRed`, …; `adaptive` is `NSColor(name:dynamicProvider:)` choosing between two sRGB colours by `bestMatch(from: [.aqua, .darkAqua])`.
+
+`border`::
+`none`, `line:W:COLOUR`, `dashed:W:COLOUR`. AppKit: stroked by the surface.
+
+`radius`::
+`N`. AppKit: the surface's corner radius.
+
+`bezel` (button)::
+`push`, `flexible-push`, `toolbar`, `accessory-bar`, `badge`, `circular`, `small-square`, `borderless`. AppKit: `NSButton.bezelStyle`; `borderless` is `isBordered = false`.
+
+`bezel` (text field)::
+`square`, `rounded`. AppKit: `NSTextField.bezelStyle`.
+
+`role`::
+`normal`, `default`, `cancel`, `destructive`. AppKit: `keyEquivalent` Return or Escape; `hasDestructiveAction`.
+
+`icon`::
+`none`, `symbol:NAME`. AppKit: `NSButton.image`, an SF Symbol.
+
+`title-display`::
+`visible`, `hidden`. AppKit: `imagePosition` (`.imageOnly` hides the title, which still names the control to VoiceOver); reapplied after a title, bezel or size change, since attributes arrive in any order.
+
+`size`::
+`mini`, `small`, `regular`, `large`. AppKit: `NSControl.controlSize`, with the font `NSFont.systemFontSize(for:)`.
+
+`enabled`::
+`true`, `false`. AppKit: `NSControl.isEnabled`.
+
+`scale` (symbol)::
+`small`, `medium`, `large`. AppKit: `NSImage.SymbolScale`.
+
+`opening-height` (scroll, list)::
+`N`. AppKit: a height preference (priority 300) until the window has been sized for it, then 49.
 
 A surface (`Surface`, for `ui-box` and `ui-drop-zone`) draws its fill and
 border in `draw(_:)` with `NSColor`s, where AppKit has set the view's

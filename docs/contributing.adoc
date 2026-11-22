@@ -85,9 +85,15 @@ xref:apps.adoc#the-examples[The examples].
 | `blueprint run test` | `roc test` on the platform root and every example
 | `blueprint run examples` | every example's recorded scripted runs; `examples -- --update` records new output
 | `blueprint run bundle` | the platform bundle, in `build/platform/` (see xref:contributing.adoc#the-bundle[The bundle])
-| `blueprint run release` | the release steps after the bundle: `tool`, `archive`, `test` and `notes` (see xref:contributing.adoc#releasing[Releasing])
+| `blueprint run release` | the release steps after the bundle: `tool`, `archive`, `test`, `notes` and `bump` (see xref:contributing.adoc#releasing[Releasing])
+| `blueprint run docs` | this manual as a website, Markdown and `roc-native-macos.pdf`, in `.docs-out/`, with roc-automation's roc-docs renderer
 | `blueprint run tooling-version` | the scripts' compiler version
 |===
+
+`.github/workflows/docs.yml` runs `blueprint run docs` on every pull request
+and deploys `.docs-out/site` to GitHub Pages from `main`. The renderer takes
+a subset of AsciiDoc and refuses what it cannot render, such as a table too
+wide for the PDF page, so a manual change is checked by building it.
 
 === Two compilers
 

@@ -74,6 +74,16 @@ config = [
 			Expect(["roc", "bash", "env", "swiftc", "python3", "shasum", "git", "zip", "unzip", "xcodebuild"]),
 		],
 	),
+	# The manual (docs/index.adoc) as a website, static Markdown and a PDF,
+	# rendered by roc-automation's released roc-docs, locked by digest. It
+	# needs no compiler; docs.yml publishes .docs-out/site to GitHub Pages.
+	Environment(
+		"docs",
+		[
+			Programs([Fetch("roc-docs", Recipes.file("https://github.com/lukewilliamboswell/roc-automation/releases/download/tools-0.12.0/roc-docs-{system}"))]),
+			Expect(["sh", "realpath"]),
+		],
+	),
 	Shell("default", [Use("dev")]),
 	# The per-pull-request gate: compiler pins, formatting, the scripts'
 	# tests, the macos.roc tool's tests, the build, `roc test`, every
@@ -102,4 +112,8 @@ config = [
 	Task("release", [Use("dev"), Run(["scripts/release.roc", "--"])]),
 	# The tooling compiler, as a log records it.
 	Task("tooling-version", [Use("dev"), Run(["roc-stable", "version"])]),
+	# The manual, into .docs-out/: `site/` and roc-native-macos.pdf.
+	Task("docs", [Use("docs"), Run(["roc-docs", "build", "--workspace", ".", "--pdf-filename", "roc-native-macos.pdf", "--site-url", "https://lukewilliamboswell.github.io/roc-native-macos/"])]),
+	# The renderer's resolved path, for actions/blueprint-tool.
+	Task("docs-path", [Use("docs"), Run(["sh", "-c", "realpath \"$(command -v roc-docs)\""])]),
 ]

@@ -15,6 +15,14 @@
 		(size 4890656)
 		(system "aarch64-darwin")
 		(urls ("https://github.com/lukewilliamboswell/roc-automation/releases/download/tools-0.12.0/roc-policy-aarch64-darwin"))
+		(witness "https://api.github.com/repos/lukewilliamboswell/roc-automation/releases/tags/tools-0.12.0")) (
+		(name "roc-docs")
+		(obtained Both)
+		(served ("release-assets.githubusercontent.com"))
+		(sha256 "84943941fe8571bce0426471ffc0cce4fb7bcdf8f35f399ae18c46c7130c600b")
+		(size 30391792)
+		(system "aarch64-darwin")
+		(urls ("https://github.com/lukewilliamboswell/roc-automation/releases/download/tools-0.12.0/roc-docs-aarch64-darwin"))
 		(witness "https://api.github.com/repos/lukewilliamboswell/roc-automation/releases/tags/tools-0.12.0"))))
 	(format (
 		(major 2)
