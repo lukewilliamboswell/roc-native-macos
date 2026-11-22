@@ -165,7 +165,7 @@ extern_decl = |table, name, symbol, args, ret| {
 		RocRecord(_) => record_name(name)
 		_ => c_type(table, name, ret)?
 	}
-	params = if $params.is_empty() "void" else Str.join_with($params, ", ")
+	params = if ($params.is_empty()) "void" else Str.join_with($params, ", ")
 	Ok("${ret_c} ${symbol}(${params});\n")
 }
 
@@ -356,7 +356,7 @@ handle_box = |table, name, element| {
 list_header_bytes : Handles -> U64
 list_header_bytes = |h| {
 	required : U64
-	required = if h.elements_refcounted 16 else 8
+	required = if (h.elements_refcounted) 16 else 8
 	required.max(h.element_alignment)
 }
 
@@ -364,11 +364,11 @@ list_header_bytes = |h| {
 ## padded to the payload alignment (ZigGlue's `allocateBox` with no
 ## refcounted payload).
 box_header_bytes : Handles -> U64
-box_header_bytes = |h| 8.U64.max(h.payload_alignment)
+box_header_bytes = |h| (8.U64).max(h.payload_alignment)
 
 ## The alignment Roc frees a box's allocation with.
 box_alignment : Handles -> U64
-box_alignment = |h| 8.U64.max(h.payload_alignment)
+box_alignment = |h| (8.U64).max(h.payload_alignment)
 
 ## One box's header and payload rounded up to its alignment: the stride of a
 ## host table of them.
@@ -385,7 +385,7 @@ handle_asserts : Handles -> Str
 handle_asserts = |h| {
 	n = h.inner_name
 	upper = "ROC_BOX_${n}"
-	refcounted = if h.elements_refcounted "1" else "0"
+	refcounted = if (h.elements_refcounted) "1" else "0"
 	\\/// `List(Box(${n}))`, a list of host-handle boxes. From the compiler's
 	\\/// committed layouts: an element is a box pointer (${h.element_size.to_str()} bytes, aligned
 	\\/// ${h.element_alignment.to_str()}; refcounted: ${refcounted}), and the payload, ${n}, is ${h.payload_size.to_str()} bytes aligned
@@ -412,7 +412,7 @@ handle_helpers = |h| {
 	n = h.inner_name
 	t = h.inner_swift
 	upper = "ROC_BOX_${n}"
-	count_word = if h.elements_refcounted
+	count_word = if (h.elements_refcounted)
 		\\        // Elements are refcounted, so Roc keeps the element count in
 		\\        // the word before the refcount.
 		\\        (data - 2 * MemoryLayout<Int>.size).storeBytes(of: boxes.count, as: Int.self)

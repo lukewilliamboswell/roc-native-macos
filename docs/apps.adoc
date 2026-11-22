@@ -505,7 +505,7 @@ tags or to a reviewer's approval:
 |===
 | Secret | What it is
 
-| `MACOS_SIGN_P12_BASE64` | the certificate's `.p12` file, base64-encoded: `base64 -i developer-id.p12 \| pbcopy`
+| `MACOS_SIGN_P12_BASE64` | the certificate's `.p12` file, base64-encoded, as `base64 -i developer-id.p12` prints it
 | `MACOS_SIGN_P12_PASSWORD` | its password
 | `MACOS_NOTARY_ISSUER` | the API key's Issuer ID
 | `MACOS_NOTARY_KEY_ID` | the API key's Key ID

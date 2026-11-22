@@ -24,7 +24,7 @@ stale without putting any load on the gate.
 
 [source,sh]
 ----
-scripts/build.sh --platform      # the host, once
+blueprint run build -- --platform   # the host, once
 bench/grid/run.sh                # N = 10 32 100 316 1000
 bench/grid/run.sh 50 70          # other sizes
 bench/grid/run.sh --smoke        # what the gate runs

@@ -2,7 +2,7 @@ name: Select the pinned Xcode
 description: >-
   Select the Xcode, and so the Swift compiler, that builds the Swift host, and
   fail unless it is exactly the reviewed build. ci.yml and release.yml both use
-  it, so the stub audit (scripts/build_macos_stubs.py --audit) sees the same
+  it, so the stub audit (scripts/build.roc) sees the same
   Swift symbol references in every run. The macos-15 image's default Xcode
   (16.4, Swift 6.1) references Swift runtime symbols that Swift 6.2 inlines.
 

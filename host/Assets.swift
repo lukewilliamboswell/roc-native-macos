@@ -7,7 +7,7 @@ import AppKit
 /// An app's assets are the files of the `assets/` directory beside its
 /// `main.roc`. `macos.roc build` copies them into
 /// `<name>.app/Contents/Resources/assets/`, and beside the bare program it
-/// builds (`.macos/assets/`); `scripts/build.sh` leaves a repository
+/// builds (`.macos/assets/`); `scripts/build.roc` leaves a repository
 /// example's program beside its own. The host looks, in order, in
 ///
 /// 1. `ROC_ASSETS`, when it is set: a program run away from its assets (the

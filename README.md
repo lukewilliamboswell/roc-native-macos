@@ -76,6 +76,8 @@ view = |count|
 [Build an app](docs/apps.adoc) covers the tool, writing an app, testing it
 with recorded runs, and shipping it. [The `Ui` reference](docs/ui.adoc) lists
 every builder with its signature, what it draws and the events it sends.
+Both are chapters of [the manual](https://lukewilliamboswell.github.io/roc-native-macos/)
+([PDF](https://lukewilliamboswell.github.io/roc-native-macos/roc-native-macos.pdf)).
 
 ## Examples
 

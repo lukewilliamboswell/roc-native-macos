@@ -15,7 +15,7 @@ import cli.Stdout
 import src/Demo
 
 ## Record the README's animated tiles, `docs/images/<example>.gif`, from the
-## built examples (`scripts/build.sh` first):
+## built examples (`blueprint run build` first):
 ##
 ##     roc-stable scripts/record_demos.roc                  # every example with a demo.script
 ##     roc-stable scripts/record_demos.roc -- counter todos # the named ones
@@ -76,7 +76,7 @@ record! : Str => Try({ bytes : U64, frames : U64, ms : U64 }, Str)
 record! = |name| {
 	exe = "examples/${name}/${name}"
 	if !(Path.exists!(Path.utf8(exe)) ?? Bool.False) {
-		return Err("${exe} is not built: run scripts/build.sh first")
+		return Err("${exe} is not built: run `blueprint run build` first")
 	}
 	text = Path.read_utf8!(Path.utf8("examples/${name}/demo.script")) ? |error| "could not read its demo.script: ${Str.inspect(error)}"
 	steps = Demo.steps(text) ? |problem| "its demo.script is not usable: ${Str.inspect(problem)} (it must end with quit)"

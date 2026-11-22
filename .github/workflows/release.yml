@@ -8,8 +8,10 @@ name: Release
 # A pull request that changes what a release is made of runs the same build
 # and tests as a dry run, under 0.0.1-dryrun, and publishes nothing.
 #
-#   validate   the version, the default branch, an unused tag, the notes
-#   build      macos-15: the whole check gate, then the bundle from the very
+#   validate   the version, the default branch, an unused tag, the notes,
+#              the nightly, the latest final release (workflow -- validate)
+#   build      macos-15: the version against that release (roc bump), the
+#              whole check gate, then the bundle from the very
 #              host the gate built and tested, the macos.roc tool, the
 #              examples archive, every archived example built against the
 #              served bundle and run, a counter created, built and tested with
@@ -54,51 +56,37 @@ jobs:
   # job. The version is checked before anything is built.
   validate:
     name: Validate the release
-    runs-on: ubuntu-24.04
-    timeout-minutes: 5
+    runs-on: macos-15
+    timeout-minutes: 10
     permissions:
       contents: read
     outputs:
-      nightly-tag: ${{ steps.nightly.outputs.tag }}
-      version: ${{ steps.version.outputs.version }}
-      prerelease: ${{ steps.version.outputs.prerelease }}
+      nightly-tag: ${{ steps.validate.outputs.nightly-tag }}
+      version: ${{ steps.validate.outputs.version }}
+      prerelease: ${{ steps.validate.outputs.prerelease }}
+      latest-tag: ${{ steps.validate.outputs.latest-tag }}
+      latest-url: ${{ steps.validate.outputs.latest-url }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
-      - id: nightly
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: echo "tag=$(gh api repos/roc-lang/nightlies/releases/latest --jq .tag_name)" >> "$GITHUB_OUTPUT"
-      - id: version
+      - uses: lukewilliamboswell/roc-automation/actions/setup-blueprint@acc5efdcd929b38e665cd3ae6e694d1c4887f9c7
+      # scripts/workflow.roc: the version (a dispatch from the default branch,
+      # an unused tag, written notes, SemVer), the nightly for the whole run,
+      # and the latest final release with its bundle URL, which `roc bump`
+      # compares the API with.
+      - id: validate
         env:
           EVENT: ${{ github.event_name }}
           REQUESTED: ${{ inputs.version }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
           GH_TOKEN: ${{ github.token }}
-        run: |
-          if [ "$EVENT" = workflow_dispatch ]; then
-            version="$REQUESTED"
-            if [ "$GITHUB_REF_TYPE" != branch ] || [ "$GITHUB_REF_NAME" != "$DEFAULT_BRANCH" ]; then
-              echo "::error::release from $DEFAULT_BRANCH only, not $GITHUB_REF"; exit 1
-            fi
-            if gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$version" >/dev/null 2>&1; then
-              echo "::error::tag $version already exists"; exit 1
-            fi
-            test -s "docs/releases/$version.adoc" || { echo "::error::write docs/releases/$version.adoc first"; exit 1; }
-          else
-            version=0.0.1-dryrun
-          fi
-          echo "$version" | grep -Eq '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?$' \
-            || { echo "::error::version must be SemVer without a v prefix: $version"; exit 1; }
-          case "$version" in *-*) prerelease=true ;; *) prerelease=false ;; esac
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-          echo "prerelease=$prerelease" >> "$GITHUB_OUTPUT"
+        run: blueprint run workflow -- validate
 
   # Build once. The check gate builds the Swift host and runs every example
   # against it; the bundle is then made from that same libhost.a (`--prebuilt`),
-  # because a rebuilt host is not byte-identical and would name a different
-  # bundle. Everything later in the run tests and publishes these files.
+  # so the bytes bundled are the bytes tested. Everything later in the run
+  # tests and publishes these files.
   build:
     name: Build and test the release on macOS
     needs: validate
@@ -106,22 +94,30 @@ jobs:
     timeout-minutes: 75
     permissions:
       contents: read
+    outputs:
+      bundle: ${{ steps.bundle.outputs.name }}
+      tool: ${{ steps.bundle.outputs.tool-name }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup-xcode
-      - uses: lukewilliamboswell/roc-automation/actions/setup-blueprint@6c796f299012707d2e9bad23fd6449ed93f1f475
-      - uses: roc-lang/setup-roc@dd81390553b0a1236aedb61cdd4c0ed7cf7eaec4
+      - uses: lukewilliamboswell/roc-automation/actions/setup-blueprint@acc5efdcd929b38e665cd3ae6e694d1c4887f9c7
+      - uses: lukewilliamboswell/roc-automation/actions/setup-roc-nightly@acc5efdcd929b38e665cd3ae6e694d1c4887f9c7
         with:
-          version: nightly
           nightly-tag: ${{ needs.validate.outputs.nightly-tag }}
           cache: 'false'
       - name: Report the compilers and the Swift toolchain
-        run: |
-          roc version
-          blueprint run tooling-version
-          swiftc --version
+        run: blueprint run release -- versions
+      # A version understating the API change stops here: `roc bump --expect`
+      # against the latest final release (scripts/release.roc -- bump). A dry
+      # run reports the bump the change needs.
+      - name: Check the version against the latest release with roc bump
+        env:
+          VERSION: ${{ needs.validate.outputs.version }}
+          LATEST: ${{ needs.validate.outputs.latest-tag }}
+          LATEST_URL: ${{ needs.validate.outputs.latest-url }}
+        run: blueprint run release -- bump "$VERSION" "$LATEST" "$LATEST_URL"
       - name: Check the source (the whole gate, which builds and tests the host)
         run: blueprint run check
       - name: Bundle the host the gate tested
@@ -137,41 +133,56 @@ jobs:
       - name: Build every archived example against the served bundle and run its cases, then init, build and test a counter with macos.roc
         run: blueprint run release -- test build/release
       - id: bundle
-        name: Name the bundle the release publishes
-        run: |
-          # The platform's bundle; macos-<hash>.tar.zst is the tool's.
-          bundles=()
-          for file in build/release/*.tar.zst; do
-            case "$(basename "$file")" in macos-*) ;; *) bundles+=("$file") ;; esac
-          done
-          test "${#bundles[@]}" -eq 1
-          echo "file=${bundles[0]}" >> "$GITHUB_OUTPUT"
-          echo "name=$(basename "${bundles[0]}")" >> "$GITHUB_OUTPUT"
-      # sbom/composition.json says what the bundle holds and why; the tool
-      # checks it against Blueprint.roc and Blueprint.lock, lists every member
-      # of the archive, and binds SPDX and CycloneDX documents and an evidence
-      # manifest to the bundle's final bytes.
+        name: Name the files the release publishes
+        env:
+          VERSION: ${{ needs.validate.outputs.version }}
+        run: blueprint run workflow -- files "$VERSION" build/release
+      # Each composition under sbom/ says what its files hold and why; the
+      # tool checks it against Blueprint.roc and Blueprint.lock, lists every
+      # member of a .tar.zst, and binds SPDX 3, SPDX 2.3 and CycloneDX
+      # documents and an evidence manifest to each file's final bytes.
       - id: sbom
         name: Bind the bundle's SBOM sidecars
-        uses: lukewilliamboswell/roc-automation/actions/sbom-sidecars@6c796f299012707d2e9bad23fd6449ed93f1f475
+        uses: lukewilliamboswell/roc-automation/actions/sbom-sidecars@acc5efdcd929b38e665cd3ae6e694d1c4887f9c7
         with:
           files: ${{ steps.bundle.outputs.file }}
           version: ${{ needs.validate.outputs.version }}
           target: source
           author: 'Person: Luke Boswell'
+          spdx-2-3: 'true'
+          url-base: https://github.com/${{ github.repository }}/releases/download/${{ needs.validate.outputs.version }}
+      - id: examples-sbom
+        name: Bind the examples archive's SBOM sidecars
+        uses: lukewilliamboswell/roc-automation/actions/sbom-sidecars@acc5efdcd929b38e665cd3ae6e694d1c4887f9c7
+        with:
+          files: build/release/roc-native-macos-examples-${{ needs.validate.outputs.version }}.zip
+          composition: sbom/examples.json
+          version: ${{ needs.validate.outputs.version }}
+          target: source
+          author: 'Person: Luke Boswell'
+          spdx-2-3: 'true'
+          url-base: https://github.com/${{ github.repository }}/releases/download/${{ needs.validate.outputs.version }}
+      - id: tool-sbom
+        name: Bind the macos.roc tool's SBOM sidecars
+        uses: lukewilliamboswell/roc-automation/actions/sbom-sidecars@acc5efdcd929b38e665cd3ae6e694d1c4887f9c7
+        with:
+          files: |
+            ${{ steps.bundle.outputs.tool }}
+            build/release/macos.roc
+          composition: sbom/tool.json
+          version: ${{ needs.validate.outputs.version }}
+          target: source
+          author: 'Person: Luke Boswell'
+          spdx-2-3: 'true'
           url-base: https://github.com/${{ github.repository }}/releases/download/${{ needs.validate.outputs.version }}
       - name: Render the release notes
         env:
           VERSION: ${{ needs.validate.outputs.version }}
-          BUNDLE: ${{ steps.bundle.outputs.name }}
-        run: |
-          mkdir -p build/release-notes
-          blueprint run release -- notes "$VERSION" build/release build/release-notes/release-notes.md
-          {
-            echo "Platform URL: \`https://github.com/$GITHUB_REPOSITORY/releases/download/$VERSION/$BUNDLE\`"
-            echo
-            cat build/release-notes/release-notes.md
-          } >> "$GITHUB_STEP_SUMMARY"
+        run: blueprint run release -- notes "$VERSION" build/release build/release-notes/release-notes.md
+      - name: Summarise the release
+        env:
+          VERSION: ${{ needs.validate.outputs.version }}
+        run: blueprint run workflow -- summary "$VERSION" build/release build/release-notes/release-notes.md
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: release-candidate
@@ -208,9 +219,8 @@ jobs:
           - { runner: ubuntu-24.04-arm, system: aarch64-linux }
           - { runner: windows-2025, system: x86_64-windows }
     steps:
-      - uses: roc-lang/setup-roc@dd81390553b0a1236aedb61cdd4c0ed7cf7eaec4
+      - uses: lukewilliamboswell/roc-automation/actions/setup-roc-nightly@acc5efdcd929b38e665cd3ae6e694d1c4887f9c7
         with:
-          version: nightly
           nightly-tag: ${{ needs.validate.outputs.nightly-tag }}
           cache: 'false'
       # Everything lives under the runner's temporary directory, whose path
@@ -330,10 +340,9 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
-      - uses: lukewilliamboswell/roc-automation/actions/setup-blueprint@6c796f299012707d2e9bad23fd6449ed93f1f475
-      - uses: roc-lang/setup-roc@dd81390553b0a1236aedb61cdd4c0ed7cf7eaec4
+      - uses: lukewilliamboswell/roc-automation/actions/setup-blueprint@acc5efdcd929b38e665cd3ae6e694d1c4887f9c7
+      - uses: lukewilliamboswell/roc-automation/actions/setup-roc-nightly@acc5efdcd929b38e665cd3ae6e694d1c4887f9c7
         with:
-          version: nightly
           nightly-tag: ${{ needs.validate.outputs.nightly-tag }}
           cache: 'false'
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
@@ -345,13 +354,7 @@ jobs:
           pattern: cross-*
           path: build/cross
       - name: Run every recorded case against each system's apps
-        run: |
-          set -euo pipefail
-          for system in x86_64-linux aarch64-linux x86_64-windows; do
-            echo "== apps cross-compiled on $system"
-            chmod +x build/cross/cross-$system/* build/cross/cross-$system/*.app/Contents/MacOS/*
-            blueprint run release -- test build/release --binaries "build/cross/cross-$system"
-          done
+        run: blueprint run release -- cross-run build/release build/cross
 
   attest:
     name: Attest the tested files
@@ -373,19 +376,26 @@ jobs:
       - uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6
         with:
           subject-path: candidate/*
-      - id: sbom-file
-        name: Resolve the bundle's CycloneDX SBOM
-        run: |
-          files=(candidate/*.tar.zst.cdx.json)
-          test "${#files[@]}" -eq 1
-          echo "path=${files[0]}" >> "$GITHUB_OUTPUT"
-          echo "bundle=${files[0]%.cdx.json}" >> "$GITHUB_OUTPUT"
-      # The platform's bundle only; the tool's has no SBOM of its own.
       - name: Attest the bundle's SBOM
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6
         with:
-          subject-path: ${{ steps.sbom-file.outputs.bundle }}
-          sbom-path: ${{ steps.sbom-file.outputs.path }}
+          subject-path: candidate/${{ needs.build.outputs.bundle }}
+          sbom-path: candidate/${{ needs.build.outputs.bundle }}.cdx.json
+      - name: Attest the examples archive's SBOM
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6
+        with:
+          subject-path: candidate/roc-native-macos-examples-${{ needs.validate.outputs.version }}.zip
+          sbom-path: candidate/roc-native-macos-examples-${{ needs.validate.outputs.version }}.zip.cdx.json
+      - name: Attest the tool package's SBOM
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6
+        with:
+          subject-path: candidate/${{ needs.build.outputs.tool }}
+          sbom-path: candidate/${{ needs.build.outputs.tool }}.cdx.json
+      - name: Attest macos.roc's SBOM
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6
+        with:
+          subject-path: candidate/macos.roc
+          sbom-path: candidate/macos.roc.cdx.json
       # Exported beside the files, so provenance can be checked offline.
       - name: Export the attestations
         env:
@@ -435,7 +445,7 @@ jobs:
           name: release-notes
           path: notes
       - id: publish
-        uses: lukewilliamboswell/roc-automation/actions/publish-release@6c796f299012707d2e9bad23fd6449ed93f1f475
+        uses: lukewilliamboswell/roc-automation/actions/publish-release@acc5efdcd929b38e665cd3ae6e694d1c4887f9c7
         with:
           version: ${{ needs.validate.outputs.version }}
           prerelease: ${{ needs.validate.outputs.prerelease }}

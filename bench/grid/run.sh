@@ -11,7 +11,7 @@
 # pointer crosses the grid's diagonal in 2N moves (at least 200, at most
 # 2000), one every 10 ms, then waits for the trail to cool and prints the
 # stats. A run that has not finished after TIMEOUT seconds (120) is killed.
-# The platform must be built first (scripts/build.sh --platform).
+# The platform must be built first (blueprint run build -- --platform).
 set -euo pipefail
 
 ROC="${ROC:-roc}"
