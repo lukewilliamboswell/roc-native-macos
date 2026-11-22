@@ -249,7 +249,7 @@ same one CI runs on `macos-15`. Its stages, in order:
 | Stage | Checks
 
 | `pins` | only the scripts pin a compiler, and they pin `roc-stable`
-| `engine` | the engine modules match their roc-signals digests (`tests/engine-modules.sha256`)
+| `engine` | the engine modules are roc-signals' plus the patch series: `patches/roc-signals/README.adoc` lists every `*.patch` there, in order, and reverse-applying them to copies of the modules gives back the digests `tests/engine-modules.sha256` records (xref:contributing.adoc#engine-patches[Engine patches])
 | `fmt` | `roc fmt --check` over the platform, glue, examples and tool (the not-yet-formatted files are skipped, and each skip prints), and `roc-stable fmt --check` over the scripts
 | `scripts` | the scripts' `expect` tests
 | `tool` | `cli/Bundle.roc` is current (`tool --update` writes it), `scripts/src/Recorded.roc` copies `cli/Recorded.roc`, and `roc test cli/main.roc`
@@ -260,6 +260,22 @@ same one CI runs on `macos-15`. Its stages, in order:
 |===
 
 `check -- STAGE...` runs only the named stages.
+
+[#engine-patches]
+== Engine patches
+
+The engine modules are roc-signals' at the revision
+xref:architecture.adoc#engine-revision[Engine] names, plus the patches in
+`patches/roc-signals/`. Its `README.adoc` is the series, one line per patch
+with its upstream status, and says how to make a patch. Each patch carries
+a header: what it changes, why, what it measured before and after, and
+`Upstream: not yet sent` or the pull request's link. When a patch lands
+upstream and a newer engine is taken, the patch is dropped.
+
+A cost that turns out to be the compiler's is not patched here. It gets a
+standalone reproducer and a write-up in `patches/roc-compiler/`, listed in
+its `README.adoc` for reporting to roc-lang/roc; an engine patch that only
+works around it says so in its header.
 
 [#releasing]
 == Releasing

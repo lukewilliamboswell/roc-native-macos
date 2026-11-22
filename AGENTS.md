@@ -16,16 +16,35 @@ least one recorded case: add `tests/examples/<example>/<case>.script` and run
 `blueprint run examples -- --update`. Review the `.expected` diff before you
 commit it.
 
-## The engine is a verbatim copy
+## The engine is roc-signals plus a recorded patch series
 
 `platform/{Core,Engine,Web,EntryRoutes,Url,ReadyIndex,Spelling,Layout,TableCore,View,Seq,MarkupAdvice,SignalCore}.roc`
-are byte-identical copies of roc-signals' `platform/` at the revision
-`docs/architecture.adoc` names ("Engine"). Never edit or reformat them here, and never run `roc fmt` on
-them. A change the engine needs is made in roc-signals first. To take a newer
-engine, copy all of these modules from one roc-signals commit, regenerate
-`tests/engine-modules.sha256` with `shasum -a 256 <the modules>`, and update the
-revision in `docs/architecture.adoc` in the same commit. The native vocabulary belongs in
-`platform/Ui.roc`, and the root in `platform/main.roc`.
+are copies of roc-signals' `platform/` at the revision `docs/architecture.adoc`
+names ("Engine"), plus the patches in `patches/roc-signals/`, applied in the
+order its `README.adoc` lists them. `tests/engine-modules.sha256` records the
+pristine roc-signals digests, and the `engine` stage reverse-applies the series
+to copies of the modules and requires those digests back, so an edit outside a
+patch fails the gate.
+
+- Change an engine module only through a patch: make the change in the
+  engine's own style, keep it minimal and behaviour-preserving, then add
+  `patches/roc-signals/NNNN-name.patch` (a `git diff` against the files after
+  the earlier patches, under a header saying what, why, the measurements
+  before and after, and `Upstream: not yet sent` or the pull request's link)
+  and its line in the README's list. Patch here only what this platform needs
+  before roc-signals takes it; anything else is made in roc-signals first.
+- Never reformat these modules or run `roc fmt` on them (only
+  `roc fmt --check`).
+- To take a newer engine, copy all of these modules from one roc-signals
+  commit, drop the patches that landed upstream, re-make the others against
+  the new files, regenerate `tests/engine-modules.sha256` with
+  `shasum -a 256 <the modules>` from the pristine copies, and update the
+  revision in `docs/architecture.adoc`, all in the same commit.
+- A cost that is the compiler's goes in `patches/roc-compiler/` as a
+  standalone reproducer and its write-up; never patch the compiler here.
+
+The native vocabulary belongs in `platform/Ui.roc`, and the root in
+`platform/main.roc`.
 
 ## No Apple SDK material in linker inputs
 
