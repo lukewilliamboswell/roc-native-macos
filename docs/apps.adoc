@@ -27,9 +27,11 @@ roc macos.roc run
 ----
 
 `init` writes a counter app, `main.roc`, whose header names the platform
-release, two recorded runs of it in `tests/`, a `.gitignore` and a copy of
-`macos.roc`. `run` builds `counter.app` and starts it, with its output
-(`dbg`, a crash report) in the terminal. Edit `main.roc` and run it again.
+release, two recorded runs of it in `tests/`, its metadata in `macos.json`,
+a `.gitignore`, a release workflow in `.github/workflows/release.yml` (see
+xref:apps.adoc#ship-your-app[Ship your app]) and a copy of `macos.roc`.
+`run` builds `counter.app` and starts it, with its output (`dbg`, a crash
+report) in the terminal. Edit `main.roc` and run it again.
 
 An app is one `main.roc`, whose header names the platform by its release URL:
 
@@ -39,7 +41,7 @@ app [main] { pf: platform "https://github.com/lukewilliamboswell/roc-native-maco
 ----
 
 Each release's notes give that URL, so an app can also be written and built
-without the tool (see xref:apps.adoc#share-an-app[Share an app]).
+without the tool (see xref:apps.adoc#without-the-tool[Without the tool]).
 
 [#the-tool]
 == The tool's commands
@@ -54,17 +56,56 @@ Run `macos.roc` from the app's directory, the one holding `main.roc`:
 | `roc macos.roc build` | build `<name>.app`, on any system
 | `roc macos.roc run` | build the app and start it, on an Apple silicon Mac
 | `roc macos.roc test` | build the app and run its recorded cases, on an Apple silicon Mac; `--update` records what they print now
+| `roc macos.roc package` | build the app, sign it and zip it as `dist/<name>-<version>.zip`, on any system; `--sign` and `--notarize` sign it with a Developer ID (see xref:apps.adoc#ship-your-app[Ship your app])
 |===
 
-`build` and `run` take `--id ID`, the bundle identifier (by default
-`com.example.<name>`), and `--name TEXT`, the name in the menu bar, where
-`<name>` is the app's directory. The bundle identifier also names the app's
-saved settings (`UserDefaults`). `roc macos.roc COMMAND --help` describes a
+`<name>` is the app's directory. `roc macos.roc COMMAND --help` describes a
 command, and every failure is explained in a sentence.
 
 `build` runs `roc build main.roc --target=arm64mac`, which writes the program
 to `.macos/<name>`, and puts it in a minimal `<name>.app` with the app's
-xref:apps.adoc#assets[assets and icon]. `test` runs the same program.
+xref:apps.adoc#assets[assets and icon] and its
+xref:apps.adoc#metadata[metadata]. `test` runs the same program.
+
+[#metadata]
+=== The app's metadata
+
+`macos.json`, beside `main.roc`, says what the app's `Info.plist` holds. It
+is one JSON object of text fields, every one optional, and `init` writes a
+starter:
+
+[source,json]
+----
+{
+  "name": "Counter",
+  "id": "com.example.counter",
+  "version": "1.2.0",
+  "build": "7",
+  "copyright": "© 2026 Jane Doe",
+  "category": "public.app-category.utilities",
+  "minimum_macos": "13.0"
+}
+----
+
+[cols="1,1,3",options="header"]
+|===
+| Field and flag | `Info.plist` key | What it is
+
+| `name`, `--name TEXT` | `CFBundleName`, `CFBundleDisplayName` | the name in the menu bar; by default `<name>`
+| `id`, `--id ID` | `CFBundleIdentifier` | the bundle identifier, two or more dot-separated parts of letters, digits and hyphens; by default `com.example.<name>`. It also names the app's saved settings (`UserDefaults`), so keep it once people use the app
+| `version`, `--version 1.2.0` | `CFBundleShortVersionString` | one to three whole numbers separated by dots, with no `v`; by default 0.1. It names the zip `package` writes
+| `build`, `--build 7` | `CFBundleVersion` | the build number, in the same form; by default the version
+| `copyright`, `--copyright TEXT` | `NSHumanReadableCopyright` | shown in the app's About panel
+| `category`, `--category CATEGORY` | `LSApplicationCategoryType` | an App Store category, `public.app-category.` and its name, such as `utilities` or `developer-tools`
+| `minimum_macos`, `--minimum-macos 13.0` | `LSMinimumSystemVersion` | the oldest macOS the app opens on; by default 11.0, the oldest the platform runs on, and never earlier
+|===
+
+`build`, `run` and `package` take each field as a flag, which overrides the
+file, so a release can set its version with `--version` and leave the rest
+in `macos.json`. A field the tool does not know, a value that is not text,
+or a version such as `v1.2` is refused with the line or flag it came from.
+The file is named for the tool that reads it, as `macos.roc` is, so it does
+not clash with another tool's `app.json`.
 
 [#write-an-app]
 == Write an app
@@ -314,8 +355,153 @@ as in `ROC_APPEARANCE=dark roc macos.roc run`.
 | `ROC_ASSETS=<dir>` | the app's assets directory, for a program run away from its `assets/` (see xref:apps.adoc#assets[Assets and the icon])
 |===
 
-[#share-an-app]
-== Share an app
+[#ship-your-app]
+== Ship your app
+
+`roc macos.roc package` builds the app and writes
+`dist/<name>-<version>.zip`, the file people download. It works on macOS,
+Linux and Windows. How freely the app then opens on another Mac depends on
+who signed it, in three tiers: share it with friends, distribute it with a
+Developer ID, and let GitHub do either when you push a tag.
+
+The zip holds `<name>.app` with each entry's Unix mode set by the tool
+(directories and the program 0755, other files 0644), so the program keeps
+its execute bit whichever system made the zip: a zip made on Windows, or by
+many tools, loses it, and macOS then will not launch the app. The same app
+always makes the same zip, byte for byte: its entries are sorted and carry
+one time, 1980-01-01, or `SOURCE_DATE_EPOCH` when it is set. The entries are
+stored, not compressed, so the zip is about twice the size of a compressed
+one: 2.0 MB for the counter.
+
+[#share-with-friends]
+=== Share it with friends
+
+With no Apple account, `package` seals the app ad hoc:
+
+[source,sh]
+----
+roc macos.roc package --version 1.0.0
+----
+
+Roc's linker signs only the program, so `package` signs the whole bundle,
+which covers its `Info.plist` and resources too: with `codesign` on a Mac,
+or with https://github.com/indygreg/apple-platform-rs/releases[`rcodesign`]
+(apple-codesign, on any system) when it is on your PATH. Without either, it
+zips the app unsealed and says so.
+
+An ad hoc app downloaded to another Mac is quarantined, and the first time
+it is opened macOS says it cannot check it for malicious software. Whoever
+downloaded it approves it once: they open it, choose Done, then choose Open
+Anyway in System Settings > Privacy & Security (on macOS 14 and earlier,
+Control-click the app and choose Open). From a terminal, this clears the
+quarantine instead:
+
+[source,sh]
+----
+xattr -dr com.apple.quarantine counter.app
+----
+
+[#distribute]
+=== Distribute it with a Developer ID
+
+An app signed with a Developer ID and notarized by Apple opens on any Mac
+with no warning. That takes a membership of the
+https://developer.apple.com/programs/[Apple Developer Program] (US$99 a
+year), and two things from it:
+
+* A *Developer ID Application certificate*. The account holder creates it in
+  Xcode (Settings > Accounts > Manage Certificates > + > Developer ID
+  Application), or at developer.apple.com under Certificates, IDs &
+  Profiles. Keychain Access then exports it, with its private key, as a
+  `.p12` file protected by a password.
+* An *App Store Connect API key*, for notarization: in App Store Connect,
+  Users and Access > Integrations > App Store Connect API, generate a team
+  key with the Developer role. Note its Issuer ID and Key ID, and download
+  its `AuthKey_<id>.p8` file, which Apple offers only once.
+
+`package --sign` signs the app with the certificate, with the hardened
+runtime and a secure timestamp. `package --notarize` also signs it, sends
+the zip to Apple's notary service, waits for its answer (usually a few
+minutes), staples the ticket to the app and zips it again. The tool reads
+the credentials from the environment, never from its command line, and
+writes any it must pass to a signing tool to `.macos/secrets/`, readable by
+you alone, which it removes when it finishes:
+
+[cols="1,3",options="header"]
+|===
+| Variable | What it is
+
+| `MACOS_SIGN_IDENTITY` | on a Mac, the certificate's name in your keychain, such as `Developer ID Application: Jane Doe (TEAMID)`; `codesign` signs with it and `notarytool` notarizes
+| `MACOS_SIGN_P12` | anywhere, the path of the certificate's `.p12` file; `rcodesign` signs and notarizes with it
+| `MACOS_SIGN_P12_PASSWORD` | the `.p12` file's password
+| `MACOS_NOTARY_ISSUER` | the API key's Issuer ID
+| `MACOS_NOTARY_KEY_ID` | the API key's Key ID
+| `MACOS_NOTARY_KEY` | the `.p8` file's path, or its contents
+| `MACOS_SIGN_TOOL` | `codesign` or `rcodesign`, to choose the tool when both are here
+|===
+
+On a Mac, with the certificate in your keychain:
+
+[source,sh]
+----
+export MACOS_SIGN_IDENTITY="Developer ID Application: Jane Doe (TEAMID)"
+export MACOS_NOTARY_ISSUER=… MACOS_NOTARY_KEY_ID=… MACOS_NOTARY_KEY=~/keys/AuthKey_ABC123.p8
+roc macos.roc package --version 1.0.0 --notarize
+----
+
+On Linux or Windows, the same with `MACOS_SIGN_P12` and
+`MACOS_SIGN_P12_PASSWORD` in place of `MACOS_SIGN_IDENTITY`, and `rcodesign`
+on your PATH. The app needs no entitlements under the hardened runtime: Roc
+compiles it ahead of time, so it makes no executable memory, and it is not
+sandboxed, so it needs none to reach the network or the files a person picks.
+
+[#automate]
+=== Let GitHub release it
+
+`init` writes `.github/workflows/release.yml`. Push a tag and it releases
+the app:
+
+[source,sh]
+----
+git tag v1.0.0
+git push origin v1.0.0
+----
+
+The workflow runs the app's recorded cases on a macOS runner, then packages
+the app on Linux with `--version 1.0.0` (the tag without its `v`), and
+attaches `<name>-1.0.0.zip` to the tag's GitHub release, creating the
+release if there is none. With no secrets it seals the app ad hoc. To sign
+and notarize it, add these secrets to the repository (Settings > Secrets
+and variables > Actions), or to its `release` environment (Settings >
+Environments), which the packaging job runs in and which you can limit to
+tags or to a reviewer's approval:
+
+[cols="1,3",options="header"]
+|===
+| Secret | What it is
+
+| `MACOS_SIGN_P12_BASE64` | the certificate's `.p12` file, base64-encoded: `base64 -i developer-id.p12 \| pbcopy`
+| `MACOS_SIGN_P12_PASSWORD` | its password
+| `MACOS_NOTARY_ISSUER` | the API key's Issuer ID
+| `MACOS_NOTARY_KEY_ID` | the API key's Key ID
+| `MACOS_NOTARY_KEY` | the `.p8` file's contents
+|===
+
+With only the first two, the app is signed but not notarized. The workflow
+installs the Roc nightly the platform release was tested with and a pinned,
+checksummed `rcodesign`; every action is pinned by its full commit SHA, the
+jobs that see the secrets have a read-only token, and the one job that
+writes the release sees no secret. "Run workflow" on the Actions tab
+packages a version you give as a workflow artifact, and publishes nothing.
+If the app is not at the repository's root, move the workflow to the root's
+`.github/workflows/` and set its `APP_DIR` to the app's directory. Recorded
+cases need a macOS runner, which costs more minutes in a private repository;
+to skip them, delete the `test` job and the package job's `needs: test`.
+For an app made before the tool wrote the workflow, run `roc macos.roc init`
+in an empty directory and copy the file from there.
+
+[#without-the-tool]
+=== Without the tool
 
 `roc macos.roc build` works the same on macOS, Linux and Windows: the
 platform carries everything the link needs, and Roc's linker signs the
@@ -329,9 +515,5 @@ roc build main.roc --target=arm64mac
 
 A `.app` copied to a Mac from elsewhere (downloaded, or built on Linux or
 Windows) may be quarantined by Gatekeeper, which then refuses to open it.
-Clear that before you open it:
-
-[source,sh]
-----
-xattr -dr com.apple.quarantine counter.app
-----
+Clear that before you open it, as
+xref:apps.adoc#share-with-friends[Share it with friends] shows.

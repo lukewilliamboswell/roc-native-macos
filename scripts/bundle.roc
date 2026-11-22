@@ -34,7 +34,12 @@ import src/Recorded
 ## there naming the served URLs (`scripts/release.roc -- tool`), and then,
 ## with an empty Roc package cache, takes an author's first steps outside
 ## the checkout: `roc macos.roc init counter`, then `build` and `test` in
-## `counter/`, which runs the counter's recorded cases. Then it builds and
+## `counter/`, which runs the counter's recorded cases. It packages the
+## counter twice with `macos.roc package`, and checks that the two zips are
+## the same bytes, hold the sealed bundle with each entry's Unix mode, and
+## extract with `ditto` to an app whose seal verifies and whose program runs
+## a recorded case; `actionlint`, when it is on PATH, lints the release
+## workflow `init` wrote. Then it builds and
 ## tests an app with assets, `examples/about` with its `assets/` and
 ## recorded cases, through the tool, checks that its bundle holds the assets
 ## and an icon made from `assets/icon.png`, and runs a case on the program
@@ -120,7 +125,11 @@ consumer_test! = |root, out, bundle| {
 	result = match served!(server) {
 		Ok(port) =>
 			match first_steps!(root, dir, "http://localhost:${port.to_str()}") {
-				Ok({}) => assets_app!(root, dir, "http://localhost:${port.to_str()}/${bundle}")
+				Ok({}) =>
+					match package_counter!(dir) {
+						Ok({}) => assets_app!(root, dir, "http://localhost:${port.to_str()}/${bundle}")
+						Err(problem) => Err(problem)
+					}
 				Err(problem) => Err(problem)
 			}
 		Err(problem) => Err(problem)
@@ -129,7 +138,7 @@ consumer_test! = |root, out, bundle| {
 	server.close!() ?? {}
 	match result {
 		Ok({}) => {
-			note!("bundle: macos.roc created, built and tested a counter, and built and tested ${Bundle.assets_example} with its assets, against the served bundle")
+			note!("bundle: macos.roc created, built, tested and packaged a counter, and built and tested ${Bundle.assets_example} with its assets, against the served bundle")
 			Ok({})
 		}
 		Err(problem) => {
@@ -161,6 +170,66 @@ first_steps! = |root, dir, base_url| {
 	for { args, cwd } in Bundle.first_steps {
 		shown = "roc macos.roc ${Str.join_with(args, " ")}${if (cwd.is_empty()) "" else " (in ${cwd}/)"}"
 		step!(Cmd.new("roc").args(["macos.roc"].concat(args).map(OsStr.from_str)).cwd(Path.utf8(if (cwd.is_empty()) dir else "${dir}/${cwd}")).env("XDG_CACHE_HOME", OsStr.from_str(cache)), shown) ? |_| "${shown} failed against the bundle"
+	}
+	Ok({})
+}
+
+## `roc macos.roc package` the counter `init` made, twice, as an author
+## shares it: both zips must be the same bytes, hold exactly the entries
+## `Bundle.package_entries` names with their modes, pass `unzip -t`, and
+## extract with `ditto` (as Archive Utility does) to an app whose seal
+## `codesign --verify --strict` accepts and whose program runs a recorded
+## case. The workflow `init` wrote is linted when actionlint is on PATH.
+package_counter! : Str => Try({}, Str)
+package_counter! = |dir| {
+	app_dir = "${dir}/counter"
+	cache = "${dir}/cache"
+	zip = "${app_dir}/${Bundle.package_zip}"
+	shown = "roc macos.roc ${Str.join_with(Bundle.package_args, " ")} (in counter/)"
+	var $digests = []
+	for _ in ["first", "second"] {
+		step!(Cmd.new("roc").args(["macos.roc"].concat(Bundle.package_args).map(OsStr.from_str)).cwd(Path.utf8(app_dir)).env("XDG_CACHE_HOME", OsStr.from_str(cache)), shown) ? |_| "${shown} failed against the bundle"
+		digest = Cmd.new("shasum").args(["-a", "256", OsStr.from_str(zip)]).capture!() ? |_| "could not take the digest of ${zip}"
+		$digests = $digests.append(digest.split_on(" ").first() ?? "")
+	}
+	match $digests {
+		[a, b] if a == b => note!("bundle: packaged twice, the same zip both times: sha256 ${a}")
+		_ => return Err("roc macos.roc package made different zips from the same app: ${Str.join_with($digests, " and ")}")
+	}
+	bytes = Path.read_bytes!(Path.utf8(zip)) ? |error| "could not read ${zip}: ${Str.inspect(error)}"
+	entries = Bundle.zip_entries(bytes) ? |_| "${zip} is not a zip archive"
+	if entries != Bundle.package_entries {
+		listed = Str.join_with(entries.map(|e| "${e.name} ${e.mode.to_str()}"), ", ")
+		return Err("${zip} holds other entries or modes than a sealed counter.app should: ${listed}")
+	}
+	step!(Cmd.new("unzip").args(["-tq", OsStr.from_str(zip)]), "unzip -tq ${Bundle.package_zip}") ? |_| "unzip found ${zip} damaged"
+	extracted = "${dir}/extracted"
+	fresh!(extracted) ? |_| "could not empty ${extracted}"
+	step!(Cmd.new("ditto").args(["-x", "-k", OsStr.from_str(zip), OsStr.from_str(extracted)]), "ditto -x -k ${Bundle.package_zip}") ? |_| "ditto could not extract ${zip}"
+	extracted_app = "${extracted}/counter.app"
+	step!(Cmd.new("codesign").args(["--verify", "--strict", "--verbose=2", OsStr.from_str(extracted_app)]), "codesign --verify --strict the extracted counter.app") ? |_| "the extracted counter.app's seal does not verify"
+	plist = Path.read_utf8!(Path.utf8("${extracted_app}/Contents/Info.plist")) ? |error| "could not read the extracted Info.plist: ${Str.inspect(error)}"
+	if !plist.contains("<key>CFBundleShortVersionString</key><string>1.0.0</string>") {
+		return Err("the packaged counter.app's Info.plist does not have the version --version gave")
+	}
+	steps = Path.read_utf8!(Path.utf8("${app_dir}/tests/${Bundle.package_case}.script")) ? |error| "could not read the case: ${Str.inspect(error)}"
+	expected = Path.read_utf8!(Path.utf8("${app_dir}/tests/${Bundle.package_case}.expected")) ? |error| "could not read the case: ${Str.inspect(error)}"
+	note!("RUN the extracted counter.app/Contents/MacOS/counter with tests/${Bundle.package_case}.script")
+	ran = Cmd.new(OsStr.from_str("${extracted_app}/Contents/MacOS/counter"))
+		.env("ROC_SCRIPT", OsStr.from_str(steps.trim()))
+		.stdin(Null)
+		.stderr(MergeWithStdout)
+		.timeout(Duration.seconds(60))
+		.run!() ? |error| "the extracted counter.app did not finish: ${Str.inspect(error)}"
+	printed = Str.from_utf8_lossy(ran.stdout_bytes)
+	if ran.status != Exited(0) or !Recorded.matches(expected, printed) {
+		return Err("the extracted counter.app's program did not print tests/${Bundle.package_case}.expected; it printed:\n${printed}")
+	}
+	workflow = "${app_dir}/.github/workflows/release.yml"
+	if Cmd.check_available!("actionlint") {
+		step!(Cmd.new("actionlint").args([OsStr.from_str(workflow)]), "actionlint counter/.github/workflows/release.yml") ? |_| "actionlint found problems in the workflow init writes"
+	} else {
+		note!("bundle: actionlint is not on PATH, so the workflow init writes was not linted")
 	}
 	Ok({})
 }
