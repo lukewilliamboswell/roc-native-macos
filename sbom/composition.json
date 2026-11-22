@@ -1,0 +1,211 @@
+{
+  "profile": "blueprint-spdx-3.0-v1",
+  "components": [
+    {
+      "id": "roc-native-macos",
+      "name": "roc-native-macos",
+      "version": "NOASSERTION",
+      "producer": "Person: Luke Boswell",
+      "license": "UPL-1.0",
+      "license_url": "",
+      "identity": "https://github.com/lukewilliamboswell/roc-native-macos",
+      "download": "https://github.com/lukewilliamboswell/roc-native-macos",
+      "sha256": "",
+      "modified": "",
+      "target": "",
+      "origin": "reviewed"
+    },
+    {
+      "id": "roc-signals-engine",
+      "name": "roc-signals engine modules",
+      "version": "a13ff70e",
+      "producer": "Person: Luke Boswell",
+      "license": "UPL-1.0",
+      "license_url": "",
+      "identity": "https://github.com/lukewilliamboswell/roc-signals/tree/a13ff70e/platform",
+      "download": "https://github.com/lukewilliamboswell/roc-signals",
+      "sha256": "",
+      "modified": "",
+      "target": "",
+      "origin": "reviewed"
+    },
+    {
+      "id": "basic-webserver-url",
+      "name": "basic-webserver URL utility",
+      "version": "NOASSERTION",
+      "producer": "Organization: Roc contributors",
+      "license": "UPL-1.0",
+      "license_url": "",
+      "identity": "https://github.com/roc-lang/basic-webserver",
+      "download": "https://github.com/roc-lang/basic-webserver",
+      "sha256": "",
+      "modified": "",
+      "target": "",
+      "origin": "reviewed"
+    },
+    {
+      "id": "roc-parser",
+      "name": "roc-parser",
+      "version": "6.0.0-rc.5",
+      "producer": "Person: Luke Boswell",
+      "license": "UPL-1.0",
+      "license_url": "",
+      "identity": "https://github.com/lukewilliamboswell/roc-parser/releases/tag/6.0.0-rc.5",
+      "download": "https://github.com/lukewilliamboswell/roc-parser/releases/download/6.0.0-rc.5/822J9njyNR1vgyX1KG4ck496dBx3AnLfvn2zHXn15Ksw.tar.zst",
+      "sha256": "",
+      "modified": "",
+      "target": "",
+      "origin": "reviewed"
+    },
+    {
+      "id": "macos-system-libraries",
+      "name": "macOS system libraries: AppKit, Foundation, CoreGraphics, libSystem, libobjc and the Swift runtime in /usr/lib/swift",
+      "version": "11.0",
+      "producer": "Organization: Apple Inc.",
+      "license": "NOASSERTION",
+      "license_url": "",
+      "identity": "pkg:generic/macos-system-libraries@11.0",
+      "download": "NOASSERTION",
+      "sha256": "",
+      "modified": "",
+      "target": "",
+      "origin": "reviewed"
+    },
+    {
+      "id": "swift-toolchain",
+      "name": "Xcode Swift compiler",
+      "version": "Xcode 26.3 (17C529), Swift 6.2.4",
+      "producer": "Organization: Apple Inc.",
+      "license": "NOASSERTION",
+      "license_url": "",
+      "identity": "pkg:generic/xcode@26.3",
+      "download": "NOASSERTION",
+      "sha256": "",
+      "modified": "",
+      "target": "",
+      "origin": "reviewed"
+    }
+  ],
+  "relationships": [
+    {
+      "from": "Subject",
+      "to": "roc-native-macos",
+      "relation": "contains",
+      "scope": "",
+      "basis": "The platform's own Roc modules, targets/arm64mac/libhost.a (the Swift host compiled from host/ and its generated glue) and targets/macos-sysroot (TAPI stubs generated from host/interfaces.json, no Apple SDK material)"
+    },
+    {
+      "from": "Subject",
+      "to": "roc-signals-engine",
+      "relation": "contains",
+      "scope": "",
+      "basis": "The 13 engine modules in platform/ are byte-identical copies, checked against tests/engine-modules.sha256"
+    },
+    {
+      "from": "Subject",
+      "to": "basic-webserver-url",
+      "relation": "contains",
+      "scope": "",
+      "basis": "platform/Url.roc derives from basic-webserver's URL module (THIRD_PARTY_LICENSES.md)"
+    },
+    {
+      "from": "Subject",
+      "to": "roc-parser",
+      "relation": "dependsOn",
+      "scope": "",
+      "basis": "platform/main.roc's packages section names this content-addressed bundle; the compiler fetches it when an app builds, and it is not in the archive"
+    },
+    {
+      "from": "Subject",
+      "to": "macos-system-libraries",
+      "relation": "dependsOn",
+      "scope": "runtime",
+      "basis": "Apps built on the platform load these from macOS at run time; the bundle carries only generated stubs naming them"
+    },
+    {
+      "from": "Subject",
+      "to": "swift-toolchain",
+      "relation": "dependsOn",
+      "scope": "build",
+      "basis": "Compiles libhost.a on the release runner; the release notes name the exact Xcode and Swift versions"
+    }
+  ],
+  "coverage": [
+    {
+      "scope": "native-closure",
+      "status": "incomplete",
+      "reason": "libhost.a may hold Swift standard library code the compiler inlined or specialized into the host's object files; it is not itemized.",
+      "contact": "https://github.com/lukewilliamboswell/roc-native-macos/security"
+    },
+    {
+      "scope": "bundling-compiler",
+      "status": "incomplete",
+      "reason": "roc bundle and roc glue run the latest Roc nightly at release time; the release notes name it under Compilers. roc bundle compresses files and adds nothing of its own.",
+      "contact": "https://github.com/lukewilliamboswell/roc-native-macos/security"
+    }
+  ],
+  "inputs": [
+    {
+      "input": "program:roc-stable:aarch64-darwin",
+      "component": "",
+      "reason": "Pinned compiler that runs repository scripts; it does not build the bundle"
+    },
+    {
+      "input": "roc-package:7brgwR8YUqfeGrkdfF1V4GPPN7DnP7ftqub9KcrTEZtr",
+      "component": "",
+      "reason": "Package the repository scripts import (https://github.com/roc-lang/basic-cli/releases/download/0.28.1/7brgwR8YUqfeGrkdfF1V4GPPN7DnP7ftqub9KcrTEZtr.tar.zst); scripts do not ship"
+    },
+    {
+      "input": "build-source:roc-7brgwR8YUqfeGrkdfF1V4GPPN7DnP7ftqub9KcrTEZtr",
+      "component": "",
+      "reason": "The same script package, as the source the environment prefetches; scripts do not ship"
+    },
+    {
+      "input": "roc-package:6ZUwqYhCS8PU9Mo6MF7oV82ET2o7KYb57CLKDq4cq4sS",
+      "component": "",
+      "reason": "Package the repository scripts import (https://github.com/roc-lang/http/releases/download/1.0.0/6ZUwqYhCS8PU9Mo6MF7oV82ET2o7KYb57CLKDq4cq4sS.tar.zst); scripts do not ship"
+    },
+    {
+      "input": "build-source:roc-6ZUwqYhCS8PU9Mo6MF7oV82ET2o7KYb57CLKDq4cq4sS",
+      "component": "",
+      "reason": "The same script package, as the source the environment prefetches; scripts do not ship"
+    },
+    {
+      "input": "task:check",
+      "component": "",
+      "reason": "Development or release task; the bundle's contents are stated by its components and archive members"
+    },
+    {
+      "input": "task:build",
+      "component": "",
+      "reason": "Development or release task; the bundle's contents are stated by its components and archive members"
+    },
+    {
+      "input": "task:test",
+      "component": "",
+      "reason": "Development or release task; the bundle's contents are stated by its components and archive members"
+    },
+    {
+      "input": "task:examples",
+      "component": "",
+      "reason": "Development or release task; the bundle's contents are stated by its components and archive members"
+    },
+    {
+      "input": "task:bundle",
+      "component": "",
+      "reason": "Development or release task; the bundle's contents are stated by its components and archive members"
+    },
+    {
+      "input": "task:release",
+      "component": "",
+      "reason": "Development or release task; the bundle's contents are stated by its components and archive members"
+    },
+    {
+      "input": "task:tooling-version",
+      "component": "",
+      "reason": "Development or release task; the bundle's contents are stated by its components and archive members"
+    }
+  ],
+  "imported_documents": [],
+  "unavailable_sboms": []
+}

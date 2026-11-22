@@ -1,0 +1,38 @@
+name: Select the pinned Xcode
+description: >-
+  Select the Xcode, and so the Swift compiler, that builds the Swift host, and
+  fail unless it is exactly the reviewed build. ci.yml and release.yml both use
+  it, so the stub audit (scripts/build_macos_stubs.py --audit) sees the same
+  Swift symbol references in every run. The macos-15 image's default Xcode
+  (16.4, Swift 6.1) references Swift runtime symbols that Swift 6.2 inlines.
+
+# To move to another Xcode: pick one the runner image lists
+# (https://github.com/actions/runner-images/blob/main/images/macos/macos-15-arm64-Readme.md),
+# change both values below, run `blueprint run check` with it, and add any
+# symbol the audit names to host/interfaces.json with its owning library.
+inputs:
+  xcode:
+    description: Xcode application to select, under /Applications
+    default: Xcode_26.3.app
+  build:
+    description: The Xcode build version it must report (xcodebuild -version)
+    default: 17C529
+
+runs:
+  using: composite
+  steps:
+    - name: Select and verify Xcode
+      shell: bash
+      env:
+        XCODE: ${{ inputs.xcode }}
+        BUILD: ${{ inputs.build }}
+      run: |
+        set -euo pipefail
+        developer="/Applications/$XCODE/Contents/Developer"
+        test -d "$developer" || { echo "::error::$XCODE is not installed on this runner image"; exit 1; }
+        sudo xcode-select -s "$developer"
+        echo "DEVELOPER_DIR=$developer" >> "$GITHUB_ENV"
+        reported=$(DEVELOPER_DIR="$developer" xcodebuild -version)
+        echo "$reported"
+        grep -qx "Build version $BUILD" <<<"$reported" || { echo "::error::expected Xcode build $BUILD"; exit 1; }
+        DEVELOPER_DIR="$developer" swiftc --version

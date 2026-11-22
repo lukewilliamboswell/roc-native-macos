@@ -8,6 +8,7 @@
 #     blueprint run examples -- --update   # record what they print now, as a reviewable diff
 #     blueprint run bundle                 # the platform bundle, in build/platform/<hash>.tar.zst
 #     blueprint run bundle -- --test       # and an example built and run against it
+#     blueprint run release -- test DIR    # every archived example against DIR's bundle
 #     blueprint tasks                      # list every task
 #     blueprint update                     # refresh Blueprint.lock
 #
@@ -44,10 +45,12 @@ config = [
 			]),
 			# `bash` runs scripts/build.sh, `swiftc` builds the host, `python3`
 			# generates the linker stubs (scripts/build_macos_stubs.py) and
-			# serves the bundle to its consumer test (scripts/bundle.roc), `shasum`
-			# checks the engine modules' digests and `git` lists the tracked files
-			# the checks read.
-			Expect(["roc", "bash", "env", "swiftc", "python3", "shasum", "git"]),
+			# serves the bundle to its consumer tests (scripts/bundle.roc,
+			# scripts/release.roc), `shasum` checks the engine modules' digests
+			# and the release files', `git` lists the tracked files the checks
+			# read, `zip` and `unzip` write and read the examples archive, and
+			# `xcodebuild` names the Xcode a release's notes record.
+			Expect(["roc", "bash", "env", "swiftc", "python3", "shasum", "git", "zip", "unzip", "xcodebuild"]),
 		],
 	),
 	Shell("default", [Use("dev")]),
@@ -67,6 +70,12 @@ config = [
 	# `-- --output-dir DIR`, `-- --prebuilt` (skip the build) and `-- --test`
 	# (serve it on localhost and build and run examples/counter against it).
 	Task("bundle", [Use("dev"), Run(["scripts/bundle.roc", "--"])]),
+	# The release steps after the bundle (scripts/release.roc), which
+	# .github/workflows/release.yml runs: `-- archive VERSION DIR` writes the
+	# examples archive, `-- test DIR [--binaries BIN]` builds and runs every
+	# archived example against DIR's bundle served on localhost, and
+	# `-- notes VERSION DIR OUT` renders the release notes.
+	Task("release", [Use("dev"), Run(["scripts/release.roc", "--"])]),
 	# The tooling compiler, as a log records it.
 	Task("tooling-version", [Use("dev"), Run(["roc-stable", "version"])]),
 ]
