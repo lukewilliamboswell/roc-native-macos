@@ -1,0 +1,249 @@
+= Contributing
+
+This chapter is for people changing the platform: building it, bundling it,
+driving its examples and passing the check gate. The repository's rules are
+in `AGENTS.md`; xref:architecture.adoc#how-it-fits-together[Architecture]
+explains the design.
+
+[#build-the-platform]
+== Build the platform
+
+You need Apple silicon macOS, Xcode's `swiftc`, `python3`, and a Roc compiler
+installed as `roc`: a current nightly, or 0.1.0 RC1. The repository follows
+https://github.com/lukewilliamboswell/roc-automation[roc-automation], and
+https://github.com/lukewilliamboswell/roc-blueprint[Blueprint] 0.13.0
+provides the rest of the environment.
+
+[source,sh]
+----
+scripts/build.sh                # glue, Swift host, linker stubs, every example
+scripts/build.sh counter        # one example, after the platform is built
+scripts/build.sh --platform     # only the platform's native inputs
+./examples/counter/counter      # or stopwatch, todos, http-fetch, file-inspector, gallery, contacts
+open examples/counter/counter.app
+----
+
+`scripts/build.sh` uses the 0.1.0 RC1 compiler at
+`~/roc-macos_apple_silicon-0.1.0_RC1/roc` unless `ROC=` names another; the
+Blueprint tasks pass `ROC=roc`. Building the platform is three steps:
+
+. *Glue.* `roc glue glue/SwiftGlue.roc` writes `host/roc_swift_abi.h` and
+  `host/RocGlue.swift` (see xref:architecture.adoc#glue[Glue]).
+. *Host.* `swiftc` builds `host/*.swift` into
+  `platform/targets/arm64mac/libhost.a`, with framework autolinking and
+  `FORCE_LOAD` symbols off.
+. *Linker stubs.* `scripts/build_macos_stubs.py` writes
+  `platform/targets/macos-sysroot` from `host/interfaces.json` and audits
+  `libhost.a` against it (see
+  xref:architecture.adoc#linker-inputs[Linker inputs]).
+
+None of these outputs is committed.
+
+Each example is built twice over: the bare binary, and a minimal `.app`
+bundle beside it (`Contents/MacOS/<name>` and an `Info.plist` with
+`CFBundleIdentifier` `dev.roc.native.<name>` and `LSMinimumSystemVersion`
+11.0, the `minos` Roc's linker writes). Launched from the bundle, AppKit has a
+bundle identifier, so it no longer warns that it cannot index window tabs.
+The two keep separate `UserDefaults` domains (`todos` versus
+`dev.roc.native.todos`), so they do not share saved values.
+
+=== Blueprint tasks
+
+[cols="2,3",options="header"]
+|===
+| Task | Does
+
+| `blueprint run check` | the pull-request gate; `check -- STAGE...` runs the named stages
+| `blueprint run build` | `scripts/build.sh`: glue, host, stubs and every example; `build -- counter` for one
+| `blueprint run test` | `roc test` on the platform root and every example
+| `blueprint run examples` | every example's recorded scripted runs; `examples -- --update` records new output
+| `blueprint run bundle` | the platform bundle, in `build/platform/` (see xref:contributing.adoc#the-bundle[The bundle])
+| `blueprint run tooling-version` | the scripts' compiler version
+|===
+
+=== Two compilers
+
+`roc`, the latest Roc nightly, checks, builds and tests the platform, the
+glue and the examples. It is never pinned: CI installs the nightly of the
+day, and a contributor installs a current nightly (or RC1) as `roc`.
+`roc-stable`, which `Blueprint.roc` pins to `nightly-2026-11-14-a87808d`,
+runs the scripts under `scripts/`, and only those scripts name it in their
+headers (`roc: "<tag>"`). Format the scripts with `roc-stable fmt`.
+
+[#the-bundle]
+== The bundle
+
+App authors name the platform by the URL of a bundle:
+`app [main] { pf: platform "https://…/<hash>.tar.zst" }`. `blueprint run
+bundle` (`scripts/bundle.roc`) makes that bundle:
+
+. It builds the platform's native inputs (`scripts/build.sh --platform`),
+  unless `--prebuilt` is given.
+. It stages, under `build/bundle-stage/`, the tracked `platform/*.roc`
+  modules, `targets/arm64mac/libhost.a`, the generated
+  `targets/macos-sysroot/` stubs, `LICENSE` and `THIRD_PARTY_LICENSES.md`.
+  The stubs are the catalog's generated TAPI files, not Apple SDK files.
+. It runs `roc bundle` there with `main.roc` first, which writes one
+  content-addressed `<hash>.tar.zst` to `build/platform/` (or
+  `--output-dir DIR`), and prints its size and SHA-256.
+
+`blueprint run bundle -- --test` then checks the bundle the way an author
+uses it. It serves the output directory on localhost (Roc accepts `http`
+URLs for localhost only), writes `examples/counter/main.roc` to
+`build/bundle-test/counter/` with its header naming the served URL, builds it
+with an empty package cache (`XDG_CACHE_HOME`), and runs the recorded cases
+in `tests/examples/counter/` against the binary. The `bundle` stage of
+`check` does the same with `--prebuilt`. The empty cache means the platform's
+own dependency (roc-parser) is downloaded from GitHub on every run.
+
+To build an app outside the checkout against a local bundle, serve
+`build/platform` and name the localhost URL, as the README's quick start
+shows. The bundle's name is its content hash, so the URL changes whenever
+the bundle does. An app can also name a checkout's platform by a relative
+path, `platform "../roc-native-macos/platform/main.roc"`, once
+`scripts/build.sh --platform` has built its native inputs; Roc rejects an
+absolute platform path.
+
+No release is published yet. A release workflow would build the bundle with
+this task, test those bytes on `macos-15`, and publish them under
+`releases/download/<version>/<hash>.tar.zst`; see the follow-ups in
+xref:roc-automation-review.adoc#releases-examples-archive-and-nightly-compatibility[the roc-automation review].
+
+[#driving-an-app]
+== Driving an app
+
+`ROC_SCRIPT` drives the real controls through the same action methods AppKit
+calls. Steps run every 100 ms; `dump` prints the live view tree:
+
+[source,sh]
+----
+ROC_SCRIPT="type:Buy milk;enter;toggle:Buy milk;click:Done;dump;quit" ./examples/todos/todos
+ROC_TRACE=1 ROC_SCRIPT="type:https://example.com;enter;wait:3000;dump;quit" ./examples/http-fetch/http-fetch
+ROC_SAVE_DIR=/tmp ROC_SCRIPT="files:$PWD/README.md;click:Inspect;wait:300;dump;click:Save copy…;wait:200;quit" \
+  ./examples/file-inspector/file-inspector
+----
+
+[cols="1,3",options="header"]
+|===
+| Step | Does
+
+| `click:<title>` | clicks the button with that title
+| `type:<text>` | types into the first text field
+| `write:<text>` | writes into the first text area; `\n` is a line break
+| `enter` | submits the text field's form
+| `toggle:<title>` | toggles the checkbox with that title
+| `choose:<title>` | chooses a dropdown item or a segment
+| `select:<text>` | selects the list row holding that text
+| `key:cmd+shift+n` | presses a key, delivered as if nothing had focus
+| `files:<path>,<path>…` | gives files as if picked on the first file button or drop zone, with no panel
+| `drop:<path>,…` | gives files as if dropped on the first drop zone
+| `wait:<ms>` | waits
+| `dump` | prints the window size, then the view tree; a list shows its visible rows
+| `quit` | quits, through the same teardown as quitting
+|===
+
+[cols="1,3",options="header"]
+|===
+| Variable | Effect
+
+| `ROC_TRACE=1` | logs effect requests, cancellations, minted and released file handles, the teardown (`DROP`), and each turn's engine and host time
+| `ROC_POISON=1` | fills every new allocation with `Z`, to expose reads of uninitialised memory
+| `ROC_SAVE_DIR` | where a scripted save writes; without it a scripted save is skipped
+| `ROC_MAX_FILE_BYTES` | lowers the host's file ceiling, to check `TooLarge`
+| `ROC_STORAGE_SUITE=<name>` | a `UserDefaults` suite for local storage; otherwise a scripted run's local storage is in memory
+|===
+
+A scripted run never takes keyboard focus, never opens a panel and never
+shows the crash alert.
+
+=== Recorded cases
+
+Every example has at least one recorded case:
+`tests/examples/<example>/<case>.script` holds the steps and
+`<case>.expected` what the run prints (the `dump` trees, with the checkout's
+path written `<repo>`). `blueprint run examples` runs each case against the
+built app with a 60-second deadline; it must exit 0 and print exactly the
+recorded output. A new example needs a case: add the `.script`, run
+`blueprint run examples -- --update`, and review the `.expected` diff before
+committing it. The stopwatch cases avoid wall-clock readouts.
+
+roc-signals' `.scm` spec runner is not ported. Its oracle (`Dom.roc`) models a
+browser DOM, so it would check the engine but never the AppKit host. A spec
+format over the scripted driver, or a `ui-*` oracle, are the two options.
+
+== The check gate
+
+`blueprint run check` (`scripts/check_all.roc`) is the pull-request gate, the
+same one CI runs on `macos-15`. Its stages, in order:
+
+[cols="1,3",options="header"]
+|===
+| Stage | Checks
+
+| `pins` | only the scripts pin a compiler, and they pin `roc-stable`
+| `engine` | the engine modules match their roc-signals digests (`tests/engine-modules.sha256`)
+| `fmt` | `roc fmt --check` over the platform, glue and examples (the not-yet-formatted files are skipped, and each skip prints), and `roc-stable fmt --check` over the scripts
+| `scripts` | the scripts' `expect` tests
+| `build` | `scripts/build.sh` with the `roc` on PATH
+| `test` | `roc test` on `platform/main.roc` and every example
+| `examples` | every recorded case
+| `bundle` | the bundle from the `build` stage's inputs, and its consumer test
+|===
+
+`check -- STAGE...` runs only the named stages.
+
+[#styling]
+== Styling
+
+Styling is deliberately minimal: stack spacing, padding and alignment, and a
+font and semantic colour on text. A fuller API (props records in AppKit's
+own vocabulary for every builder) is proposed, not implemented, in
+link:styling.md[Styling: design].
+
+[#findings]
+== Findings
+
+List capacity encoding:: In `capacity_or_alloc_ptr` a list stores
+`capacity << 1`; the low bit marks a seamless slice. The first host stored
+the raw length, so any odd-length payload read as a slice with a bogus
+allocation pointer and crashed in `roc_llvm_rc_decref`. Two-byte clicks
+passed by luck. The Zig glue gets this right; the C glue offers no
+constructor, hence SwiftGlue, which now replaces the C glue entirely.
+Single-field record builder:: `{ a: Engine.cell(…) }.Engine.Cells` with one
+field is unimplemented in RC1, but `roc build` compiles it to a runtime error
+instead of failing. `roc test` reports it.
+`watch` vs `watch_latest`:: `watch` never cancels what it issued; a
+start/stop interval needs `watch_latest`.
+Handles in host memory work as in Wasm:: RC1's native code frees a
+`Box(U64)` at its payload minus 8 with alignment 8, exactly where the glue
+facts put it, so a box minted in a host table (not from `roc_alloc`) is
+released through `roc_dealloc` like the browser host's blob heap, and the
+same token encoding carries over unchanged. A list of such boxes must be
+built with the 16-byte header (element count, then refcount), which Roc reads
+when it releases a seamless slice of the list. A host that wrote the 8-byte
+header of a byte list would work until such a slice was released.
+Props records work:: A nominal record of `??` defaulted fields as a function
+argument (`Ui.vstack({ align: Fill }, kids)`, `Ui.scroll({}, rows)`) checks,
+builds and runs correctly in RC1.
+No `Str` order:: `Str` has no `order_relative_to` in RC1, so `Engine.sort_by`
+cannot sort rows by a name; `contacts` sorts by key.
+Host costs, not engine costs:: For 10k rows the engine's turns are
+milliseconds; the host was seconds until it stopped removing children one
+O(n) scan at a time (removals now compact once per batch) and stopped
+creating AppKit views for list rows nobody had scrolled to.
+A bundle is fetched only over https, or http to localhost:: RC1 rejects a
+local `.tar.zst` path as a platform ("that package does not have a platform
+header") and any `http` URL that is not localhost. A server listening on
+`127.0.0.1` alone was not reached for `http://localhost:…`; one listening on
+`::` was, so serve the bundle with `--bind ::`. RC1 also rejects an
+absolute platform path.
+The same inputs bundle to the same name, but a rebuilt host does not:: Two
+builds of `libhost.a` from the same sources are not byte-identical, so
+`scripts/build.sh --platform` gives the bundle a new content hash each time.
+Bundling the same built inputs again (`--prebuilt`) gives the same hash.
+
+== Reporting
+
+Report vulnerabilities as `SECURITY.md` describes. What the repository adopts
+from roc-automation so far, and what is left, is in
+xref:roc-automation-review.adoc#summary[the roc-automation review].

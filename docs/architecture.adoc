@@ -1,0 +1,382 @@
+= Architecture
+
+This chapter is for contributors. It explains how an app, the engine and the
+Swift host fit together, what crosses between them, and the rules the host
+follows for effects, threads, files, the ABI and linking. App authors need
+none of it; xref:ui.adoc#builders[the Ui reference] is theirs.
+
+== How it fits together
+
+[mermaid]
+....
+flowchart TB
+    App["app (Roc)"] -- "Ui / Engine" --> Engine["engine: Core.roc, pure Roc"]
+    Engine -- "command stream (roc-signals wire protocol 23)" --> Host["Swift host: host/Host.swift"]
+    Host --> Views["AppKit views"]
+    Host -- "AppKit events, effect results: one engine turn each" --> Engine
+....
+
+[#engine-revision]
+Engine:: `Core.roc`, `Engine.roc` and the modules they import (`Web`,
+`EntryRoutes`, `Url`, `ReadyIndex`, `Spelling`, `Layout`, `TableCore`, `View`,
+`Seq`, `MarkupAdvice`, `SignalCore`) are byte-identical copies of roc-signals
+`a13ff70e`. Nothing in the engine was changed. `tests/engine-modules.sha256`
+records their digests, and `check` compares them.
+
+Platform root:: `platform/main.roc` is a trimmed copy of roc-signals' root.
+It provides `roc_engine_keys`, `roc_engine_init`, `roc_engine_event`,
+`roc_engine_files` (a files-kind event, copied as is), `roc_engine_drop` and
+`roc_engine_version`, with no hosted functions, workers, ports or crypto.
+`roc_engine_keys` returns the engine's declarations without roc-signals'
+section 12 (protocol facts): that CBOR item needs the cbor package and
+`ProtocolFacts`, and this host binds no roles from it.
+
+`Ui.roc`:: The native vocabulary apps use. Each builder is a plain
+`Engine.element` with a native element name (`ui-vstack`, `ui-button`,
+`ui-text-field`, `ui-checkbox`, `ui-slider`, …). A control's state crosses as
+plain attributes (`value`, `checked`, `disabled`), because the engine only
+allows its `value`/`checked` _props_ on HTML inputs.
+
+Swift host (`host/`):: Decodes the subset of the command stream the
+vocabulary produces:
++
+* element, text and comment creation; attributes; listeners; text updates;
+* move, remove and clear;
+* row templates (`TEMPLATE`/`INST`) and their holes;
+* `FX` timers and intervals, and `CANCEL`;
+* `FX` HTTP (kind 1) through `URLSession`, with timeouts, cancellation and
+  transfer progress (see xref:architecture.adoc#effects-and-threads[Effects and threads]);
+* local storage, via `UserDefaults`, and session storage, in memory for the
+  life of the process;
+* files: handles, reads (`FX` 11), digests (13), URLs (14) and `SAVE` (see
+  xref:architecture.adoc#files[Files]).
++
+It keeps a node tree mirroring what the engine built and gives each `ui-*`
+element one AppKit view. It routes AppKit actions back as turns: `click`,
+`input`, `change`, `submit`, a list row's `select`, key events, and the
+files-kind `change` and `drop`. Any other command or effect is a clear fatal
+error, not a silent skip.
+
+== The vocabulary on the wire
+
+[cols="2,2,3",options="header"]
+|===
+| Builder | Element | AppKit view
+
+| `vstack`, `hstack` | `ui-vstack`, `ui-hstack` | `NSStackView`
+| `form` | `ui-form` | vertical `NSStackView`; Return submits
+| `scroll` | `ui-scroll` | `NSScrollView` around a vertical `NSStackView`
+| `list`, `row` | `ui-list`, `ui-row` | view-based `NSTableView`; each `ui-row` is a table row
+| `title`, `label`, `label_s`, `text`, `text_s`, `readout_s` | `ui-title`, `ui-label`, `ui-readout` | `NSTextField` label
+| `button`, `button_s`, `action_button`, `submit_button` | `ui-button` | `NSButton`
+| `text_field`, `text_area` | `ui-text-field`, `ui-text-area` | `NSTextField`; `NSTextView` in an `NSScrollView`
+| `checkbox`, `slider` | `ui-checkbox`, `ui-slider` | `NSButton` (checkbox), `NSSlider`
+| `dropdown` | `ui-dropdown` | `NSPopUpButton`
+| `segmented`, `tabs` | `ui-segmented` | `NSSegmentedControl`; `tabs` adds an `Engine.switch` of pages
+| `image` | `ui-image` | `NSImageView` of an SF Symbol
+| `progress`, `busy` | `ui-progress` | `NSProgressIndicator` bar, determinate or indeterminate
+| `shortcut` | `ui-shortcut` | hidden; an `Engine.on_document_key` handler
+| `file_button` | `ui-file-button` | `NSButton` opening an `NSOpenPanel`
+| `drop_zone` | `ui-drop-zone` | an `NSView` registered for dragged file URLs
+| `divider`, `spacer` | `ui-divider`, `ui-spacer` | `NSBox` separator, flexible `NSView`
+|===
+
+Props cross as plain attributes the host reads: `spacing`, `padding` and
+`align` on stacks; `height` and `min-height` on scrolls, lists and text
+areas; `font` (`body`, `title`, `headline`, `caption`, `mono`) and `color`
+(`primary`, `secondary`, `tertiary`, `accent`, `red`, `orange`, `green`,
+`blue`) on text. A `dropdown`'s `choices` cross as one attribute, joined by
+newlines.
+
+Window sizing:: Vertical stacks that hold a scroll area or a list use `.fill`
+distribution; the others keep `.gravityAreas`. The scroll area hugs least, so
+it takes the slack when the user resizes the window.
+
+[#lists]
+== Lists
+
+The table's row model follows the node tree: each engine insert, remove or
+move of a row is one `insertRows`, `removeRows` or `moveRow`, inside one
+`beginUpdates` per batch. A batch of more than 64 row changes (a mount, a new
+query, a `CLEAR`) reloads once instead. A row's own view is its cell view
+(row heights by Auto Layout, `usesAutomaticRowHeights`). A template row
+inside a list gets its views only when the table first asks for it.
+
+`examples/contacts` mounts 10,000 rows in about 0.6 s of engine time and
+0.1 s of host time; a search that drops thousands of rows takes tens of
+milliseconds in the host. The engine still draws every row that passes the
+query (`Engine.every_row`). Windowing the `table_view` to the rows in sight,
+with a `window` signal fed by the table's scroll position and the table told
+the full count, is the next cost to cut.
+
+[#keys]
+== Keys
+
+The host decodes the keymaps the engine renders (property rows 4 and 5) and
+matches an AppKit key event as roc-signals' design.md specifies: entries
+restricted to outside text entry, exact matches in order, then physical-key
+fallbacks (`KeyK`), then `every`. Ctrl, Alt and Meta match exactly; Shift
+exactly except for a punctuation or symbol chord; one ASCII letter without
+case. The nearest element at or above the focused view whose keymap hears
+the key gets a kind-4 payload. Failing that, the most recently mounted
+document handler (`Engine.on_document_key`, `Ui.shortcut`) that hears it
+does. A heard `prevent` entry swallows the event, so AppKit never sees it.
+Key names follow the DOM (`Enter`, `Escape`, `ArrowUp`, …) and codes the ANSI
+layout.
+
+Not done: the `stop` policy has no AppKit meaning here (one handler hears
+each key), menus and their key equivalents, and `keyup` for keys AppKit
+consumes itself.
+
+== Boot and lifecycle
+
+Before mount the host reads the program's declarations (`roc_engine_keys`:
+storage keys, media queries, zone span, startup profile) and sends real boot
+facts (`host/Boot.swift`, design.md Appendix B "Boot"):
+
+[cols="1,3",options="header"]
+|===
+| Section | Value
+
+| 1 location | `/`
+| 2 local storage | the declared keys that exist in `UserDefaults`
+| 3, 4 online, visible | true
+| 6 media | `(prefers-color-scheme: dark)` / `light` from the system setting; any other query false
+| 7 time | now, in ms
+| 8 seed | 16 bytes from `arc4random_buf`
+| 9 languages | `Locale.preferredLanguages` (1–16, each ≤ 64 bytes; `en-US` if none)
+| 10 time zone | `TimeZone.current` over the declared days each side of now, with its transitions
+| 11 session storage | the declared keys this process has stored
+| 13 mount root | an HTML `div`, or a profile-1 program's declared root
+| 14 startup | profile 0, or profile 1 fresh with no entry
+|===
+
+So `todos` saves its table under the local key `todos` and reads it back at
+the next launch (`Engine.boot_storage`, `Engine.watch_changes`).
+
+Quitting, or closing the window, cancels every effect in flight and calls
+`roc_engine_drop` once; no turn runs after it. A Roc crash or a host fatal
+error prints the message, shows it in an alert, then exits with status 1.
+Under `ROC_SCRIPT` it never shows the alert. The modal loop runs no turns, so
+a timer cannot re-enter Roc after a crash. `dbg` still prints to stderr.
+
+[#effects-and-threads]
+== Effects and threads
+
+Roc runs on the main thread only. An effect that blocks or waits (HTTP and
+files now, anything later) follows the same rules, which play the part
+roc-signals' Workers play on the web: the work leaves the thread, Roc does
+not.
+
+. *Nothing Roc owns crosses a thread.* The `FX` operands are decoded on the
+  main thread into a plain Swift value (`HttpRequest`). The engine state, the
+  command and work lists and every Roc allocation stay on the main thread.
+. *Work runs on the effect's own queue.* `URLSession` performs HTTP with its
+  delegate on a private serial `OperationQueue`. State that queue owns (each
+  transfer's buffer and redirect count) is touched only there; state the
+  main thread owns (`Host.flights`: the task, its timers) only there. They
+  meet in two places: the main thread hands a task over with
+  `queue.addOperation`, which also resumes it, so no callback precedes the
+  hand-over; the queue hands back a finished, already encoded result payload
+  (`[UInt8]`: status, headers, body) with `DispatchQueue.main.async`.
+. *The main thread decides whether a result exists.* A payload enters Roc
+  only if its id is still tracked, by the same task. `CANCEL`, a timeout and
+  teardown untrack the id _first_, then cancel the task, so a completion that
+  races them is dropped on the main thread and never reaches the engine
+  (which would also drop it, as stale). Even a request refused before it
+  starts (a bad URL) answers one task later through the same check, so a
+  `CANCEL` later in the same batch still wins.
+. *One result, one turn, through the UI's queue.* Results enter through
+  `Host.send`, as AppKit events do, which queues while a batch is being
+  applied: a completion never re-enters Roc mid-batch.
+. *Teardown cancels everything in flight* (`teardownEffects`, from
+  `Host.stop` on `applicationWillTerminate`, which the scripted `quit` also
+  reaches), and invalidates the session.
+
+[#http]
+=== HTTP
+
+Timeout:: `timeout_ms` (0 = none, capped at 600 s by the engine and again by
+the host) is a main-thread `Timer`. On expiry the id is untracked, the task
+cancelled and `Timeout` (tag 7) delivered. URLSession's own idle timeout is
+set to the same 600 s cap and, if it fires, is a `Network` error.
+Body size:: The host reads at most 16 MiB (`maxHttpBodyBytes`) of a response
+body, checked against `Content-Length` and as bytes arrive. Past it the
+transfer is stopped and answered `Network("response body is larger than the
+host's … limit")`. The protocol sets no limit for a text body.
+Text:: The body crosses as tag 1's `body:rest`, which the engine requires to
+be UTF-8. As Fetch's `text()` does, the host decodes it as UTF-8 with
+replacement (U+FFFD) and drops a leading BOM, whatever the `charset`. Header
+names are lowercased and sorted, as Fetch's `Headers` iterates them.
+URLs and redirects:: Only absolute `http(s)` URLs are fetched (there is no
+page to resolve a relative one against); anything else is `Network`.
+Redirects are followed to `http(s)` only, at most 20 times (URLSession stops
+a loop sooner, at 16); otherwise `Network`.
+Request body:: Sent only for a method other than `GET`/`HEAD` and a
+non-empty body, as roc-signals' runtime does.
+Cache:: `Default` → `useProtocolCachePolicy`; `NoStore` →
+`reloadIgnoringLocalCacheData`, and the response is not stored
+(`willCacheResponse` answers nil); `Reload` → `reloadIgnoringLocalCacheData`;
+`NoCache` → `reloadIgnoringLocalCacheData` too (URLSession has no
+conditional-revalidation policy, so this is stricter than Fetch's);
+`ForceCache` → `returnCacheDataElseLoad`.
+Credentials:: A native app has no page origin, so every request is
+cross-origin: `SameOrigin` sends and stores no cookies
+(`httpShouldHandleCookies = false`), `Include` uses the shared cookie store.
+Authentication challenges get URLSession's default handling.
+Progress:: Progress (tag 26) is reported only when the engine asked for it
+(`progress_ms > 0`, which it sets only for a site with a progress handler).
+The queue posts each count to the main thread; there one waiting report per
+request is replaced in place and delivered by one sampling timer every
+`progress_ms`. Completion, cancellation and timeout discard a waiting
+report, so none follows the final result. `Receiving` counts decoded bytes;
+its total is `Known` only for a `Content-Length` without a
+`Content-Encoding`. `Sending` reports a request body.
+Not yet:: Kind 15 (a response body as a file) and kind 12 (a file as the
+body) need the file heap; they remain a clear fatal error.
+
+=== File jobs
+
+Reads (`FX` 11), digests (13) and saves follow the same rules on a
+concurrent `DispatchQueue` (`host/Files.swift`); `Host.files.jobs` plays the
+part of `Host.flights`. A job checks its cancellation flag (an
+`os_unfair_lock`ed `Bool`, the only state shared with the main thread)
+between 1 MiB chunks, so `CANCEL` (an inspected file superseded, or its site
+disposed) stops a long digest at the next chunk, and its completion is
+dropped. The handle table is touched only on the main thread; `roc_dealloc`
+reaching it from another thread is a fatal error.
+
+[#files]
+== Files
+
+A file the user gives the app reaches Roc as a handle, never as bytes, as in
+roc-signals (design.md, "Files"). `Ui.file_button(label, handler)` opens an
+`NSOpenPanel` (several files may be chosen) and delivers a files-kind
+`change` event; `Ui.drop_zone(label, handler)` is an `NSView` registered for
+dragged file URLs and delivers `drop`. Both take an `Engine.FilesHandler`,
+whose payload is `Received` (`{ files : List(File), refused : U64 }`).
+Folders and unreadable paths are left out; no files means no event.
+
+Handles:: The host keeps each file as a `FileEntry` (absolute path, size,
+name and a media type from a short extension table, `""` when unknown) under
+a token, and mints a `Box(U64)` holding the token in a fixed table of 64
+slots laid out as the glue reports `Box(U64)`. The event carries the file
+record `minted:u32 refused:u32 (size:u64 name:str type:str)*` and a
+`List(Box(U64))` of the handles into `roc_engine_files`. Tokens encode
+generation, kind and slot as `resources.zig` does, so a stale token never
+resolves. A non-sandboxed app needs no security-scoped bookmark.
+Release:: Roc owns the boxes. When the last `File` holding one goes, Roc
+frees it with `roc_dealloc(payload - 8)`. `roc_dealloc` offers every address
+to the table first (one range check), as host.zig's `blobs.route` does, and
+the table retires the slot instead of freeing it. After the batch has been
+applied (its `FX` and `SAVE` commands, which may name a handle Roc dropped in
+the same turn, have resolved their entries), the host drains the retired
+slots and drops their entries. A request keeps its own copy of the entry
+until it is answered.
+Bound:: 64 live handles, as in the browser host. An event with more files
+than free slots delivers the ones that fit and counts the rest in `refused`.
+Retired slots count until they are drained.
+Reads:: For `read_bytes` and `read_utf8`, a `len` over the request's
+`max_bytes` or the host's `maxFileBytes` (256 MiB, the browser default;
+`ROC_MAX_FILE_BYTES` lowers it) is `FileFailed(TooLarge)`, unread. Text is
+sent as tag 17 and the engine checks its UTF-8. A file that went away or
+shrank is `Unreadable`.
+Digests:: `sha256` is streamed through CommonCrypto (`CC_SHA256_Init`,
+`_Update`, `_Final`, in libcommonCrypto, which libSystem re-exports), so the
+range is never held whole. CommonCrypto rather than CryptoKit: three C
+symbols in a library already linked, against a new Swift framework.
+URLs:: `object_url` is a `file://` URL of the file, which an AppKit view can
+load directly. A range other than the whole file has no URL of its own
+natively and answers `FileFailed(Unavailable)`; the browser's limit of 16
+ranges per handle does not apply.
+Saves:: For `File.save` (`SAVE`), the handle is resolved while the batch is
+applied, then after it an `NSSavePanel` sheet opens with the suggested name
+(one at a time), and the range is copied off the main thread. As in the
+browser, Roc learns nothing of the outcome; it is reported on stderr.
+
+Not built: uploads (`FX` 12), fetched files (`FX` 15), pasted files, files in
+a worker's answer, and building files (`Files.build!`), which needs worker
+instances.
+
+=== Workers (design note, not built)
+
+roc-signals runs a task's job in a separate Wasm instance per Web Worker
+(design.md, "Workers"). Natively the same shape fits: one more Roc engine
+instance per worker thread, each with its own heap, never sharing a Roc value
+with another, because Roc's reference counts are not atomic. A job crosses as
+bytes, as `roc_engine_work` takes them: `name:str input:rest` plus the
+handles the worker's own table mints for the files it names. The answer comes
+back as `n:u32 (token:u64)*n output:rest`, a plain byte buffer copied to the
+main thread and delivered as result tag 10 (with the answer's files minted in
+the page's table, through `roc_engine_files` on the effect node). The pieces
+that make it work natively:
+
+* *Per-thread runtime symbols.* `roc_alloc`, `roc_dealloc` and the handle
+  table route are process-global C symbols. Each would dispatch on a
+  thread-local "current instance" (its heap accounting and handle table), set
+  by the worker thread before it calls Roc.
+* *Hosted effects for jobs.* `File.read!` and the `Files.build!` builder are
+  hosted functions, which SwiftGlue does not generate yet. A worker thread
+  may call them synchronously: it is the thread the job runs on.
+* *Files across instances.* A file crosses as its `FileEntry` (path and
+  range), never as a box; each side mints its own handle.
+* *Cancellation and faults.* `CANCEL` marks the job. A worker thread cannot
+  be killed safely, so `on_cancel: Stop` would poison and discard that
+  instance and start a fresh one, and a `roc_crashed` in a worker would have
+  to unwind that thread only (today it exits the process).
+
+== Glue
+
+`glue/SwiftGlue.roc` writes everything the host needs to cross the ABI:
+
+* `roc_swift_abi.h`, the Swift bridging header. Swift can call C functions
+  only through a header clang imports; `@_silgen_name` uses Swift's calling
+  convention, not the C ABI. The header declares `RocList` and `RocBox`, each
+  record a provided procedure returns, the runtime symbols and the provided
+  symbols. Record fields, padding and `_Static_assert`s of size, alignment
+  and every offset come from the compiler's committed layout facts.
+* `RocGlue.swift`:
+** `RocList.ownedBytes` / `.bytes` / `.empty`, which encode a Roc list exactly
+   as Roc does;
+** for `List(Box(U64))` (the handles of a files-kind event): `RocBoxU64`, the
+   box's layout (refcount word just before the payload, and the address and
+   alignment Roc frees it with), and `RocList.ownedBoxesU64`, which builds the
+   list. A list whose elements are refcounted carries one more header word,
+   the element count, before its refcount (`allocateWithRefcount` in the
+   compiler's `src/builtins/utils.zig`), so its header is 16 bytes, not 8.
+   Every number comes from the compiler's layout facts (`is_refcounted`, the
+   element's and payload's size and alignment). The header exposes them as
+   `ROC_BOX_U64_*` constants, which the Swift helpers read, and checks them
+   against the C types with `_Static_assert`s;
+** one typed Swift function per provided procedure (`Roc.eventForHost(...)`),
+   with its ownership contract.
+
+It covers only the shapes this platform uses (byte lists, opaque boxes,
+lists of boxes of an integer, integers, records of those, unit) and 64-bit
+hosts. It fails generation, naming the entry point, on anything else,
+including hosted functions. The list helpers were the point: the stock C glue
+leaves list construction to the host, and a hand-written encoding was this
+spike's one real crash (see xref:contributing.adoc#findings[Findings]).
+
+[#linker-inputs]
+== Linker inputs: no Apple SDK files
+
+Following roc-gui, the platform ships no Apple SDK material. Roc's linker
+links a platform's `targets/macos-sysroot`. `scripts/build_macos_stubs.py`
+writes that sysroot as minimal TAPI v4 `.tbd` stubs, built only from the
+reviewed catalog `host/interfaces.json`: install names, symbol names and
+stated evidence per library. It reads no SDK file. With `--audit` it also
+fails the build if `libhost.a` references a symbol the catalog does not own,
+so adding one is a reviewed edit. The platform bundle carries these generated
+stubs, never an SDK file.
+
+Swift is compiled with `-disable-autolink-frameworks` and
+`-disable-force-load-symbols`, so the frameworks linked are exactly the
+catalog's. Roc then links each `X.framework/X.tbd` it finds. The resulting
+binaries load only `AppKit`, `Foundation`, `CoreGraphics`, `libSystem`,
+`libobjc` and the Swift runtime and overlays in `/usr/lib/swift`.
+
+Unlike roc-gui, the catalog's evidence is per library, not per symbol. Swift
+symbols are assigned by the mangled module or extension owner (Swift's
+`docs/ABI/Mangling.rst`), and ObjC classes by Apple's documented framework.
+Tightening that to per-symbol evidence is follow-up work.
