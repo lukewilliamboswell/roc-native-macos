@@ -15,8 +15,10 @@ take 13–30 s and over a GB, and 22,500 never opened (killed in Auto Layout
 at 3.4 GB). The engine's quadratic mount and Auto Layout are the walls;
 see <<where-it-breaks>>.
 
-It is a harness, not an example: the gate (`scripts/check_all.roc`, which
-discovers `examples/` only) neither builds nor runs it.
+It is a harness, not an example. The gate's `bench` stage builds it and runs
+`run.sh --smoke`: a 4×4 grid and a 12-move sweep, which fails unless the
+cells were hovered and every trail timer has cooled. That keeps it from going
+stale without putting any load on the gate.
 
 == Running it
 
@@ -25,6 +27,7 @@ discovers `examples/` only) neither builds nor runs it.
 scripts/build.sh --platform      # the host, once
 bench/grid/run.sh                # N = 10 32 100 316 1000
 bench/grid/run.sh 50 70          # other sizes
+bench/grid/run.sh --smoke        # what the gate runs
 TIMEOUT=600 bench/grid/run.sh 100
 ----
 
