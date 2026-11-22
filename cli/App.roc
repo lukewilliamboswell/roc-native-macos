@@ -5,6 +5,7 @@ import cli.Path
 import cli.Stdout
 import cli.System
 import Icon
+import Meta
 
 ## Build an app with Roc into `<name>.app`, and start it.
 ##
@@ -13,13 +14,9 @@ import Icon
 ## signs the program (ad hoc), so this works the same on macOS, Linux and
 ## Windows. The tool then writes `<name>.app` around it: the program in
 ## `Contents/MacOS/`, a copy of `assets/` in `Contents/Resources/`, the icon,
-## and an `Info.plist` naming its bundle identifier. Only running it needs a
-## Mac.
+## and an `Info.plist` with its metadata (`Meta`: `macos.json` and the
+## flags). Only running it needs a Mac.
 App := [].{
-
-	## The app's bundle identifier and name in the menu bar; empty means the
-	## default.
-	Options : { id : Str, name : Str }
 
 	## The build directory, beside `main.roc`.
 	work : Str
@@ -93,16 +90,27 @@ App := [].{
 		}
 	}
 
-	## Build `<name>.app` from `main.roc`, and say what it is.
-	build! : Options => Try({ bundle : Str, name : Str }, _)
-	build! = |options| {
-		if !options.id.is_empty() and !App.valid_id(options.id) {
-			return Err(BadId(options.id))
+	## The fields `macos.json` gives, or none when there is no such file.
+	written! : () => Try(Meta.Fields, _)
+	written! = || {
+		file = Path.utf8(Meta.file)
+		if !(Path.exists!(file)?) {
+			return Ok(Meta.none)
 		}
+		fields = Meta.from_json(Path.read_utf8!(file)?)?
+		Meta.check(fields, File)?
+		Ok(fields)
+	}
+
+	## Build `<name>.app` from `main.roc`, with the metadata `macos.json`
+	## gives and `flags` override, and say what it is.
+	build! : Meta.Fields => Try({ bundle : Str, name : Str, meta : Meta.Resolved }, _)
+	build! = |flags| {
+		Meta.check(flags, Flag)?
+		written = App.written!()?
 		icon = App.icon!()?
 		{ name, program } = App.compile!()?
-		id = if (options.id.is_empty()) "com.example.${name}" else options.id
-		label = if (options.name.is_empty()) name else options.name
+		meta = Meta.resolve(Meta.over(flags, written), name)
 		bundle = "${name}.app"
 		if Path.exists!(Path.utf8(bundle))? {
 			Path.delete_all!(Path.utf8(bundle))?
@@ -118,16 +126,16 @@ App := [].{
 			}
 			NoIcon => Bool.False
 		}
-		Path.write_utf8!(Path.utf8("${bundle}/Contents/Info.plist"), App.info_plist({ id, name, label, icon: has_icon }))?
-		Stdout.line!("Built ${bundle}: ${label} (${id}), for Apple silicon Macs with macOS 11 or later.")?
-		Ok({ bundle, name })
+		Path.write_utf8!(Path.utf8("${bundle}/Contents/Info.plist"), App.info_plist(meta, name, has_icon))?
+		Stdout.line!("Built ${bundle}: ${meta.name} ${meta.version} (${meta.id}), for Apple silicon Macs with macOS ${meta.minimum_macos} or later.")?
+		Ok({ bundle, name, meta })
 	}
 
 	## Build `<name>.app` and run the program inside it, with its output in
 	## this terminal, until the app quits.
-	run! : Options => Try({}, _)
-	run! = |options| {
-		{ bundle, name } = App.build!(options)?
+	run! : Meta.Fields => Try({}, _)
+	run! = |flags| {
+		{ bundle, name, .. } = App.build!(flags)?
 		match App.system(System.target!()) {
 			AppleSilicon => {}
 			Other(here) => return Err(NotAppleSilicon({ command: "run", system: here, bundle }))
@@ -174,39 +182,34 @@ App := [].{
 		if (name.is_empty() or name.to_utf8().all(|b| b == '-')) "app" else name
 	}
 
-	## Whether `id` is a bundle identifier: two or more dot-separated parts,
-	## each of letters, digits and hyphens.
-	valid_id : Str -> Bool
-	valid_id = |id| {
-		parts = id.split_on(".")
-		parts.len() >= 2
-			and parts.all(
-				|part| {
-					bytes = part.to_utf8()
-					!bytes.is_empty() and bytes.all(|b| (b >= 'a' and b <= 'z') or (b >= 'A' and b <= 'Z') or (b >= '0' and b <= '9') or b == '-')
-				},
-			)
-	}
-
-	## The app's `Info.plist`. `LSMinimumSystemVersion` is the `minos` Roc's
-	## linker writes. With an icon, `CFBundleIconFile` names it.
-	info_plist : { id : Str, name : Str, label : Str, icon : Bool } -> Str
-	info_plist = |{ id, name, label, icon }| {
-		icon_key = if (icon) "\t<key>CFBundleIconFile</key><string>${Icon.bundled.drop_suffix(".icns")}</string>\n" else ""
+	## The app's `Info.plist`, for the program `executable`. With an icon,
+	## `CFBundleIconFile` names it; a copyright and a category are written
+	## only when given. `LSMinimumSystemVersion` is by default the `minos`
+	## Roc's linker writes.
+	info_plist : Meta.Resolved, Str, Bool -> Str
+	info_plist = |meta, executable, icon| {
+		optional = [
+			("NSHumanReadableCopyright", meta.copyright),
+			("LSApplicationCategoryType", meta.category),
+			("CFBundleIconFile", if (icon) Icon.bundled.drop_suffix(".icns") else ""),
+		]
+		extra = optional.keep_if(|(_, value)| !value.is_empty()).map(|(key, value)| "\t<key>${key}</key><string>${App.escape(value)}</string>\n")
 		\\<?xml version="1.0" encoding="UTF-8"?>
 		\\<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 		\\<plist version="1.0">
 		\\<dict>
-		\\	<key>CFBundleIdentifier</key><string>${id}</string>
-		\\	<key>CFBundleName</key><string>${App.escape(label)}</string>
-		\\	<key>CFBundleExecutable</key><string>${name}</string>
+		\\	<key>CFBundleIdentifier</key><string>${meta.id}</string>
+		\\	<key>CFBundleName</key><string>${App.escape(meta.name)}</string>
+		\\	<key>CFBundleDisplayName</key><string>${App.escape(meta.name)}</string>
+		\\	<key>CFBundleExecutable</key><string>${executable}</string>
 		\\	<key>CFBundlePackageType</key><string>APPL</string>
 		\\	<key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
-		\\	<key>CFBundleShortVersionString</key><string>0.1</string>
+		\\	<key>CFBundleShortVersionString</key><string>${meta.version}</string>
+		\\	<key>CFBundleVersion</key><string>${meta.build}</string>
 		\\	<key>NSPrincipalClass</key><string>NSApplication</string>
 		\\	<key>NSHighResolutionCapable</key><true/>
-		\\	<key>LSMinimumSystemVersion</key><string>11.0</string>
-		\\${icon_key}</dict>
+		\\	<key>LSMinimumSystemVersion</key><string>${meta.minimum_macos}</string>
+		\\${Str.join_with(extra, "")}</dict>
 		\\</plist>
 		\\
 	}
@@ -220,12 +223,25 @@ expect [App.app_name("My App"), App.app_name("counter"), App.app_name("todo_list
 
 expect [App.last_part("/Users/me/counter"), App.last_part("C:\\Users\\me\\counter"), App.last_part("counter")] == ["counter", "counter", "counter"]
 
-expect [App.valid_id("com.example.counter"), App.valid_id("com.example.my-app"), App.valid_id("counter"), App.valid_id("com..app"), App.valid_id("com.my_app")] == [Bool.True, Bool.True, Bool.False, Bool.False, Bool.False]
-
+## Without metadata the plist has the defaults, and no optional keys.
 expect {
-	text = App.info_plist({ id: "com.example.counter", name: "counter", label: "Tom & Jerry", icon: Bool.False })
-	text.contains("<key>CFBundleIdentifier</key><string>com.example.counter</string>") and text.contains("<string>Tom &amp; Jerry</string>") and text.contains("<key>CFBundleExecutable</key><string>counter</string>") and !text.contains("CFBundleIconFile")
+	text = App.info_plist({ ..Meta.resolve(Meta.none, "counter"), name: "Tom & Jerry" }, "counter", Bool.False)
+	text.contains("<key>CFBundleIdentifier</key><string>com.example.counter</string>")
+		and text.contains("<key>CFBundleName</key><string>Tom &amp; Jerry</string>")
+		and text.contains("<key>CFBundleExecutable</key><string>counter</string>")
+		and text.contains("<key>CFBundleShortVersionString</key><string>0.1</string>")
+		and text.contains("<key>CFBundleVersion</key><string>0.1</string>")
+		and text.contains("<key>LSMinimumSystemVersion</key><string>11.0</string>")
+		and !text.contains("CFBundleIconFile")
+		and !text.contains("NSHumanReadableCopyright")
 }
 
-## An app with an icon names it, `Contents/Resources/AppIcon.icns`.
-expect App.info_plist({ id: "com.example.about", name: "about", label: "about", icon: Bool.True }).contains("\t<key>CFBundleIconFile</key><string>AppIcon</string>\n</dict>")
+## An app with an icon names it, `Contents/Resources/AppIcon.icns`; a
+## copyright and a category are written when given.
+expect {
+	meta = { ..Meta.resolve(Meta.none, "about"), version: "1.2.0", build: "7", copyright: "© 2026 <Jane>", category: "public.app-category.utilities" }
+	text = App.info_plist(meta, "about", Bool.True)
+	text.contains("\t<key>NSHumanReadableCopyright</key><string>© 2026 &lt;Jane&gt;</string>\n\t<key>LSApplicationCategoryType</key><string>public.app-category.utilities</string>\n\t<key>CFBundleIconFile</key><string>AppIcon</string>\n</dict>")
+		and text.contains("<key>CFBundleShortVersionString</key><string>1.2.0</string>")
+		and text.contains("<key>CFBundleVersion</key><string>7</string>")
+}
