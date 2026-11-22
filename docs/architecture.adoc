@@ -22,7 +22,9 @@ Engine:: `Core.roc`, `Engine.roc` and the modules they import (`Web`,
 `Seq`, `MarkupAdvice`, `SignalCore`) are copies of roc-signals `a13ff70e`
 plus the patch series in `patches/roc-signals/`, whose `README.adoc` lists the
 patches in order with their upstream status
-(xref:contributing.adoc#engine-patches[Engine patches]). `tests/engine-modules.sha256` records
+(xref:contributing.adoc#engine-patches[Engine patches]). Two patches split
+`Core.roc`'s mount functions so the compiler keeps the turn and the block
+unshared, which makes mounting linear. `tests/engine-modules.sha256` records
 the pristine digests, and `check` reverse-applies the series and compares.
 
 Platform root:: `platform/main.roc` is a trimmed copy of roc-signals' root.

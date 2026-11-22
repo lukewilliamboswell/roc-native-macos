@@ -18,6 +18,10 @@ stage.
 == The series
 
 . `0001-mount-handler-function.patch`: mount an event listener in a function of its own, so the turn reaches `mount_attr` unshared and mounting is linear in attributes (box grid at 4,900 cells: 1,479 ms to 25 ms). Upstream: not yet sent.
+. `0002-mount-static-nodes-in-functions.patch`: mount elements, comments and texts in functions of their own, so a block's child lists stay unshared and mounting is linear in sites (grid bench, 10,000 cells: 2,360 ms to 74 ms after 0001). Upstream: not yet sent.
+
+Both work around compiler behaviour rather than engine bugs; the compiler
+side is in xref:../roc-compiler/README.adoc[patches/roc-compiler].
 
 == Making a patch
 
