@@ -32,8 +32,8 @@ ROC_PROVIDED = re.compile(r"_roc_engine_\w+")
 
 def load(catalog_path):
     catalog = json.loads(pathlib.Path(catalog_path).read_text())
-    if catalog.get("schema_version") != 1 or catalog.get("target") != TARGET:
-        sys.exit(f"{catalog_path}: expected schema_version 1 for {TARGET}")
+    if catalog.get("schema_version") != 2 or catalog.get("target") != TARGET:
+        sys.exit(f"{catalog_path}: expected schema_version 2 for {TARGET}")
     owners = {}
     paths = set()
     for library in catalog["libraries"]:
@@ -43,9 +43,12 @@ def load(catalog_path):
         paths.add(path)
         if not library["install_name"].startswith("/") or not library.get("evidence"):
             sys.exit(f"{catalog_path}: {library['name']} needs an absolute install name and evidence")
-        for symbol in library["symbols"]:
+        for entry in library["symbols"]:
+            symbol = entry.get("name", "")
             if not re.fullmatch(r"[A-Za-z_$][A-Za-z0-9_$.]*", symbol):
                 sys.exit(f"{catalog_path}: {symbol!r} is not a symbol name")
+            if not entry.get("evidence"):
+                sys.exit(f"{catalog_path}: {symbol} names no evidence")
             if symbol in owners:
                 sys.exit(f"{catalog_path}: {symbol} is owned by both {owners[symbol]} and {library['name']}")
             owners[symbol] = library["name"]
@@ -72,7 +75,7 @@ def audit(libhost, owners):
 def tbd(library):
     lines = ["--- !tapi-tbd", "tbd-version: 4", f"targets: [ {TARGET} ]",
              f"install-name: '{library['install_name']}'"]
-    symbols = sorted(library["symbols"])
+    symbols = sorted(entry["name"] for entry in library["symbols"])
     if symbols:
         lines += ["exports:", f"  - targets: [ {TARGET} ]", "    symbols:"]
         lines += [f"      - '{symbol}'" for symbol in symbols]

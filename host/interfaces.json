@@ -1,510 +1,1806 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "target": "arm64-macos",
-  "note": "Reviewed catalog of the system interfaces the Swift host links against. Generated stubs list only these names; no Apple SDK file is read or shipped.",
+  "note": "Reviewed catalog of the system interfaces the Swift host links against. Every library names its install name and every symbol its own public evidence; the generated stubs list only these names, and no Apple SDK file is read or shipped. PROVENANCE.md states the rules.",
   "libraries": [
     {
       "name": "libSystem",
       "path": "usr/lib/libSystem.tbd",
       "install_name": "/usr/lib/libSystem.B.dylib",
-      "evidence": "C library, compiler stack-check and Blocks runtime, and libdispatch's OS_dispatch_queue class, all reached through libSystem (man 3 intro; Blocks: clang BlockLanguageSpec; libdispatch: apple-oss-distributions/libdispatch). dyld_stub_binder is required by the linker for lazy binding (apple-oss-distributions/dyld libdyld/threadLocalHelpers.s). _memset, _memcpy, _memmove, _fmod and _fmodf are C standard library functions that Roc-compiled code calls directly (ISO C 7.24, 7.12). _arc4random_buf is the C library's random-bytes call (man 3 arc4random). Files: stdio fopen/fseeko/fread/fwrite/fclose (ISO C 7.21; fseeko POSIX), stat and realpath (POSIX; macOS exports realpath as _realpath$DARWIN_EXTSN, man 3 realpath), pthread_main_np (man 3 pthread_main_np) and os_unfair_lock_lock/unlock (apple-oss-distributions/libplatform, include/os/lock.h), all in libSystem's re-exported libsystem_c, libsystem_kernel, libsystem_pthread and libsystem_platform. CC_SHA256_Init/Update/Final are libcommonCrypto (apple-oss-distributions/CommonCrypto, include/CommonDigest.h), which libSystem re-exports as /usr/lib/system/libcommonCrypto.dylib.",
+      "evidence": "The C library, libdispatch, libplatform, the Blocks runtime and libcommonCrypto, which macOS links as one umbrella library at /usr/lib/libSystem.B.dylib (man 3 intro; apple-oss-distributions/Libc, libdispatch, libplatform, CommonCrypto).",
       "symbols": [
-        "_CC_SHA256_Final",
-        "_CC_SHA256_Init",
-        "_CC_SHA256_Update",
-        "_OBJC_CLASS_$_OS_dispatch_queue",
-        "__Block_copy",
-        "__Block_release",
-        "__NSConcreteStackBlock",
-        "___chkstk_darwin",
-        "___stack_chk_fail",
-        "___stack_chk_guard",
-        "___stderrp",
-        "_arc4random_buf",
-        "_bzero",
-        "_exit",
-        "_fclose",
-        "_fmod",
-        "_fmodf",
-        "_fopen",
-        "_fputs",
-        "_fread",
-        "_free",
-        "_fseeko",
-        "_fwrite",
-        "_getenv",
-        "_malloc",
-        "_malloc_size",
-        "_memcpy",
-        "_memmove",
-        "_memset",
-        "_os_unfair_lock_lock",
-        "_os_unfair_lock_unlock",
-        "_posix_memalign",
-        "_pthread_main_np",
-        "_realloc",
-        "_realpath$DARWIN_EXTSN",
-        "_stat",
-        "dyld_stub_binder"
+        {
+          "name": "_CC_SHA256_Final",
+          "evidence": "CC_SHA256_Final, CommonCrypto (apple-oss-distributions/CommonCrypto, include/CommonDigest.h), re-exported by libSystem"
+        },
+        {
+          "name": "_CC_SHA256_Init",
+          "evidence": "CC_SHA256_Init, CommonCrypto (apple-oss-distributions/CommonCrypto, include/CommonDigest.h), re-exported by libSystem as /usr/lib/system/libcommonCrypto.dylib"
+        },
+        {
+          "name": "_CC_SHA256_Update",
+          "evidence": "CC_SHA256_Update, CommonCrypto (apple-oss-distributions/CommonCrypto, include/CommonDigest.h), re-exported by libSystem"
+        },
+        {
+          "name": "_OBJC_CLASS_$_OS_dispatch_queue",
+          "evidence": "the Objective-C class of a dispatch queue object, OS_dispatch_queue, which Swift's DispatchQueue bridges to (apple-oss-distributions/libdispatch, os/object.h and dispatch/queue.h), in libSystem's libdispatch"
+        },
+        {
+          "name": "__Block_copy",
+          "evidence": "_Block_copy, the Blocks runtime (clang docs/BlockLanguageSpec; llvm compiler-rt BlocksRuntime/Block.h), in libSystem's libsystem_blocks"
+        },
+        {
+          "name": "__Block_release",
+          "evidence": "_Block_release, the Blocks runtime (clang docs/BlockLanguageSpec; llvm compiler-rt BlocksRuntime/Block.h), in libSystem's libsystem_blocks"
+        },
+        {
+          "name": "__NSConcreteStackBlock",
+          "evidence": "_NSConcreteStackBlock, the class of a block on the stack (clang docs/Block-ABI-Apple), in libSystem's libsystem_blocks"
+        },
+        {
+          "name": "___chkstk_darwin",
+          "evidence": "the stack probe the compiler calls for a frame larger than a page on Apple platforms (llvm AArch64FrameLowering, ___chkstk_darwin), in libSystem's libcompiler_rt"
+        },
+        {
+          "name": "___stack_chk_fail",
+          "evidence": "the stack protector's failure handler the compiler calls (clang -fstack-protector), in libSystem's libsystem_c"
+        },
+        {
+          "name": "___stack_chk_guard",
+          "evidence": "the stack protector's canary the compiler reads (clang -fstack-protector), in libSystem's libsystem_c"
+        },
+        {
+          "name": "___stderrp",
+          "evidence": "Darwin's stderr, the FILE * that stdio.h's stderr names (apple-oss-distributions/Libc, include/stdio.h), in libSystem's libsystem_c"
+        },
+        {
+          "name": "_arc4random_buf",
+          "evidence": "arc4random_buf, random bytes (man 3 arc4random), in libSystem's libsystem_c"
+        },
+        {
+          "name": "_bzero",
+          "evidence": "bzero (man 3 bzero; POSIX.1-2001), in libSystem's libsystem_platform"
+        },
+        {
+          "name": "_exit",
+          "evidence": "exit (ISO C 7.22.4.4), in libSystem's libsystem_c"
+        },
+        {
+          "name": "_fclose",
+          "evidence": "fclose (ISO C 7.21.5.1), in libSystem's libsystem_c"
+        },
+        {
+          "name": "_fmod",
+          "evidence": "fmod (ISO C 7.12.10.1), which Roc-compiled code calls directly, in libSystem's libsystem_m"
+        },
+        {
+          "name": "_fmodf",
+          "evidence": "fmodf (ISO C 7.12.10.1), which Roc-compiled code calls directly, in libSystem's libsystem_m"
+        },
+        {
+          "name": "_fopen",
+          "evidence": "fopen (ISO C 7.21.5.3), in libSystem's libsystem_c"
+        },
+        {
+          "name": "_fputs",
+          "evidence": "fputs (ISO C 7.21.7.3), in libSystem's libsystem_c"
+        },
+        {
+          "name": "_fread",
+          "evidence": "fread (ISO C 7.21.8.1), in libSystem's libsystem_c"
+        },
+        {
+          "name": "_free",
+          "evidence": "free (ISO C 7.22.3.3), in libSystem's libsystem_malloc"
+        },
+        {
+          "name": "_fseeko",
+          "evidence": "fseeko (POSIX.1-2008), in libSystem's libsystem_c"
+        },
+        {
+          "name": "_fwrite",
+          "evidence": "fwrite (ISO C 7.21.8.2), in libSystem's libsystem_c"
+        },
+        {
+          "name": "_getenv",
+          "evidence": "getenv (ISO C 7.22.4.6), in libSystem's libsystem_c"
+        },
+        {
+          "name": "_malloc",
+          "evidence": "malloc (ISO C 7.22.3.4), in libSystem's libsystem_malloc"
+        },
+        {
+          "name": "_malloc_size",
+          "evidence": "malloc_size (man 3 malloc_size), in libSystem's libsystem_malloc"
+        },
+        {
+          "name": "_memcpy",
+          "evidence": "memcpy (ISO C 7.24.2.1), which Roc-compiled code calls directly, in libSystem's libsystem_platform"
+        },
+        {
+          "name": "_memmove",
+          "evidence": "memmove (ISO C 7.24.2.2), which Roc-compiled code calls directly, in libSystem's libsystem_platform"
+        },
+        {
+          "name": "_memset",
+          "evidence": "memset (ISO C 7.24.6.1), which Roc-compiled code calls directly, in libSystem's libsystem_platform"
+        },
+        {
+          "name": "_os_unfair_lock_lock",
+          "evidence": "os_unfair_lock_lock (apple-oss-distributions/libplatform, include/os/lock.h), in libSystem's libsystem_platform"
+        },
+        {
+          "name": "_os_unfair_lock_unlock",
+          "evidence": "os_unfair_lock_unlock (apple-oss-distributions/libplatform, include/os/lock.h), in libSystem's libsystem_platform"
+        },
+        {
+          "name": "_posix_memalign",
+          "evidence": "posix_memalign (POSIX.1-2001), in libSystem's libsystem_malloc"
+        },
+        {
+          "name": "_pthread_main_np",
+          "evidence": "pthread_main_np (man 3 pthread_main_np), in libSystem's libsystem_pthread"
+        },
+        {
+          "name": "_realloc",
+          "evidence": "realloc (ISO C 7.22.3.5), in libSystem's libsystem_malloc"
+        },
+        {
+          "name": "_realpath$DARWIN_EXTSN",
+          "evidence": "realpath (POSIX.1-2008), under the name macOS exports for its extended form (man 3 realpath), in libSystem's libsystem_c"
+        },
+        {
+          "name": "_stat",
+          "evidence": "stat (POSIX.1-2008), in libSystem's libsystem_kernel"
+        },
+        {
+          "name": "dyld_stub_binder",
+          "evidence": "the lazy-binding helper the linker requires of every image (apple-oss-distributions/dyld, libdyld), reached through libSystem"
+        }
       ]
     },
     {
       "name": "libobjc",
       "path": "usr/lib/libobjc.tbd",
       "install_name": "/usr/lib/libobjc.A.dylib",
-      "evidence": "Objective-C runtime entry points and NSObject (apple-oss-distributions/objc4: runtime/objc-runtime.h, NSObject.mm).",
+      "evidence": "The Objective-C runtime, /usr/lib/libobjc.A.dylib (apple-oss-distributions/objc4).",
       "symbols": [
-        "_OBJC_CLASS_$_NSObject",
-        "_OBJC_METACLASS_$_NSObject",
-        "__objc_empty_cache",
-        "_objc_allocWithZone",
-        "_objc_autoreleaseReturnValue",
-        "_objc_msgSend",
-        "_objc_msgSendSuper2",
-        "_objc_opt_self",
-        "_objc_release",
-        "_objc_retain",
-        "_objc_retainAutoreleasedReturnValue"
+        {
+          "name": "_OBJC_CLASS_$_NSObject",
+          "evidence": "the Objective-C class NSObject (apple-oss-distributions/objc4, runtime/NSObject.mm)"
+        },
+        {
+          "name": "_OBJC_METACLASS_$_NSObject",
+          "evidence": "the metaclass of NSObject, which every Objective-C subclass's metaclass names (apple-oss-distributions/objc4, runtime/NSObject.mm)"
+        },
+        {
+          "name": "__objc_empty_cache",
+          "evidence": "_objc_empty_cache, the method cache an uninitialised class points at (apple-oss-distributions/objc4, runtime/objc-abi.h)"
+        },
+        {
+          "name": "_objc_allocWithZone",
+          "evidence": "objc_allocWithZone (apple-oss-distributions/objc4, runtime/objc-internal.h)"
+        },
+        {
+          "name": "_objc_autoreleaseReturnValue",
+          "evidence": "objc_autoreleaseReturnValue (apple-oss-distributions/objc4, runtime/objc-internal.h)"
+        },
+        {
+          "name": "_objc_msgSend",
+          "evidence": "objc_msgSend (apple-oss-distributions/objc4, runtime/message.h)"
+        },
+        {
+          "name": "_objc_msgSendSuper2",
+          "evidence": "objc_msgSendSuper2 (apple-oss-distributions/objc4, runtime/objc-abi.h)"
+        },
+        {
+          "name": "_objc_opt_self",
+          "evidence": "objc_opt_self (apple-oss-distributions/objc4, runtime/objc-internal.h)"
+        },
+        {
+          "name": "_objc_release",
+          "evidence": "objc_release (apple-oss-distributions/objc4, runtime/objc-internal.h)"
+        },
+        {
+          "name": "_objc_retain",
+          "evidence": "objc_retain (apple-oss-distributions/objc4, runtime/objc-internal.h)"
+        },
+        {
+          "name": "_objc_retainAutoreleasedReturnValue",
+          "evidence": "objc_retainAutoreleasedReturnValue (apple-oss-distributions/objc4, runtime/objc-internal.h)"
+        }
       ]
     },
     {
       "name": "libswiftCore",
       "path": "usr/lib/libswiftCore.tbd",
       "install_name": "/usr/lib/swift/libswiftCore.dylib",
-      "evidence": "Swift runtime (swift_*) and the standard library (mangled module `s`, standard substitutions, builtins) per swiftlang/swift docs/ABI/Mangling.rst; installed in /usr/lib/swift since Swift 5 ABI stability. Swift compilers differ in which standard-library symbols they reference (the macos-15 runner's Swift references _$sBi32_WV, String.Index metadata, UTF8View._foreignDistance and __ContiguousArrayStorageBase metadata, which Swift 6.2.4 inlines), so the catalog covers both.",
+      "evidence": "The Swift standard library, which macOS 10.14.4 and later ship in the OS as /usr/lib/swift/libswiftCore.dylib (swiftlang/swift, stdlib/public/core).",
       "symbols": [
-        "_$s15_ObjectiveCTypes01_A11CBridgeablePTl",
-        "_$s8RawValueSYTl",
-        "_$sBOWV",
-        "_$sBbWV",
-        "_$sBi32_WV",
-        "_$sBoWV",
-        "_$sSH13_rawHashValue4seedS2i_tFTq",
-        "_$sSH4hash4intoys6HasherVz_tFTq",
-        "_$sSH9hashValueSivgTq",
-        "_$sSHMp",
-        "_$sSHSQTb",
-        "_$sSKsSS7ElementRtzrlE6joined9separatorS2S_tF",
-        "_$sSON",
-        "_$sSOSHsWP",
-        "_$sSQ2eeoiySbx_xtFZTq",
-        "_$sSQMp",
-        "_$sSS10describingSSx_tclufC",
-        "_$sSS10lowercasedSSyF",
-        "_$sSS11utf8CStrings15ContiguousArrayVys4Int8VGvg",
-        "_$sSS14_fromSubstringySSSshFZ",
-        "_$sSS17UnicodeScalarViewV13_foreignIndex5afterSS0E0VAF_tF",
-        "_$sSS17UnicodeScalarViewV13_foreignIndex6beforeSS0E0VAF_tF",
-        "_$sSS18_fromUTF8RepairingySS6result_Sb11repairsMadetSRys5UInt8VGFZ",
-        "_$sSS18_uncheckedFromUTF8ySSSRys5UInt8VGFZ",
-        "_$sSS4hash4intoys6HasherVz_tF",
-        "_$sSS5IndexVMn",
-        "_$sSS5countSivg",
-        "_$sSS5index5afterSS5IndexVAD_tF",
-        "_$sSS5index6beforeSS5IndexVAD_tF",
-        "_$sSS5index_8offsetBy07limitedC0SS5IndexVSgAE_SiAEtF",
-        "_$sSS6appendyySJF",
-        "_$sSS6appendyySSF",
-        "_$sSS7cStringSSSPys4Int8VG_tcfC",
-        "_$sSS8IteratorV4nextSJSgyF",
-        "_$sSS8UTF8ViewV13_foreignCountSiyF",
-        "_$sSS8UTF8ViewV13_foreignIndex5afterSS0D0VAF_tF",
-        "_$sSS8UTF8ViewV13_foreignIndex_8offsetBySS0D0VAF_SitF",
-        "_$sSS8UTF8ViewV16_foreignDistance4from2toSiSS5IndexV_AGtF",
-        "_$sSS8UTF8ViewV17_foreignSubscript8positions5UInt8VSS5IndexV_tF",
-        "_$sSS8UTF8ViewVN",
-        "_$sSS9UTF16ViewV5index_8offsetBySS5IndexVAF_SitF",
-        "_$sSS9hasPrefixySbSSF",
-        "_$sSS9hasSuffixySbSSF",
-        "_$sSS9hashValueSivg",
-        "_$sSS9repeating5countS2S_SitcfC",
-        "_$sSSN",
-        "_$sSSSHsWP",
-        "_$sSSSTsWP",
-        "_$sSSSysMc",
-        "_$sSSs25LosslessStringConvertiblesWP",
-        "_$sSSySJSS5IndexVcig",
-        "_$sSSySSxcs25LosslessStringConvertibleRzSTRzSJ7ElementSTRtzlufC",
-        "_$sSSySsSnySS5IndexVGcig",
-        "_$sSY8rawValue03RawB0QzvgTq",
-        "_$sSY8rawValuexSg03RawB0Qz_tcfCTq",
-        "_$sSYMp",
-        "_$sSa034_makeUniqueAndReserveCapacityIfNotB0yyFyXl_Ts5",
-        "_$sSa11descriptionSSvg",
-        "_$sSa16_createNewBuffer14bufferIsUnique15minimumCapacity13growForAppendySb_SiSbtFyXl_Ts5",
-        "_$sSa28_allocateBufferUninitialized15minimumCapacitys06_ArrayB0VyxGSi_tFZ",
-        "_$sSa37_appendElementAssumeUniqueAndCapacity_03newB0ySi_xntFyXl_Ts5",
-        "_$sSayxGSKsMc",
-        "_$sSayxGSTsMc",
-        "_$sSbN",
-        "_$sSd5write2toyxz_ts16TextOutputStreamRzlF",
-        "_$sSh15minimumCapacityShyxGSi_tcfC",
-        "_$sSiN",
-        "_$sSis23CustomStringConvertiblesWP",
-        "_$sSs8UTF8ViewV8distance4from2toSiSS5IndexV_AGtF",
-        "_$sSsN",
-        "_$sSsSTsMc",
-        "_$sSss25LosslessStringConvertiblesWP",
-        "_$sSt4next7ElementQzSgyFTj",
-        "_$ss018_bridgeAnyObjectToB0yypyXlSgF",
-        "_$ss042_stdlib_isOSVersionAtLeastOrVariantVersiondE0yBi1_Bw_BwBwBwBwBwtF",
-        "_$ss10SetAlgebraPyxqd__ncSTRd__7ElementQyd__ACRtzlufCTj",
-        "_$ss10_HashTableV12previousHole6beforeAB6BucketVAF_tF",
-        "_$ss11AnyHashableV11descriptionSSvg",
-        "_$ss11AnyHashableVN",
-        "_$ss11AnyHashableVSHsWP",
-        "_$ss11_SetStorageC4copy8originalAByxGs05__RawaB0C_tFZ",
-        "_$ss11_SetStorageC6resize8original8capacity4moveAByxGs05__RawaB0C_SiSbtFZ",
-        "_$ss11_SetStorageCMn",
-        "_$ss11_StringGutsV16_foreignCopyUTF84intoSiSgSrys5UInt8VG_tF",
-        "_$ss11_StringGutsV16_slowWithCStringyxxSPys4Int8VGKXEKlF",
-        "_$ss11_StringGutsV18foreignScalarAlignySS5IndexVAEF",
-        "_$ss11_StringGutsV27foreignErrorCorrectedScalar10startingAts7UnicodeO0F0V_Si12scalarLengthtSS5IndexV_tF",
-        "_$ss11_StringGutsV4growyySiF",
-        "_$ss11_StringGutsV8copyUTF84intoSiSgSrys5UInt8VG_tF",
-        "_$ss12_ArrayBufferV18_typeCheckSlowPathyySiF",
-        "_$ss12_ArrayBufferV19_getElementSlowPathyyXlSiFyXl_Ts5",
-        "_$ss12_ArrayBufferV20_consumeAndCreateNew14bufferIsUnique15minimumCapacity13growForAppendAByxGSb_SiSbtFyXl_Ts5",
-        "_$ss13_StringObjectV10sharedUTF8SRys5UInt8VGvg",
-        "_$ss13_decodeScalar_10startingAts7UnicodeO0B0V_Si12scalarLengthtSRys5UInt8VG_SitF",
-        "_$ss15ContiguousArrayV034_makeUniqueAndReserveCapacityIfNotD0yyFyXl_Ts5",
-        "_$ss15ContiguousArrayV12_endMutationyyFyXl_Ts5",
-        "_$ss15ContiguousArrayV36_reserveCapacityAssumingUniqueBuffer8oldCountySi_tFyXl_Ts5",
-        "_$ss15ContiguousArrayV37_appendElementAssumeUniqueAndCapacity_03newD0ySi_xntFyXl_Ts5",
-        "_$ss17_assertionFailure__4file4line5flagss5NeverOs12StaticStringV_SSAHSus6UInt32VtF",
-        "_$ss18_CocoaArrayWrapperV8endIndexSivg",
-        "_$ss18_CocoaArrayWrapperVys12_SliceBufferVyyXlGSnySiGcig",
-        "_$ss18_DictionaryStorageC4copy8originalAByxq_Gs05__RawaB0C_tFZ",
-        "_$ss18_DictionaryStorageC6resize8original8capacity4moveAByxq_Gs05__RawaB0C_SiSbtFZ",
-        "_$ss18_DictionaryStorageC8allocate8capacityAByxq_GSi_tFZ",
-        "_$ss18_DictionaryStorageCMn",
-        "_$ss19_HasContiguousBytesMp",
-        "_$ss19_HasContiguousBytesP010withUnsafeC0yqd__qd__SWKXEKlFTj",
-        "_$ss19_HasContiguousBytesP09_providesbC6NoCopySbvgTj",
-        "_$ss20_SwiftNewtypeWrapperMp",
-        "_$ss20_SwiftNewtypeWrapperPSYTb",
-        "_$ss20_SwiftNewtypeWrapperPs35_HasCustomAnyHashableRepresentationTb",
-        "_$ss20_SwiftNewtypeWrapperPsSHRzSH8RawValueSYRpzrlE20_toCustomAnyHashables0hI0VSgyF",
-        "_$ss20__StaticArrayStorageCN",
-        "_$ss21_ObjectiveCBridgeableMp",
-        "_$ss21_ObjectiveCBridgeableP016_forceBridgeFromA1C_6resulty01_A5CTypeQz_xSgztFZTq",
-        "_$ss21_ObjectiveCBridgeableP024_conditionallyBridgeFromA1C_6resultSb01_A5CTypeQz_xSgztFZTq",
-        "_$ss21_ObjectiveCBridgeableP026_unconditionallyBridgeFromA1Cyx01_A5CTypeQzSgFZTq",
-        "_$ss21_ObjectiveCBridgeableP09_bridgeToA1C01_A5CTypeQzyFTq",
-        "_$ss22_minimumMergeRunLengthyS2iF",
-        "_$ss23CustomStringConvertibleP11descriptionSSvgTj",
-        "_$ss23_ContiguousArrayStorageCMn",
-        "_$ss26DefaultStringInterpolationVN",
-        "_$ss26DefaultStringInterpolationVs16TextOutputStreamsWP",
-        "_$ss27_bridgeAnythingToObjectiveCyyXlxlF",
-        "_$ss27_stringCompareWithSmolCheck__9expectingSbs11_StringGutsV_ADs01_G16ComparisonResultOtF",
-        "_$ss28__ContiguousArrayStorageBaseCMa",
-        "_$ss35_HasCustomAnyHashableRepresentationMp",
-        "_$ss35_HasCustomAnyHashableRepresentationP03_tobcD0s0cD0VSgyFTq",
-        "_$ss50ELEMENT_TYPE_OF_SET_VIOLATES_HASHABLE_REQUIREMENTSys5NeverOypXpF",
-        "_$ss53KEY_TYPE_OF_DICTIONARY_VIOLATES_HASHABLE_REQUIREMENTSys5NeverOypXpF",
-        "_$ss5Int32VMn",
-        "_$ss5Int64VMn",
-        "_$ss5UInt8VMn",
-        "_$ss5UInt8VN",
-        "_$ss5UInt8Vs23CustomStringConvertiblesWP",
-        "_$ss5print_9separator10terminatoryypd_S2StF",
-        "_$ss6HasherV5_hash4seed5bytes5countS2i_s6UInt64VSitFZ",
-        "_$ss6HasherV5_hash4seed_S2i_s6UInt64VtFZ",
-        "_$ss6HasherV5_seedABSi_tcfC",
-        "_$ss6HasherV8_combineyySuF",
-        "_$ss6HasherV9_finalizeSiyF",
-        "_$ss6UInt16VMn",
-        "_$ss6UInt16VN",
-        "_$ss6UInt32VMn",
-        "_$ss6UInt32VN",
-        "_$ss6UInt32Vs23CustomStringConvertiblesWP",
-        "_$ss6UInt64VMn",
-        "_$ss6UInt64VN",
-        "_$ss6UInt64Vs23CustomStringConvertiblesWP",
-        "_$ss7UnicodeO15GeneralCategoryO10mathSymbolyA2DmFWC",
-        "_$ss7UnicodeO15GeneralCategoryO11otherSymbolyA2DmFWC",
-        "_$ss7UnicodeO15GeneralCategoryO14currencySymbolyA2DmFWC",
-        "_$ss7UnicodeO15GeneralCategoryO14modifierSymbolyA2DmFWC",
-        "_$ss7UnicodeO15GeneralCategoryO15dashPunctuationyA2DmFWC",
-        "_$ss7UnicodeO15GeneralCategoryO15openPunctuationyA2DmFWC",
-        "_$ss7UnicodeO15GeneralCategoryO16closePunctuationyA2DmFWC",
-        "_$ss7UnicodeO15GeneralCategoryO16finalPunctuationyA2DmFWC",
-        "_$ss7UnicodeO15GeneralCategoryO16otherPunctuationyA2DmFWC",
-        "_$ss7UnicodeO15GeneralCategoryO18initialPunctuationyA2DmFWC",
-        "_$ss7UnicodeO15GeneralCategoryO20connectorPunctuationyA2DmFWC",
-        "_$ss7UnicodeO15GeneralCategoryOMa",
-        "_$ss7UnicodeO6ScalarV10PropertiesV15generalCategoryAB07GeneralE0Ovg",
-        "_$ss7UnicodeO6ScalarV10PropertiesVMa",
-        "_$ss7UnicodeO6ScalarV10propertiesAD10PropertiesVvg",
-        "_$sypN",
-        "_$sytWV",
-        "_OBJC_CLASS_$__TtCs12_SwiftObject",
-        "_OBJC_METACLASS_$__TtCs12_SwiftObject",
-        "__swiftEmptyArrayStorage",
-        "__swiftEmptyDictionarySingleton",
-        "__swiftEmptySetSingleton",
-        "__swiftImmortalRefCount",
-        "__swift_stdlib_reportUnimplementedInitializer",
-        "__swift_stdlib_strtod_clocale",
-        "_swift_allocObject",
-        "_swift_arrayDestroy",
-        "_swift_arrayInitWithCopy",
-        "_swift_beginAccess",
-        "_swift_bridgeObjectRelease",
-        "_swift_bridgeObjectRelease_n",
-        "_swift_bridgeObjectRetain",
-        "_swift_bridgeObjectRetain_n",
-        "_swift_coroFrameAlloc",
-        "_swift_deallocClassInstance",
-        "_swift_deallocObject",
-        "_swift_deletedMethodError",
-        "_swift_dynamicCast",
-        "_swift_dynamicCastClass",
-        "_swift_dynamicCastObjCClass",
-        "_swift_endAccess",
-        "_swift_errorRelease",
-        "_swift_errorRetain",
-        "_swift_getErrorValue",
-        "_swift_getForeignTypeMetadata",
-        "_swift_getObjCClassFromMetadata",
-        "_swift_getObjCClassMetadata",
-        "_swift_getObjectType",
-        "_swift_getTypeByMangledNameInContext2",
-        "_swift_getTypeByMangledNameInContextInMetadataState2",
-        "_swift_getWitnessTable",
-        "_swift_initStackObject",
-        "_swift_isUniquelyReferenced_nonNull_bridgeObject",
-        "_swift_isUniquelyReferenced_nonNull_native",
-        "_swift_isaMask",
-        "_swift_once",
-        "_swift_release",
-        "_swift_release_n",
-        "_swift_retain",
-        "_swift_retain_n",
-        "_swift_slowAlloc",
-        "_swift_slowDealloc",
-        "_swift_stdlib_isStackAllocationSafe",
-        "_swift_unknownObjectRelease",
-        "_swift_unknownObjectRetain",
-        "_swift_unknownObjectUnownedDestroy",
-        "_swift_unknownObjectUnownedInit",
-        "_swift_unknownObjectUnownedLoadStrong",
-        "_swift_unknownObjectWeakAssign",
-        "_swift_unknownObjectWeakDestroy",
-        "_swift_unknownObjectWeakInit",
-        "_swift_unknownObjectWeakLoadStrong",
-        "_swift_weakAssign",
-        "_swift_weakDestroy",
-        "_swift_weakInit",
-        "_swift_weakLoadStrong",
-        "_swift_willThrow"
+        {
+          "name": "_$s15_ObjectiveCTypes01_A11CBridgeablePTl",
+          "evidence": "`associated type descriptor for Swift._ObjectiveCBridgeable._ObjectiveCType`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$s8RawValueSYTl",
+          "evidence": "`associated type descriptor for Swift.RawRepresentable.RawValue`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$sBOWV",
+          "evidence": "`value witness table for Builtin.UnknownObject`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$sBbWV",
+          "evidence": "`value witness table for Builtin.BridgeObject`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$sBi32_WV",
+          "evidence": "`value witness table for Builtin.Int32`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$sBoWV",
+          "evidence": "`value witness table for Builtin.NativeObject`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$sSH13_rawHashValue4seedS2i_tFTq",
+          "evidence": "`method descriptor for Swift.Hashable._rawHashValue(seed: Swift.Int) -> Swift.Int`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$sSH4hash4intoys6HasherVz_tFTq",
+          "evidence": "`method descriptor for Swift.Hashable.hash(into: inout Swift.Hasher) -> ()`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$sSH9hashValueSivgTq",
+          "evidence": "`method descriptor for Swift.Hashable.hashValue.getter : Swift.Int`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$sSHMp",
+          "evidence": "`protocol descriptor for Swift.Hashable`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$sSHSQTb",
+          "evidence": "`base conformance descriptor for Swift.Hashable: Swift.Equatable`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$sSKsSS7ElementRtzrlE6joined9separatorS2S_tF",
+          "evidence": "`(extension in Swift):Swift.BidirectionalCollection< where A.Element == Swift.String>.joined(separator: Swift.String) -> Swift.String`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$sSON",
+          "evidence": "`type metadata for Swift.ObjectIdentifier`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$sSOSHsWP",
+          "evidence": "`protocol witness table for Swift.ObjectIdentifier : Swift.Hashable in Swift`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$sSQ2eeoiySbx_xtFZTq",
+          "evidence": "`method descriptor for static Swift.Equatable.== infix(A, A) -> Swift.Bool`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$sSQMp",
+          "evidence": "`protocol descriptor for Swift.Equatable`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$sSS10describingSSx_tclufC",
+          "evidence": "`Swift.String.init<A>(describing: A) -> Swift.String`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$sSS10lowercasedSSyF",
+          "evidence": "`Swift.String.lowercased() -> Swift.String`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$sSS11utf8CStrings15ContiguousArrayVys4Int8VGvg",
+          "evidence": "`Swift.String.utf8CString.getter : Swift.ContiguousArray<Swift.Int8>`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$sSS14_fromSubstringySSSshFZ",
+          "evidence": "`static Swift.String._fromSubstring(__shared Swift.Substring) -> Swift.String`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$sSS17UnicodeScalarViewV13_foreignIndex5afterSS0E0VAF_tF",
+          "evidence": "`Swift.String.UnicodeScalarView._foreignIndex(after: Swift.String.Index) -> Swift.String.Index`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$sSS17UnicodeScalarViewV13_foreignIndex6beforeSS0E0VAF_tF",
+          "evidence": "`Swift.String.UnicodeScalarView._foreignIndex(before: Swift.String.Index) -> Swift.String.Index`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$sSS18_fromUTF8RepairingySS6result_Sb11repairsMadetSRys5UInt8VGFZ",
+          "evidence": "`static Swift.String._fromUTF8Repairing(Swift.UnsafeBufferPointer<Swift.UInt8>) -> (result: Swift.String, repairsMade: Swift.Bool)`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$sSS18_uncheckedFromUTF8ySSSRys5UInt8VGFZ",
+          "evidence": "`static Swift.String._uncheckedFromUTF8(Swift.UnsafeBufferPointer<Swift.UInt8>) -> Swift.String`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$sSS4hash4intoys6HasherVz_tF",
+          "evidence": "`Swift.String.hash(into: inout Swift.Hasher) -> ()`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$sSS5IndexVMn",
+          "evidence": "`nominal type descriptor for Swift.String.Index`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$sSS5countSivg",
+          "evidence": "`Swift.String.count.getter : Swift.Int`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$sSS5index5afterSS5IndexVAD_tF",
+          "evidence": "`Swift.String.index(after: Swift.String.Index) -> Swift.String.Index`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$sSS5index6beforeSS5IndexVAD_tF",
+          "evidence": "`Swift.String.index(before: Swift.String.Index) -> Swift.String.Index`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$sSS5index_8offsetBy07limitedC0SS5IndexVSgAE_SiAEtF",
+          "evidence": "`Swift.String.index(_: Swift.String.Index, offsetBy: Swift.Int, limitedBy: Swift.String.Index) -> Swift.String.Index?`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$sSS6appendyySJF",
+          "evidence": "`Swift.String.append(Swift.Character) -> ()`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$sSS6appendyySSF",
+          "evidence": "`Swift.String.append(Swift.String) -> ()`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$sSS7cStringSSSPys4Int8VG_tcfC",
+          "evidence": "`Swift.String.init(cString: Swift.UnsafePointer<Swift.Int8>) -> Swift.String`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$sSS8IteratorV4nextSJSgyF",
+          "evidence": "`Swift.String.Iterator.next() -> Swift.Character?`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$sSS8UTF8ViewV13_foreignCountSiyF",
+          "evidence": "`Swift.String.UTF8View._foreignCount() -> Swift.Int`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$sSS8UTF8ViewV13_foreignIndex5afterSS0D0VAF_tF",
+          "evidence": "`Swift.String.UTF8View._foreignIndex(after: Swift.String.Index) -> Swift.String.Index`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$sSS8UTF8ViewV13_foreignIndex_8offsetBySS0D0VAF_SitF",
+          "evidence": "`Swift.String.UTF8View._foreignIndex(_: Swift.String.Index, offsetBy: Swift.Int) -> Swift.String.Index`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$sSS8UTF8ViewV16_foreignDistance4from2toSiSS5IndexV_AGtF",
+          "evidence": "`Swift.String.UTF8View._foreignDistance(from: Swift.String.Index, to: Swift.String.Index) -> Swift.Int`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$sSS8UTF8ViewV17_foreignSubscript8positions5UInt8VSS5IndexV_tF",
+          "evidence": "`Swift.String.UTF8View._foreignSubscript(position: Swift.String.Index) -> Swift.UInt8`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$sSS8UTF8ViewVN",
+          "evidence": "`type metadata for Swift.String.UTF8View`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$sSS9UTF16ViewV5index_8offsetBySS5IndexVAF_SitF",
+          "evidence": "`Swift.String.UTF16View.index(_: Swift.String.Index, offsetBy: Swift.Int) -> Swift.String.Index`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$sSS9hasPrefixySbSSF",
+          "evidence": "`Swift.String.hasPrefix(Swift.String) -> Swift.Bool`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$sSS9hasSuffixySbSSF",
+          "evidence": "`Swift.String.hasSuffix(Swift.String) -> Swift.Bool`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$sSS9hashValueSivg",
+          "evidence": "`Swift.String.hashValue.getter : Swift.Int`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$sSS9repeating5countS2S_SitcfC",
+          "evidence": "`Swift.String.init(repeating: Swift.String, count: Swift.Int) -> Swift.String`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$sSSN",
+          "evidence": "`type metadata for Swift.String`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$sSSSHsWP",
+          "evidence": "`protocol witness table for Swift.String : Swift.Hashable in Swift`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$sSSSTsWP",
+          "evidence": "`protocol witness table for Swift.String : Swift.Sequence in Swift`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$sSSSysMc",
+          "evidence": "`protocol conformance descriptor for Swift.String : Swift.StringProtocol in Swift`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$sSSs25LosslessStringConvertiblesWP",
+          "evidence": "`protocol witness table for Swift.String : Swift.LosslessStringConvertible in Swift`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$sSSySJSS5IndexVcig",
+          "evidence": "`Swift.String.subscript.getter : (Swift.String.Index) -> Swift.Character`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$sSSySSxcs25LosslessStringConvertibleRzSTRzSJ7ElementSTRtzlufC",
+          "evidence": "`Swift.String.init<A where A: Swift.LosslessStringConvertible, A: Swift.Sequence, A.Swift.Sequence.Element == Swift.Character>(A) -> Swift.String`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$sSSySsSnySS5IndexVGcig",
+          "evidence": "`Swift.String.subscript.getter : (Swift.Range<Swift.String.Index>) -> Swift.Substring`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$sSY8rawValue03RawB0QzvgTq",
+          "evidence": "`method descriptor for Swift.RawRepresentable.rawValue.getter : A.RawValue`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$sSY8rawValuexSg03RawB0Qz_tcfCTq",
+          "evidence": "`method descriptor for Swift.RawRepresentable.init(rawValue: A.RawValue) -> A?`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$sSYMp",
+          "evidence": "`protocol descriptor for Swift.RawRepresentable`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$sSa034_makeUniqueAndReserveCapacityIfNotB0yyFyXl_Ts5",
+          "evidence": "`generic pre-specialization <Swift.AnyObject> of Swift.Array._makeUniqueAndReserveCapacityIfNotUnique() -> ()`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$sSa11descriptionSSvg",
+          "evidence": "`Swift.Array.description.getter : Swift.String`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$sSa16_createNewBuffer14bufferIsUnique15minimumCapacity13growForAppendySb_SiSbtFyXl_Ts5",
+          "evidence": "`generic pre-specialization <Swift.AnyObject> of Swift.Array._createNewBuffer(bufferIsUnique: Swift.Bool, minimumCapacity: Swift.Int, growForAppend: Swift.Bool) -> ()`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$sSa28_allocateBufferUninitialized15minimumCapacitys06_ArrayB0VyxGSi_tFZ",
+          "evidence": "`static Swift.Array._allocateBufferUninitialized(minimumCapacity: Swift.Int) -> Swift._ArrayBuffer<A>`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$sSa37_appendElementAssumeUniqueAndCapacity_03newB0ySi_xntFyXl_Ts5",
+          "evidence": "`generic pre-specialization <Swift.AnyObject> of Swift.Array._appendElementAssumeUniqueAndCapacity(_: Swift.Int, newElement: __owned A) -> ()`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$sSayxGSKsMc",
+          "evidence": "`protocol conformance descriptor for [A] : Swift.BidirectionalCollection in Swift`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$sSayxGSTsMc",
+          "evidence": "`protocol conformance descriptor for [A] : Swift.Sequence in Swift`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$sSbN",
+          "evidence": "`type metadata for Swift.Bool`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$sSd5write2toyxz_ts16TextOutputStreamRzlF",
+          "evidence": "`Swift.Double.write<A where A: Swift.TextOutputStream>(to: inout A) -> ()`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$sSh15minimumCapacityShyxGSi_tcfC",
+          "evidence": "`Swift.Set.init(minimumCapacity: Swift.Int) -> Swift.Set<A>`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$sSiN",
+          "evidence": "`type metadata for Swift.Int`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$sSis23CustomStringConvertiblesWP",
+          "evidence": "`protocol witness table for Swift.Int : Swift.CustomStringConvertible in Swift`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$sSs8UTF8ViewV8distance4from2toSiSS5IndexV_AGtF",
+          "evidence": "`Swift.Substring.UTF8View.distance(from: Swift.String.Index, to: Swift.String.Index) -> Swift.Int`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$sSsN",
+          "evidence": "`type metadata for Swift.Substring`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$sSsSTsMc",
+          "evidence": "`protocol conformance descriptor for Swift.Substring : Swift.Sequence in Swift`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$sSss25LosslessStringConvertiblesWP",
+          "evidence": "`protocol witness table for Swift.Substring : Swift.LosslessStringConvertible in Swift`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$sSt4next7ElementQzSgyFTj",
+          "evidence": "`dispatch thunk of Swift.IteratorProtocol.next() -> A.Element?`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$ss018_bridgeAnyObjectToB0yypyXlSgF",
+          "evidence": "`Swift._bridgeAnyObjectToAny(Swift.AnyObject?) -> Any`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$ss042_stdlib_isOSVersionAtLeastOrVariantVersiondE0yBi1_Bw_BwBwBwBwBwtF",
+          "evidence": "`Swift._stdlib_isOSVersionAtLeastOrVariantVersionAtLeast(Builtin.Word, Builtin.Word, Builtin.Word, Builtin.Word, Builtin.Word, Builtin.Word) -> Builtin.Int1`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$ss10SetAlgebraPyxqd__ncSTRd__7ElementQyd__ACRtzlufCTj",
+          "evidence": "`dispatch thunk of Swift.SetAlgebra.init<A where A1: Swift.Sequence, A.Element == A1.Element>(__owned A1) -> A`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$ss10_HashTableV12previousHole6beforeAB6BucketVAF_tF",
+          "evidence": "`Swift._HashTable.previousHole(before: Swift._HashTable.Bucket) -> Swift._HashTable.Bucket`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$ss11AnyHashableV11descriptionSSvg",
+          "evidence": "`Swift.AnyHashable.description.getter : Swift.String`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$ss11AnyHashableVN",
+          "evidence": "`type metadata for Swift.AnyHashable`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$ss11AnyHashableVSHsWP",
+          "evidence": "`protocol witness table for Swift.AnyHashable : Swift.Hashable in Swift`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$ss11_SetStorageC4copy8originalAByxGs05__RawaB0C_tFZ",
+          "evidence": "`static Swift._SetStorage.copy(original: Swift.__RawSetStorage) -> Swift._SetStorage<A>`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$ss11_SetStorageC6resize8original8capacity4moveAByxGs05__RawaB0C_SiSbtFZ",
+          "evidence": "`static Swift._SetStorage.resize(original: Swift.__RawSetStorage, capacity: Swift.Int, move: Swift.Bool) -> Swift._SetStorage<A>`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$ss11_SetStorageCMn",
+          "evidence": "`nominal type descriptor for Swift._SetStorage`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$ss11_StringGutsV16_foreignCopyUTF84intoSiSgSrys5UInt8VG_tF",
+          "evidence": "`Swift._StringGuts._foreignCopyUTF8(into: Swift.UnsafeMutableBufferPointer<Swift.UInt8>) -> Swift.Int?`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$ss11_StringGutsV16_slowWithCStringyxxSPys4Int8VGKXEKlF",
+          "evidence": "`Swift._StringGuts._slowWithCString<A>((Swift.UnsafePointer<Swift.Int8>) throws -> A) throws -> A`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$ss11_StringGutsV18foreignScalarAlignySS5IndexVAEF",
+          "evidence": "`Swift._StringGuts.foreignScalarAlign(Swift.String.Index) -> Swift.String.Index`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$ss11_StringGutsV27foreignErrorCorrectedScalar10startingAts7UnicodeO0F0V_Si12scalarLengthtSS5IndexV_tF",
+          "evidence": "`Swift._StringGuts.foreignErrorCorrectedScalar(startingAt: Swift.String.Index) -> (Swift.Unicode.Scalar, scalarLength: Swift.Int)`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$ss11_StringGutsV4growyySiF",
+          "evidence": "`Swift._StringGuts.grow(Swift.Int) -> ()`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$ss11_StringGutsV8copyUTF84intoSiSgSrys5UInt8VG_tF",
+          "evidence": "`Swift._StringGuts.copyUTF8(into: Swift.UnsafeMutableBufferPointer<Swift.UInt8>) -> Swift.Int?`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$ss12_ArrayBufferV18_typeCheckSlowPathyySiF",
+          "evidence": "`Swift._ArrayBuffer._typeCheckSlowPath(Swift.Int) -> ()`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$ss12_ArrayBufferV19_getElementSlowPathyyXlSiFyXl_Ts5",
+          "evidence": "`generic pre-specialization <Swift.AnyObject> of Swift._ArrayBuffer._getElementSlowPath(Swift.Int) -> Swift.AnyObject`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$ss12_ArrayBufferV20_consumeAndCreateNew14bufferIsUnique15minimumCapacity13growForAppendAByxGSb_SiSbtFyXl_Ts5",
+          "evidence": "`generic pre-specialization <Swift.AnyObject> of Swift._ArrayBuffer._consumeAndCreateNew(bufferIsUnique: Swift.Bool, minimumCapacity: Swift.Int, growForAppend: Swift.Bool) -> Swift._ArrayBuffer<A>`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$ss13_StringObjectV10sharedUTF8SRys5UInt8VGvg",
+          "evidence": "`Swift._StringObject.sharedUTF8.getter : Swift.UnsafeBufferPointer<Swift.UInt8>`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$ss13_decodeScalar_10startingAts7UnicodeO0B0V_Si12scalarLengthtSRys5UInt8VG_SitF",
+          "evidence": "`Swift._decodeScalar(_: Swift.UnsafeBufferPointer<Swift.UInt8>, startingAt: Swift.Int) -> (Swift.Unicode.Scalar, scalarLength: Swift.Int)`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$ss15ContiguousArrayV034_makeUniqueAndReserveCapacityIfNotD0yyFyXl_Ts5",
+          "evidence": "`generic pre-specialization <Swift.AnyObject> of Swift.ContiguousArray._makeUniqueAndReserveCapacityIfNotUnique() -> ()`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$ss15ContiguousArrayV12_endMutationyyFyXl_Ts5",
+          "evidence": "`generic pre-specialization <Swift.AnyObject> of Swift.ContiguousArray._endMutation() -> ()`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$ss15ContiguousArrayV36_reserveCapacityAssumingUniqueBuffer8oldCountySi_tFyXl_Ts5",
+          "evidence": "`generic pre-specialization <Swift.AnyObject> of Swift.ContiguousArray._reserveCapacityAssumingUniqueBuffer(oldCount: Swift.Int) -> ()`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$ss15ContiguousArrayV37_appendElementAssumeUniqueAndCapacity_03newD0ySi_xntFyXl_Ts5",
+          "evidence": "`generic pre-specialization <Swift.AnyObject> of Swift.ContiguousArray._appendElementAssumeUniqueAndCapacity(_: Swift.Int, newElement: __owned A) -> ()`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$ss17_assertionFailure__4file4line5flagss5NeverOs12StaticStringV_SSAHSus6UInt32VtF",
+          "evidence": "`Swift._assertionFailure(_: Swift.StaticString, _: Swift.String, file: Swift.StaticString, line: Swift.UInt, flags: Swift.UInt32) -> Swift.Never`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$ss18_CocoaArrayWrapperV8endIndexSivg",
+          "evidence": "`Swift._CocoaArrayWrapper.endIndex.getter : Swift.Int`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$ss18_CocoaArrayWrapperVys12_SliceBufferVyyXlGSnySiGcig",
+          "evidence": "`Swift._CocoaArrayWrapper.subscript.getter : (Swift.Range<Swift.Int>) -> Swift._SliceBuffer<Swift.AnyObject>`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$ss18_DictionaryStorageC4copy8originalAByxq_Gs05__RawaB0C_tFZ",
+          "evidence": "`static Swift._DictionaryStorage.copy(original: Swift.__RawDictionaryStorage) -> Swift._DictionaryStorage<A, B>`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$ss18_DictionaryStorageC6resize8original8capacity4moveAByxq_Gs05__RawaB0C_SiSbtFZ",
+          "evidence": "`static Swift._DictionaryStorage.resize(original: Swift.__RawDictionaryStorage, capacity: Swift.Int, move: Swift.Bool) -> Swift._DictionaryStorage<A, B>`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$ss18_DictionaryStorageC8allocate8capacityAByxq_GSi_tFZ",
+          "evidence": "`static Swift._DictionaryStorage.allocate(capacity: Swift.Int) -> Swift._DictionaryStorage<A, B>`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$ss18_DictionaryStorageCMn",
+          "evidence": "`nominal type descriptor for Swift._DictionaryStorage`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$ss19_HasContiguousBytesMp",
+          "evidence": "`protocol descriptor for Swift._HasContiguousBytes`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$ss19_HasContiguousBytesP010withUnsafeC0yqd__qd__SWKXEKlFTj",
+          "evidence": "`dispatch thunk of Swift._HasContiguousBytes.withUnsafeBytes<A>((Swift.UnsafeRawBufferPointer) throws -> A1) throws -> A1`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$ss19_HasContiguousBytesP09_providesbC6NoCopySbvgTj",
+          "evidence": "`dispatch thunk of Swift._HasContiguousBytes._providesContiguousBytesNoCopy.getter : Swift.Bool`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$ss20_SwiftNewtypeWrapperMp",
+          "evidence": "`protocol descriptor for Swift._SwiftNewtypeWrapper`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$ss20_SwiftNewtypeWrapperPSYTb",
+          "evidence": "`base conformance descriptor for Swift._SwiftNewtypeWrapper: Swift.RawRepresentable`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$ss20_SwiftNewtypeWrapperPs35_HasCustomAnyHashableRepresentationTb",
+          "evidence": "`base conformance descriptor for Swift._SwiftNewtypeWrapper: Swift._HasCustomAnyHashableRepresentation`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$ss20_SwiftNewtypeWrapperPsSHRzSH8RawValueSYRpzrlE20_toCustomAnyHashables0hI0VSgyF",
+          "evidence": "`(extension in Swift):Swift._SwiftNewtypeWrapper< where A: Swift.Hashable, A.Swift.RawRepresentable.RawValue: Swift.Hashable>._toCustomAnyHashable() -> Swift.AnyHashable?`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$ss20__StaticArrayStorageCN",
+          "evidence": "`type metadata for Swift.__StaticArrayStorage`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$ss21_ObjectiveCBridgeableMp",
+          "evidence": "`protocol descriptor for Swift._ObjectiveCBridgeable`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$ss21_ObjectiveCBridgeableP016_forceBridgeFromA1C_6resulty01_A5CTypeQz_xSgztFZTq",
+          "evidence": "`method descriptor for static Swift._ObjectiveCBridgeable._forceBridgeFromObjectiveC(_: A._ObjectiveCType, result: inout A?) -> ()`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$ss21_ObjectiveCBridgeableP024_conditionallyBridgeFromA1C_6resultSb01_A5CTypeQz_xSgztFZTq",
+          "evidence": "`method descriptor for static Swift._ObjectiveCBridgeable._conditionallyBridgeFromObjectiveC(_: A._ObjectiveCType, result: inout A?) -> Swift.Bool`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$ss21_ObjectiveCBridgeableP026_unconditionallyBridgeFromA1Cyx01_A5CTypeQzSgFZTq",
+          "evidence": "`method descriptor for static Swift._ObjectiveCBridgeable._unconditionallyBridgeFromObjectiveC(A._ObjectiveCType?) -> A`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$ss21_ObjectiveCBridgeableP09_bridgeToA1C01_A5CTypeQzyFTq",
+          "evidence": "`method descriptor for Swift._ObjectiveCBridgeable._bridgeToObjectiveC() -> A._ObjectiveCType`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$ss22_minimumMergeRunLengthyS2iF",
+          "evidence": "`Swift._minimumMergeRunLength(Swift.Int) -> Swift.Int`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$ss23CustomStringConvertibleP11descriptionSSvgTj",
+          "evidence": "`dispatch thunk of Swift.CustomStringConvertible.description.getter : Swift.String`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$ss23_ContiguousArrayStorageCMn",
+          "evidence": "`nominal type descriptor for Swift._ContiguousArrayStorage`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$ss26DefaultStringInterpolationVN",
+          "evidence": "`type metadata for Swift.DefaultStringInterpolation`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$ss26DefaultStringInterpolationVs16TextOutputStreamsWP",
+          "evidence": "`protocol witness table for Swift.DefaultStringInterpolation : Swift.TextOutputStream in Swift`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$ss27_bridgeAnythingToObjectiveCyyXlxlF",
+          "evidence": "`Swift._bridgeAnythingToObjectiveC<A>(A) -> Swift.AnyObject`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$ss27_stringCompareWithSmolCheck__9expectingSbs11_StringGutsV_ADs01_G16ComparisonResultOtF",
+          "evidence": "`Swift._stringCompareWithSmolCheck(_: Swift._StringGuts, _: Swift._StringGuts, expecting: Swift._StringComparisonResult) -> Swift.Bool`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$ss28__ContiguousArrayStorageBaseCMa",
+          "evidence": "`type metadata accessor for Swift.__ContiguousArrayStorageBase`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$ss35_HasCustomAnyHashableRepresentationMp",
+          "evidence": "`protocol descriptor for Swift._HasCustomAnyHashableRepresentation`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$ss35_HasCustomAnyHashableRepresentationP03_tobcD0s0cD0VSgyFTq",
+          "evidence": "`method descriptor for Swift._HasCustomAnyHashableRepresentation._toCustomAnyHashable() -> Swift.AnyHashable?`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$ss50ELEMENT_TYPE_OF_SET_VIOLATES_HASHABLE_REQUIREMENTSys5NeverOypXpF",
+          "evidence": "`Swift.ELEMENT_TYPE_OF_SET_VIOLATES_HASHABLE_REQUIREMENTS(Any.Type) -> Swift.Never`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$ss53KEY_TYPE_OF_DICTIONARY_VIOLATES_HASHABLE_REQUIREMENTSys5NeverOypXpF",
+          "evidence": "`Swift.KEY_TYPE_OF_DICTIONARY_VIOLATES_HASHABLE_REQUIREMENTS(Any.Type) -> Swift.Never`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$ss5Int32VMn",
+          "evidence": "`nominal type descriptor for Swift.Int32`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$ss5Int64VMn",
+          "evidence": "`nominal type descriptor for Swift.Int64`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$ss5UInt8VMn",
+          "evidence": "`nominal type descriptor for Swift.UInt8`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$ss5UInt8VN",
+          "evidence": "`type metadata for Swift.UInt8`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$ss5UInt8Vs23CustomStringConvertiblesWP",
+          "evidence": "`protocol witness table for Swift.UInt8 : Swift.CustomStringConvertible in Swift`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$ss5print_9separator10terminatoryypd_S2StF",
+          "evidence": "`Swift.print(_: Any..., separator: Swift.String, terminator: Swift.String) -> ()`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$ss6HasherV5_hash4seed5bytes5countS2i_s6UInt64VSitFZ",
+          "evidence": "`static Swift.Hasher._hash(seed: Swift.Int, bytes: Swift.UInt64, count: Swift.Int) -> Swift.Int`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$ss6HasherV5_hash4seed_S2i_s6UInt64VtFZ",
+          "evidence": "`static Swift.Hasher._hash(seed: Swift.Int, _: Swift.UInt64) -> Swift.Int`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$ss6HasherV5_seedABSi_tcfC",
+          "evidence": "`Swift.Hasher.init(_seed: Swift.Int) -> Swift.Hasher`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$ss6HasherV8_combineyySuF",
+          "evidence": "`Swift.Hasher._combine(Swift.UInt) -> ()`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$ss6HasherV9_finalizeSiyF",
+          "evidence": "`Swift.Hasher._finalize() -> Swift.Int`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$ss6UInt16VMn",
+          "evidence": "`nominal type descriptor for Swift.UInt16`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$ss6UInt16VN",
+          "evidence": "`type metadata for Swift.UInt16`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$ss6UInt32VMn",
+          "evidence": "`nominal type descriptor for Swift.UInt32`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$ss6UInt32VN",
+          "evidence": "`type metadata for Swift.UInt32`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$ss6UInt32Vs23CustomStringConvertiblesWP",
+          "evidence": "`protocol witness table for Swift.UInt32 : Swift.CustomStringConvertible in Swift`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$ss6UInt64VMn",
+          "evidence": "`nominal type descriptor for Swift.UInt64`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$ss6UInt64VN",
+          "evidence": "`type metadata for Swift.UInt64`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$ss6UInt64Vs23CustomStringConvertiblesWP",
+          "evidence": "`protocol witness table for Swift.UInt64 : Swift.CustomStringConvertible in Swift`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$ss7UnicodeO15GeneralCategoryO10mathSymbolyA2DmFWC",
+          "evidence": "`enum case for Swift.Unicode.GeneralCategory.mathSymbol(Swift.Unicode.GeneralCategory.Type) -> Swift.Unicode.GeneralCategory`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$ss7UnicodeO15GeneralCategoryO11otherSymbolyA2DmFWC",
+          "evidence": "`enum case for Swift.Unicode.GeneralCategory.otherSymbol(Swift.Unicode.GeneralCategory.Type) -> Swift.Unicode.GeneralCategory`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$ss7UnicodeO15GeneralCategoryO14currencySymbolyA2DmFWC",
+          "evidence": "`enum case for Swift.Unicode.GeneralCategory.currencySymbol(Swift.Unicode.GeneralCategory.Type) -> Swift.Unicode.GeneralCategory`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$ss7UnicodeO15GeneralCategoryO14modifierSymbolyA2DmFWC",
+          "evidence": "`enum case for Swift.Unicode.GeneralCategory.modifierSymbol(Swift.Unicode.GeneralCategory.Type) -> Swift.Unicode.GeneralCategory`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$ss7UnicodeO15GeneralCategoryO15dashPunctuationyA2DmFWC",
+          "evidence": "`enum case for Swift.Unicode.GeneralCategory.dashPunctuation(Swift.Unicode.GeneralCategory.Type) -> Swift.Unicode.GeneralCategory`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$ss7UnicodeO15GeneralCategoryO15openPunctuationyA2DmFWC",
+          "evidence": "`enum case for Swift.Unicode.GeneralCategory.openPunctuation(Swift.Unicode.GeneralCategory.Type) -> Swift.Unicode.GeneralCategory`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$ss7UnicodeO15GeneralCategoryO16closePunctuationyA2DmFWC",
+          "evidence": "`enum case for Swift.Unicode.GeneralCategory.closePunctuation(Swift.Unicode.GeneralCategory.Type) -> Swift.Unicode.GeneralCategory`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$ss7UnicodeO15GeneralCategoryO16finalPunctuationyA2DmFWC",
+          "evidence": "`enum case for Swift.Unicode.GeneralCategory.finalPunctuation(Swift.Unicode.GeneralCategory.Type) -> Swift.Unicode.GeneralCategory`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$ss7UnicodeO15GeneralCategoryO16otherPunctuationyA2DmFWC",
+          "evidence": "`enum case for Swift.Unicode.GeneralCategory.otherPunctuation(Swift.Unicode.GeneralCategory.Type) -> Swift.Unicode.GeneralCategory`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$ss7UnicodeO15GeneralCategoryO18initialPunctuationyA2DmFWC",
+          "evidence": "`enum case for Swift.Unicode.GeneralCategory.initialPunctuation(Swift.Unicode.GeneralCategory.Type) -> Swift.Unicode.GeneralCategory`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$ss7UnicodeO15GeneralCategoryO20connectorPunctuationyA2DmFWC",
+          "evidence": "`enum case for Swift.Unicode.GeneralCategory.connectorPunctuation(Swift.Unicode.GeneralCategory.Type) -> Swift.Unicode.GeneralCategory`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$ss7UnicodeO15GeneralCategoryOMa",
+          "evidence": "`type metadata accessor for Swift.Unicode.GeneralCategory`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$ss7UnicodeO6ScalarV10PropertiesV15generalCategoryAB07GeneralE0Ovg",
+          "evidence": "`Swift.Unicode.Scalar.Properties.generalCategory.getter : Swift.Unicode.GeneralCategory`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$ss7UnicodeO6ScalarV10PropertiesVMa",
+          "evidence": "`type metadata accessor for Swift.Unicode.Scalar.Properties`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$ss7UnicodeO6ScalarV10propertiesAD10PropertiesVvg",
+          "evidence": "`Swift.Unicode.Scalar.properties.getter : Swift.Unicode.Scalar.Properties`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$sypN",
+          "evidence": "`type metadata for Any`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$sytWV",
+          "evidence": "`value witness table for ()`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_OBJC_CLASS_$__TtCs12_SwiftObject",
+          "evidence": "`OBJC_CLASS_$_Swift._SwiftObject`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_OBJC_METACLASS_$__TtCs12_SwiftObject",
+          "evidence": "`OBJC_METACLASS_$_Swift._SwiftObject`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "__swiftEmptyArrayStorage",
+          "evidence": "`_swiftEmptyArrayStorage`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "__swiftEmptyDictionarySingleton",
+          "evidence": "`_swiftEmptyDictionarySingleton`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "__swiftEmptySetSingleton",
+          "evidence": "`_swiftEmptySetSingleton`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "__swiftImmortalRefCount",
+          "evidence": "`_swiftImmortalRefCount`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "__swift_stdlib_reportUnimplementedInitializer",
+          "evidence": "`_swift_stdlib_reportUnimplementedInitializer`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "__swift_stdlib_strtod_clocale",
+          "evidence": "`_swift_stdlib_strtod_clocale`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_swift_allocObject",
+          "evidence": "`swift_allocObject`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_swift_arrayDestroy",
+          "evidence": "`swift_arrayDestroy`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_swift_arrayInitWithCopy",
+          "evidence": "`swift_arrayInitWithCopy`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_swift_beginAccess",
+          "evidence": "`swift_beginAccess`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_swift_bridgeObjectRelease",
+          "evidence": "`swift_bridgeObjectRelease`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_swift_bridgeObjectRelease_n",
+          "evidence": "`swift_bridgeObjectRelease_n`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_swift_bridgeObjectRetain",
+          "evidence": "`swift_bridgeObjectRetain`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_swift_bridgeObjectRetain_n",
+          "evidence": "`swift_bridgeObjectRetain_n`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_swift_coroFrameAlloc",
+          "evidence": "`swift_coroFrameAlloc`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_swift_deallocClassInstance",
+          "evidence": "`swift_deallocClassInstance`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_swift_deallocObject",
+          "evidence": "`swift_deallocObject`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_swift_deletedMethodError",
+          "evidence": "`swift_deletedMethodError`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_swift_dynamicCast",
+          "evidence": "`swift_dynamicCast`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_swift_dynamicCastClass",
+          "evidence": "`swift_dynamicCastClass`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_swift_dynamicCastObjCClass",
+          "evidence": "`swift_dynamicCastObjCClass`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_swift_endAccess",
+          "evidence": "`swift_endAccess`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_swift_errorRelease",
+          "evidence": "`swift_errorRelease`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_swift_errorRetain",
+          "evidence": "`swift_errorRetain`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_swift_getErrorValue",
+          "evidence": "`swift_getErrorValue`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_swift_getForeignTypeMetadata",
+          "evidence": "`swift_getForeignTypeMetadata`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_swift_getObjCClassFromMetadata",
+          "evidence": "`swift_getObjCClassFromMetadata`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_swift_getObjCClassMetadata",
+          "evidence": "`swift_getObjCClassMetadata`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_swift_getObjectType",
+          "evidence": "`swift_getObjectType`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_swift_getTypeByMangledNameInContext2",
+          "evidence": "`swift_getTypeByMangledNameInContext2`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_swift_getTypeByMangledNameInContextInMetadataState2",
+          "evidence": "`swift_getTypeByMangledNameInContextInMetadataState2`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_swift_getWitnessTable",
+          "evidence": "`swift_getWitnessTable`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_swift_initStackObject",
+          "evidence": "`swift_initStackObject`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_swift_isUniquelyReferenced_nonNull_bridgeObject",
+          "evidence": "`swift_isUniquelyReferenced_nonNull_bridgeObject`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_swift_isUniquelyReferenced_nonNull_native",
+          "evidence": "`swift_isUniquelyReferenced_nonNull_native`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_swift_isaMask",
+          "evidence": "`swift_isaMask`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_swift_once",
+          "evidence": "`swift_once`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_swift_release",
+          "evidence": "`swift_release`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_swift_release_n",
+          "evidence": "`swift_release_n`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_swift_retain",
+          "evidence": "`swift_retain`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_swift_retain_n",
+          "evidence": "`swift_retain_n`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_swift_slowAlloc",
+          "evidence": "`swift_slowAlloc`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_swift_slowDealloc",
+          "evidence": "`swift_slowDealloc`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_swift_stdlib_isStackAllocationSafe",
+          "evidence": "`swift_stdlib_isStackAllocationSafe`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_swift_unknownObjectRelease",
+          "evidence": "`swift_unknownObjectRelease`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_swift_unknownObjectRetain",
+          "evidence": "`swift_unknownObjectRetain`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_swift_unknownObjectUnownedDestroy",
+          "evidence": "`swift_unknownObjectUnownedDestroy`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_swift_unknownObjectUnownedInit",
+          "evidence": "`swift_unknownObjectUnownedInit`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_swift_unknownObjectUnownedLoadStrong",
+          "evidence": "`swift_unknownObjectUnownedLoadStrong`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_swift_unknownObjectWeakAssign",
+          "evidence": "`swift_unknownObjectWeakAssign`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_swift_unknownObjectWeakDestroy",
+          "evidence": "`swift_unknownObjectWeakDestroy`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_swift_unknownObjectWeakInit",
+          "evidence": "`swift_unknownObjectWeakInit`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_swift_unknownObjectWeakLoadStrong",
+          "evidence": "`swift_unknownObjectWeakLoadStrong`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_swift_weakAssign",
+          "evidence": "`swift_weakAssign`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_swift_weakDestroy",
+          "evidence": "`swift_weakDestroy`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_swift_weakInit",
+          "evidence": "`swift_weakInit`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_swift_weakLoadStrong",
+          "evidence": "`swift_weakLoadStrong`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_swift_willThrow",
+          "evidence": "`swift_willThrow`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        }
       ]
     },
     {
       "name": "libswiftFoundation",
       "path": "usr/lib/libswiftFoundation.tbd",
       "install_name": "/usr/lib/swift/libswiftFoundation.dylib",
-      "evidence": "Swift declarations of module Foundation, or extensions declared in it (mangling `10Foundation`, `10FoundationE`); the host's own autolink directive names -lswiftFoundation.",
+      "evidence": "Swift's Foundation module, shipped in the OS as /usr/lib/swift/libswiftFoundation.dylib; the host's autolink directive names -lswiftFoundation (swiftlang/swift-foundation).",
       "symbols": [
-        "_$s10Foundation10URLRequestV10httpMethodSSSgvs",
-        "_$s10Foundation10URLRequestV11cachePolicySo017NSURLRequestCacheD0Vvs",
-        "_$s10Foundation10URLRequestV15timeoutIntervalSdvs",
-        "_$s10Foundation10URLRequestV19_bridgeToObjectiveCSo12NSURLRequestCyF",
-        "_$s10Foundation10URLRequestV23httpShouldHandleCookiesSbvs",
-        "_$s10Foundation10URLRequestV36_unconditionallyBridgeFromObjectiveCyACSo12NSURLRequestCSgFZ",
-        "_$s10Foundation10URLRequestV3url11cachePolicy15timeoutIntervalAcA3URLV_So017NSURLRequestCacheE0VSdtcfC",
-        "_$s10Foundation10URLRequestV3urlAA3URLVSgvg",
-        "_$s10Foundation10URLRequestV8addValue_18forHTTPHeaderFieldySS_SStF",
-        "_$s10Foundation10URLRequestV8httpBodyAA4DataVSgvs",
-        "_$s10Foundation10URLRequestVMa",
-        "_$s10Foundation10URLRequestVMn",
-        "_$s10Foundation12NotificationV36_unconditionallyBridgeFromObjectiveCyACSo14NSNotificationCSgFZ",
-        "_$s10Foundation12NotificationV6objectypSgvg",
-        "_$s10Foundation12NotificationVMa",
-        "_$s10Foundation13__DataStorageC5bytes6length4copy11deallocator6offsetACSvSg_SiSbySv_SitcSgSitcfc",
-        "_$s10Foundation13__DataStorageC5bytes6lengthACSVSg_Sitcfc",
-        "_$s10Foundation13__DataStorageC6_bytesSvSgvg",
-        "_$s10Foundation13__DataStorageC6lengthACSi_tcfc",
-        "_$s10Foundation13__DataStorageC7_lengthSivg",
-        "_$s10Foundation13__DataStorageC7_offsetSivg",
-        "_$s10Foundation13__DataStorageCMa",
-        "_$s10Foundation15ContiguousBytesMp",
-        "_$s10Foundation15ContiguousBytesP010withUnsafeC0yqd__qd__SWKXEKlFTj",
-        "_$s10Foundation3URLV19_bridgeToObjectiveCSo5NSURLCyF",
-        "_$s10Foundation3URLV4hostSSSgvg",
-        "_$s10Foundation3URLV6schemeSSSgvg",
-        "_$s10Foundation3URLV6stringACSgSSh_tcfC",
-        "_$s10Foundation3URLVMa",
-        "_$s10Foundation3URLVMn",
-        "_$s10Foundation4DataV10LargeSliceV21ensureUniqueReferenceyyF",
-        "_$s10Foundation4DataV13_copyContents12initializingAC8IteratorV_SitSrys5UInt8VG_tF",
-        "_$s10Foundation4DataV14RangeReferenceCMa",
-        "_$s10Foundation4DataV15_RepresentationO15replaceSubrange_4with5countySnySiG_SVSgSitF",
-        "_$s10Foundation4DataV15_RepresentationO6append10contentsOfySW_tF",
-        "_$s10Foundation4DataV15_RepresentationON",
-        "_$s10Foundation4DataV15_RepresentationOyACSnySiGcig",
-        "_$s10Foundation4DataV36_unconditionallyBridgeFromObjectiveCyACSo6NSDataCSgFZ",
-        "_$s10Foundation4DataV6appendyyACF",
-        "_$s10Foundation4DataV8IteratorVMa",
-        "_$s10Foundation4DataV8IteratorVStAAMc",
-        "_$s10Foundation4DataV8IteratorV_2atAeC_SitcfC",
-        "_$s10Foundation4DataVMn",
-        "_$s10Foundation4DataVN",
-        "_$s10Foundation4DateV17timeIntervalSinceySdACF",
-        "_$s10Foundation4DateV21timeIntervalSince1970ACSd_tcfC",
-        "_$s10Foundation4DateV21timeIntervalSince1970Sdvg",
-        "_$s10Foundation4DateVACycfC",
-        "_$s10Foundation4DateVMa",
-        "_$s10Foundation4DateVMn",
-        "_$s10Foundation6LocaleV18preferredLanguagesSaySSGvgZ",
-        "_$s10Foundation8IndexSetV19_bridgeToObjectiveCSo07NSIndexC0CyF",
-        "_$s10Foundation8IndexSetV7integerACSi_tcfC",
-        "_$s10Foundation8IndexSetVMa",
-        "_$s10Foundation8TimeZoneV018nextDaylightSavingB10Transition5afterAA4DateVSgAG_tF",
-        "_$s10Foundation8TimeZoneV10identifierSSvg",
-        "_$s10Foundation8TimeZoneV14secondsFromGMT3forSiAA4DateV_tF",
-        "_$s10Foundation8TimeZoneV7currentACvgZ",
-        "_$s10Foundation8TimeZoneVMa",
-        "_$sSD10FoundationE19_bridgeToObjectiveCSo12NSDictionaryCyF",
-        "_$sSD10FoundationE36_unconditionallyBridgeFromObjectiveCySDyxq_GSo12NSDictionaryCSgFZ",
-        "_$sSS10FoundationE19_bridgeToObjectiveCSo8NSStringCyF",
-        "_$sSS10FoundationE26_forceBridgeFromObjectiveC_6resultySo8NSStringC_SSSgztFZ",
-        "_$sSS10FoundationE34_conditionallyBridgeFromObjectiveC_6resultSbSo8NSStringC_SSSgztFZ",
-        "_$sSS10FoundationE36_unconditionallyBridgeFromObjectiveCySSSo8NSStringCSgFZ",
-        "_$sSa10FoundationE19_bridgeToObjectiveCSo7NSArrayCyF",
-        "_$sSa10FoundationE36_unconditionallyBridgeFromObjectiveCySayxGSo7NSArrayCSgFZ",
-        "_$sSy10FoundationE20replacingOccurrences2of4with7options5rangeSSqd___qd_0_So22NSStringCompareOptionsVSnySS5IndexVGSgtSyRd__SyRd_0_r0_lF",
-        "_$ss5ErrorP10FoundationE20localizedDescriptionSSvg"
+        {
+          "name": "_$s10Foundation10URLRequestV10httpMethodSSSgvs",
+          "evidence": "`Foundation.URLRequest.httpMethod.setter : Swift.String?`, a declaration of Swift's Foundation module (swiftlang/swift-foundation; swiftlang/swift-corelibs-foundation), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$s10Foundation10URLRequestV11cachePolicySo017NSURLRequestCacheD0Vvs",
+          "evidence": "`Foundation.URLRequest.cachePolicy.setter : __C.NSURLRequestCachePolicy`, a declaration of Swift's Foundation module (swiftlang/swift-foundation; swiftlang/swift-corelibs-foundation), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$s10Foundation10URLRequestV15timeoutIntervalSdvs",
+          "evidence": "`Foundation.URLRequest.timeoutInterval.setter : Swift.Double`, a declaration of Swift's Foundation module (swiftlang/swift-foundation; swiftlang/swift-corelibs-foundation), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$s10Foundation10URLRequestV19_bridgeToObjectiveCSo12NSURLRequestCyF",
+          "evidence": "`Foundation.URLRequest._bridgeToObjectiveC() -> __C.NSURLRequest`, a declaration of Swift's Foundation module (swiftlang/swift-foundation; swiftlang/swift-corelibs-foundation), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$s10Foundation10URLRequestV23httpShouldHandleCookiesSbvs",
+          "evidence": "`Foundation.URLRequest.httpShouldHandleCookies.setter : Swift.Bool`, a declaration of Swift's Foundation module (swiftlang/swift-foundation; swiftlang/swift-corelibs-foundation), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$s10Foundation10URLRequestV36_unconditionallyBridgeFromObjectiveCyACSo12NSURLRequestCSgFZ",
+          "evidence": "`static Foundation.URLRequest._unconditionallyBridgeFromObjectiveC(__C.NSURLRequest?) -> Foundation.URLRequest`, a declaration of Swift's Foundation module (swiftlang/swift-foundation; swiftlang/swift-corelibs-foundation), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$s10Foundation10URLRequestV3url11cachePolicy15timeoutIntervalAcA3URLV_So017NSURLRequestCacheE0VSdtcfC",
+          "evidence": "`Foundation.URLRequest.init(url: Foundation.URL, cachePolicy: __C.NSURLRequestCachePolicy, timeoutInterval: Swift.Double) -> Foundation.URLRequest`, a declaration of Swift's Foundation module (swiftlang/swift-foundation; swiftlang/swift-corelibs-foundation), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$s10Foundation10URLRequestV3urlAA3URLVSgvg",
+          "evidence": "`Foundation.URLRequest.url.getter : Foundation.URL?`, a declaration of Swift's Foundation module (swiftlang/swift-foundation; swiftlang/swift-corelibs-foundation), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$s10Foundation10URLRequestV8addValue_18forHTTPHeaderFieldySS_SStF",
+          "evidence": "`Foundation.URLRequest.addValue(_: Swift.String, forHTTPHeaderField: Swift.String) -> ()`, a declaration of Swift's Foundation module (swiftlang/swift-foundation; swiftlang/swift-corelibs-foundation), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$s10Foundation10URLRequestV8httpBodyAA4DataVSgvs",
+          "evidence": "`Foundation.URLRequest.httpBody.setter : Foundation.Data?`, a declaration of Swift's Foundation module (swiftlang/swift-foundation; swiftlang/swift-corelibs-foundation), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$s10Foundation10URLRequestVMa",
+          "evidence": "`type metadata accessor for Foundation.URLRequest`, a declaration of Swift's Foundation module (swiftlang/swift-foundation; swiftlang/swift-corelibs-foundation), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$s10Foundation10URLRequestVMn",
+          "evidence": "`nominal type descriptor for Foundation.URLRequest`, a declaration of Swift's Foundation module (swiftlang/swift-foundation; swiftlang/swift-corelibs-foundation), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$s10Foundation12NotificationV36_unconditionallyBridgeFromObjectiveCyACSo14NSNotificationCSgFZ",
+          "evidence": "`static Foundation.Notification._unconditionallyBridgeFromObjectiveC(__C.NSNotification?) -> Foundation.Notification`, a declaration of Swift's Foundation module (swiftlang/swift-foundation; swiftlang/swift-corelibs-foundation), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$s10Foundation12NotificationV6objectypSgvg",
+          "evidence": "`Foundation.Notification.object.getter : Any?`, a declaration of Swift's Foundation module (swiftlang/swift-foundation; swiftlang/swift-corelibs-foundation), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$s10Foundation12NotificationVMa",
+          "evidence": "`type metadata accessor for Foundation.Notification`, a declaration of Swift's Foundation module (swiftlang/swift-foundation; swiftlang/swift-corelibs-foundation), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$s10Foundation13__DataStorageC5bytes6length4copy11deallocator6offsetACSvSg_SiSbySv_SitcSgSitcfc",
+          "evidence": "`Foundation.__DataStorage.init(bytes: Swift.UnsafeMutableRawPointer?, length: Swift.Int, copy: Swift.Bool, deallocator: ((Swift.UnsafeMutableRawPointer, Swift.Int) -> ())?, offset: Swift.Int) -> Foundation.__DataStorage`, a declaration of Swift's Foundation module (swiftlang/swift-foundation; swiftlang/swift-corelibs-foundation), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$s10Foundation13__DataStorageC5bytes6lengthACSVSg_Sitcfc",
+          "evidence": "`Foundation.__DataStorage.init(bytes: Swift.UnsafeRawPointer?, length: Swift.Int) -> Foundation.__DataStorage`, a declaration of Swift's Foundation module (swiftlang/swift-foundation; swiftlang/swift-corelibs-foundation), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$s10Foundation13__DataStorageC6_bytesSvSgvg",
+          "evidence": "`Foundation.__DataStorage._bytes.getter : Swift.UnsafeMutableRawPointer?`, a declaration of Swift's Foundation module (swiftlang/swift-foundation; swiftlang/swift-corelibs-foundation), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$s10Foundation13__DataStorageC6lengthACSi_tcfc",
+          "evidence": "`Foundation.__DataStorage.init(length: Swift.Int) -> Foundation.__DataStorage`, a declaration of Swift's Foundation module (swiftlang/swift-foundation; swiftlang/swift-corelibs-foundation), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$s10Foundation13__DataStorageC7_lengthSivg",
+          "evidence": "`Foundation.__DataStorage._length.getter : Swift.Int`, a declaration of Swift's Foundation module (swiftlang/swift-foundation; swiftlang/swift-corelibs-foundation), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$s10Foundation13__DataStorageC7_offsetSivg",
+          "evidence": "`Foundation.__DataStorage._offset.getter : Swift.Int`, a declaration of Swift's Foundation module (swiftlang/swift-foundation; swiftlang/swift-corelibs-foundation), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$s10Foundation13__DataStorageCMa",
+          "evidence": "`type metadata accessor for Foundation.__DataStorage`, a declaration of Swift's Foundation module (swiftlang/swift-foundation; swiftlang/swift-corelibs-foundation), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$s10Foundation15ContiguousBytesMp",
+          "evidence": "`protocol descriptor for Foundation.ContiguousBytes`, a declaration of Swift's Foundation module (swiftlang/swift-foundation; swiftlang/swift-corelibs-foundation), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$s10Foundation15ContiguousBytesP010withUnsafeC0yqd__qd__SWKXEKlFTj",
+          "evidence": "`dispatch thunk of Foundation.ContiguousBytes.withUnsafeBytes<A>((Swift.UnsafeRawBufferPointer) throws -> A1) throws -> A1`, a declaration of Swift's Foundation module (swiftlang/swift-foundation; swiftlang/swift-corelibs-foundation), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$s10Foundation3URLV19_bridgeToObjectiveCSo5NSURLCyF",
+          "evidence": "`Foundation.URL._bridgeToObjectiveC() -> __C.NSURL`, a declaration of Swift's Foundation module (swiftlang/swift-foundation; swiftlang/swift-corelibs-foundation), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$s10Foundation3URLV4hostSSSgvg",
+          "evidence": "`Foundation.URL.host.getter : Swift.String?`, a declaration of Swift's Foundation module (swiftlang/swift-foundation; swiftlang/swift-corelibs-foundation), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$s10Foundation3URLV6schemeSSSgvg",
+          "evidence": "`Foundation.URL.scheme.getter : Swift.String?`, a declaration of Swift's Foundation module (swiftlang/swift-foundation; swiftlang/swift-corelibs-foundation), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$s10Foundation3URLV6stringACSgSSh_tcfC",
+          "evidence": "`Foundation.URL.init(string: __shared Swift.String) -> Foundation.URL?`, a declaration of Swift's Foundation module (swiftlang/swift-foundation; swiftlang/swift-corelibs-foundation), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$s10Foundation3URLVMa",
+          "evidence": "`type metadata accessor for Foundation.URL`, a declaration of Swift's Foundation module (swiftlang/swift-foundation; swiftlang/swift-corelibs-foundation), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$s10Foundation3URLVMn",
+          "evidence": "`nominal type descriptor for Foundation.URL`, a declaration of Swift's Foundation module (swiftlang/swift-foundation; swiftlang/swift-corelibs-foundation), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$s10Foundation4DataV10LargeSliceV21ensureUniqueReferenceyyF",
+          "evidence": "`Foundation.Data.LargeSlice.ensureUniqueReference() -> ()`, a declaration of Swift's Foundation module (swiftlang/swift-foundation; swiftlang/swift-corelibs-foundation), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$s10Foundation4DataV13_copyContents12initializingAC8IteratorV_SitSrys5UInt8VG_tF",
+          "evidence": "`Foundation.Data._copyContents(initializing: Swift.UnsafeMutableBufferPointer<Swift.UInt8>) -> (Foundation.Data.Iterator, Swift.Int)`, a declaration of Swift's Foundation module (swiftlang/swift-foundation; swiftlang/swift-corelibs-foundation), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$s10Foundation4DataV14RangeReferenceCMa",
+          "evidence": "`type metadata accessor for Foundation.Data.RangeReference`, a declaration of Swift's Foundation module (swiftlang/swift-foundation; swiftlang/swift-corelibs-foundation), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$s10Foundation4DataV15_RepresentationO15replaceSubrange_4with5countySnySiG_SVSgSitF",
+          "evidence": "`Foundation.Data._Representation.replaceSubrange(_: Swift.Range<Swift.Int>, with: Swift.UnsafeRawPointer?, count: Swift.Int) -> ()`, a declaration of Swift's Foundation module (swiftlang/swift-foundation; swiftlang/swift-corelibs-foundation), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$s10Foundation4DataV15_RepresentationO6append10contentsOfySW_tF",
+          "evidence": "`Foundation.Data._Representation.append(contentsOf: Swift.UnsafeRawBufferPointer) -> ()`, a declaration of Swift's Foundation module (swiftlang/swift-foundation; swiftlang/swift-corelibs-foundation), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$s10Foundation4DataV15_RepresentationON",
+          "evidence": "`type metadata for Foundation.Data._Representation`, a declaration of Swift's Foundation module (swiftlang/swift-foundation; swiftlang/swift-corelibs-foundation), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$s10Foundation4DataV15_RepresentationOyACSnySiGcig",
+          "evidence": "`Foundation.Data._Representation.subscript.getter : (Swift.Range<Swift.Int>) -> Foundation.Data`, a declaration of Swift's Foundation module (swiftlang/swift-foundation; swiftlang/swift-corelibs-foundation), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$s10Foundation4DataV36_unconditionallyBridgeFromObjectiveCyACSo6NSDataCSgFZ",
+          "evidence": "`static Foundation.Data._unconditionallyBridgeFromObjectiveC(__C.NSData?) -> Foundation.Data`, a declaration of Swift's Foundation module (swiftlang/swift-foundation; swiftlang/swift-corelibs-foundation), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$s10Foundation4DataV6appendyyACF",
+          "evidence": "`Foundation.Data.append(Foundation.Data) -> ()`, a declaration of Swift's Foundation module (swiftlang/swift-foundation; swiftlang/swift-corelibs-foundation), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$s10Foundation4DataV8IteratorVMa",
+          "evidence": "`type metadata accessor for Foundation.Data.Iterator`, a declaration of Swift's Foundation module (swiftlang/swift-foundation; swiftlang/swift-corelibs-foundation), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$s10Foundation4DataV8IteratorVStAAMc",
+          "evidence": "`protocol conformance descriptor for Foundation.Data.Iterator : Swift.IteratorProtocol in Foundation`, a declaration of Swift's Foundation module (swiftlang/swift-foundation; swiftlang/swift-corelibs-foundation), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$s10Foundation4DataV8IteratorV_2atAeC_SitcfC",
+          "evidence": "`Foundation.Data.Iterator.init(_: Foundation.Data, at: Swift.Int) -> Foundation.Data.Iterator`, a declaration of Swift's Foundation module (swiftlang/swift-foundation; swiftlang/swift-corelibs-foundation), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$s10Foundation4DataVMn",
+          "evidence": "`nominal type descriptor for Foundation.Data`, a declaration of Swift's Foundation module (swiftlang/swift-foundation; swiftlang/swift-corelibs-foundation), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$s10Foundation4DataVN",
+          "evidence": "`type metadata for Foundation.Data`, a declaration of Swift's Foundation module (swiftlang/swift-foundation; swiftlang/swift-corelibs-foundation), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$s10Foundation4DateV17timeIntervalSinceySdACF",
+          "evidence": "`Foundation.Date.timeIntervalSince(Foundation.Date) -> Swift.Double`, a declaration of Swift's Foundation module (swiftlang/swift-foundation; swiftlang/swift-corelibs-foundation), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$s10Foundation4DateV21timeIntervalSince1970ACSd_tcfC",
+          "evidence": "`Foundation.Date.init(timeIntervalSince1970: Swift.Double) -> Foundation.Date`, a declaration of Swift's Foundation module (swiftlang/swift-foundation; swiftlang/swift-corelibs-foundation), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$s10Foundation4DateV21timeIntervalSince1970Sdvg",
+          "evidence": "`Foundation.Date.timeIntervalSince1970.getter : Swift.Double`, a declaration of Swift's Foundation module (swiftlang/swift-foundation; swiftlang/swift-corelibs-foundation), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$s10Foundation4DateVACycfC",
+          "evidence": "`Foundation.Date.init() -> Foundation.Date`, a declaration of Swift's Foundation module (swiftlang/swift-foundation; swiftlang/swift-corelibs-foundation), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$s10Foundation4DateVMa",
+          "evidence": "`type metadata accessor for Foundation.Date`, a declaration of Swift's Foundation module (swiftlang/swift-foundation; swiftlang/swift-corelibs-foundation), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$s10Foundation4DateVMn",
+          "evidence": "`nominal type descriptor for Foundation.Date`, a declaration of Swift's Foundation module (swiftlang/swift-foundation; swiftlang/swift-corelibs-foundation), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$s10Foundation6LocaleV18preferredLanguagesSaySSGvgZ",
+          "evidence": "`static Foundation.Locale.preferredLanguages.getter : [Swift.String]`, a declaration of Swift's Foundation module (swiftlang/swift-foundation; swiftlang/swift-corelibs-foundation), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$s10Foundation8IndexSetV19_bridgeToObjectiveCSo07NSIndexC0CyF",
+          "evidence": "`Foundation.IndexSet._bridgeToObjectiveC() -> __C.NSIndexSet`, a declaration of Swift's Foundation module (swiftlang/swift-foundation; swiftlang/swift-corelibs-foundation), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$s10Foundation8IndexSetV7integerACSi_tcfC",
+          "evidence": "`Foundation.IndexSet.init(integer: Swift.Int) -> Foundation.IndexSet`, a declaration of Swift's Foundation module (swiftlang/swift-foundation; swiftlang/swift-corelibs-foundation), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$s10Foundation8IndexSetVMa",
+          "evidence": "`type metadata accessor for Foundation.IndexSet`, a declaration of Swift's Foundation module (swiftlang/swift-foundation; swiftlang/swift-corelibs-foundation), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$s10Foundation8TimeZoneV018nextDaylightSavingB10Transition5afterAA4DateVSgAG_tF",
+          "evidence": "`Foundation.TimeZone.nextDaylightSavingTimeTransition(after: Foundation.Date) -> Foundation.Date?`, a declaration of Swift's Foundation module (swiftlang/swift-foundation; swiftlang/swift-corelibs-foundation), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$s10Foundation8TimeZoneV10identifierSSvg",
+          "evidence": "`Foundation.TimeZone.identifier.getter : Swift.String`, a declaration of Swift's Foundation module (swiftlang/swift-foundation; swiftlang/swift-corelibs-foundation), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$s10Foundation8TimeZoneV14secondsFromGMT3forSiAA4DateV_tF",
+          "evidence": "`Foundation.TimeZone.secondsFromGMT(for: Foundation.Date) -> Swift.Int`, a declaration of Swift's Foundation module (swiftlang/swift-foundation; swiftlang/swift-corelibs-foundation), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$s10Foundation8TimeZoneV7currentACvgZ",
+          "evidence": "`static Foundation.TimeZone.current.getter : Foundation.TimeZone`, a declaration of Swift's Foundation module (swiftlang/swift-foundation; swiftlang/swift-corelibs-foundation), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$s10Foundation8TimeZoneVMa",
+          "evidence": "`type metadata accessor for Foundation.TimeZone`, a declaration of Swift's Foundation module (swiftlang/swift-foundation; swiftlang/swift-corelibs-foundation), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$sSD10FoundationE19_bridgeToObjectiveCSo12NSDictionaryCyF",
+          "evidence": "`(extension in Foundation):Swift.Dictionary._bridgeToObjectiveC() -> __C.NSDictionary`, a declaration of Swift's Foundation module (swiftlang/swift-foundation; swiftlang/swift-corelibs-foundation), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$sSD10FoundationE36_unconditionallyBridgeFromObjectiveCySDyxq_GSo12NSDictionaryCSgFZ",
+          "evidence": "`static (extension in Foundation):Swift.Dictionary._unconditionallyBridgeFromObjectiveC(__C.NSDictionary?) -> [A : B]`, a declaration of Swift's Foundation module (swiftlang/swift-foundation; swiftlang/swift-corelibs-foundation), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$sSS10FoundationE19_bridgeToObjectiveCSo8NSStringCyF",
+          "evidence": "`(extension in Foundation):Swift.String._bridgeToObjectiveC() -> __C.NSString`, a declaration of Swift's Foundation module (swiftlang/swift-foundation; swiftlang/swift-corelibs-foundation), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$sSS10FoundationE26_forceBridgeFromObjectiveC_6resultySo8NSStringC_SSSgztFZ",
+          "evidence": "`static (extension in Foundation):Swift.String._forceBridgeFromObjectiveC(_: __C.NSString, result: inout Swift.String?) -> ()`, a declaration of Swift's Foundation module (swiftlang/swift-foundation; swiftlang/swift-corelibs-foundation), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$sSS10FoundationE34_conditionallyBridgeFromObjectiveC_6resultSbSo8NSStringC_SSSgztFZ",
+          "evidence": "`static (extension in Foundation):Swift.String._conditionallyBridgeFromObjectiveC(_: __C.NSString, result: inout Swift.String?) -> Swift.Bool`, a declaration of Swift's Foundation module (swiftlang/swift-foundation; swiftlang/swift-corelibs-foundation), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$sSS10FoundationE36_unconditionallyBridgeFromObjectiveCySSSo8NSStringCSgFZ",
+          "evidence": "`static (extension in Foundation):Swift.String._unconditionallyBridgeFromObjectiveC(__C.NSString?) -> Swift.String`, a declaration of Swift's Foundation module (swiftlang/swift-foundation; swiftlang/swift-corelibs-foundation), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$sSa10FoundationE19_bridgeToObjectiveCSo7NSArrayCyF",
+          "evidence": "`(extension in Foundation):Swift.Array._bridgeToObjectiveC() -> __C.NSArray`, a declaration of Swift's Foundation module (swiftlang/swift-foundation; swiftlang/swift-corelibs-foundation), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$sSa10FoundationE36_unconditionallyBridgeFromObjectiveCySayxGSo7NSArrayCSgFZ",
+          "evidence": "`static (extension in Foundation):Swift.Array._unconditionallyBridgeFromObjectiveC(__C.NSArray?) -> [A]`, a declaration of Swift's Foundation module (swiftlang/swift-foundation; swiftlang/swift-corelibs-foundation), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$sSy10FoundationE20replacingOccurrences2of4with7options5rangeSSqd___qd_0_So22NSStringCompareOptionsVSnySS5IndexVGSgtSyRd__SyRd_0_r0_lF",
+          "evidence": "`(extension in Foundation):Swift.StringProtocol.replacingOccurrences<A, B where A1: Swift.StringProtocol, B1: Swift.StringProtocol>(of: A1, with: B1, options: __C.NSStringCompareOptions, range: Swift.Range<Swift.String.Index>?) -> Swift.String`, a declaration of Swift's Foundation module (swiftlang/swift-foundation; swiftlang/swift-corelibs-foundation), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$ss5ErrorP10FoundationE20localizedDescriptionSSvg",
+          "evidence": "`(extension in Foundation):Swift.Error.localizedDescription.getter : Swift.String`, a declaration of Swift's Foundation module (swiftlang/swift-foundation; swiftlang/swift-corelibs-foundation), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        }
       ]
     },
     {
       "name": "libswiftDispatch",
       "path": "usr/lib/libswiftDispatch.tbd",
       "install_name": "/usr/lib/swift/libswiftDispatch.dylib",
-      "evidence": "Swift declarations of module Dispatch (mangling `8Dispatch`, `8DispatchE`); the host's own autolink directive names -lswiftDispatch.",
+      "evidence": "Swift's Dispatch module, shipped in the OS as /usr/lib/swift/libswiftDispatch.dylib; the host's autolink directive names -lswiftDispatch (swiftlang/swift-corelibs-libdispatch, src/swift).",
       "symbols": [
-        "_$s8Dispatch0A13WorkItemFlagsVMa",
-        "_$s8Dispatch0A13WorkItemFlagsVMn",
-        "_$s8Dispatch0A13WorkItemFlagsVs10SetAlgebraAAMc",
-        "_$s8Dispatch0A3QoSV11unspecifiedACvgZ",
-        "_$s8Dispatch0A3QoSV13userInitiatedACvgZ",
-        "_$s8Dispatch0A3QoSVMa",
-        "_$s8Dispatch0A4TimeV3nowACyFZ",
-        "_$s8Dispatch0A4TimeVMa",
-        "_$s8Dispatch1poiyAA0A4TimeVAD_SdtF",
-        "_$sSo17OS_dispatch_queueC8DispatchE10AttributesV10concurrentAEvgZ",
-        "_$sSo17OS_dispatch_queueC8DispatchE10AttributesVMa",
-        "_$sSo17OS_dispatch_queueC8DispatchE10asyncAfter8deadline3qos5flags7executeyAC0D4TimeV_AC0D3QoSVAC0D13WorkItemFlagsVyyXBtF",
-        "_$sSo17OS_dispatch_queueC8DispatchE20AutoreleaseFrequencyO7inherityA2EmFWC",
-        "_$sSo17OS_dispatch_queueC8DispatchE20AutoreleaseFrequencyOMa",
-        "_$sSo17OS_dispatch_queueC8DispatchE4mainABvgZ",
-        "_$sSo17OS_dispatch_queueC8DispatchE5async5group3qos5flags7executeySo0a1_b1_F0CSg_AC0D3QoSVAC0D13WorkItemFlagsVyyXBtF",
-        "_$sSo17OS_dispatch_queueC8DispatchE5label3qos10attributes20autoreleaseFrequency6targetABSS_AC0D3QoSVAbCE10AttributesVAbCE011AutoreleaseI0OABSgtcfC"
+        {
+          "name": "_$s8Dispatch0A13WorkItemFlagsVMa",
+          "evidence": "`type metadata accessor for Dispatch.DispatchWorkItemFlags`, a declaration of Swift's Dispatch module (swiftlang/swift-corelibs-libdispatch, src/swift), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$s8Dispatch0A13WorkItemFlagsVMn",
+          "evidence": "`nominal type descriptor for Dispatch.DispatchWorkItemFlags`, a declaration of Swift's Dispatch module (swiftlang/swift-corelibs-libdispatch, src/swift), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$s8Dispatch0A13WorkItemFlagsVs10SetAlgebraAAMc",
+          "evidence": "`protocol conformance descriptor for Dispatch.DispatchWorkItemFlags : Swift.SetAlgebra in Dispatch`, a declaration of Swift's Dispatch module (swiftlang/swift-corelibs-libdispatch, src/swift), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$s8Dispatch0A3QoSV11unspecifiedACvgZ",
+          "evidence": "`static Dispatch.DispatchQoS.unspecified.getter : Dispatch.DispatchQoS`, a declaration of Swift's Dispatch module (swiftlang/swift-corelibs-libdispatch, src/swift), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$s8Dispatch0A3QoSV13userInitiatedACvgZ",
+          "evidence": "`static Dispatch.DispatchQoS.userInitiated.getter : Dispatch.DispatchQoS`, a declaration of Swift's Dispatch module (swiftlang/swift-corelibs-libdispatch, src/swift), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$s8Dispatch0A3QoSVMa",
+          "evidence": "`type metadata accessor for Dispatch.DispatchQoS`, a declaration of Swift's Dispatch module (swiftlang/swift-corelibs-libdispatch, src/swift), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$s8Dispatch0A4TimeV3nowACyFZ",
+          "evidence": "`static Dispatch.DispatchTime.now() -> Dispatch.DispatchTime`, a declaration of Swift's Dispatch module (swiftlang/swift-corelibs-libdispatch, src/swift), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$s8Dispatch0A4TimeVMa",
+          "evidence": "`type metadata accessor for Dispatch.DispatchTime`, a declaration of Swift's Dispatch module (swiftlang/swift-corelibs-libdispatch, src/swift), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$s8Dispatch1poiyAA0A4TimeVAD_SdtF",
+          "evidence": "`Dispatch.+ infix(Dispatch.DispatchTime, Swift.Double) -> Dispatch.DispatchTime`, a declaration of Swift's Dispatch module (swiftlang/swift-corelibs-libdispatch, src/swift), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$sSo17OS_dispatch_queueC8DispatchE10AttributesV10concurrentAEvgZ",
+          "evidence": "`static (extension in Dispatch):__C.OS_dispatch_queue.Attributes.concurrent.getter : (extension in Dispatch):__C.OS_dispatch_queue.Attributes`, a declaration of Swift's Dispatch module (swiftlang/swift-corelibs-libdispatch, src/swift), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$sSo17OS_dispatch_queueC8DispatchE10AttributesVMa",
+          "evidence": "`type metadata accessor for (extension in Dispatch):__C.OS_dispatch_queue.Attributes`, a declaration of Swift's Dispatch module (swiftlang/swift-corelibs-libdispatch, src/swift), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$sSo17OS_dispatch_queueC8DispatchE10asyncAfter8deadline3qos5flags7executeyAC0D4TimeV_AC0D3QoSVAC0D13WorkItemFlagsVyyXBtF",
+          "evidence": "`(extension in Dispatch):__C.OS_dispatch_queue.asyncAfter(deadline: Dispatch.DispatchTime, qos: Dispatch.DispatchQoS, flags: Dispatch.DispatchWorkItemFlags, execute: @convention(block) () -> ()) -> ()`, a declaration of Swift's Dispatch module (swiftlang/swift-corelibs-libdispatch, src/swift), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$sSo17OS_dispatch_queueC8DispatchE20AutoreleaseFrequencyO7inherityA2EmFWC",
+          "evidence": "`enum case for (extension in Dispatch):__C.OS_dispatch_queue.AutoreleaseFrequency.inherit((extension in Dispatch):__C.OS_dispatch_queue.AutoreleaseFrequency.Type) -> (extension in Dispatch):__C.OS_dispatch_queue.AutoreleaseFrequency`, a declaration of Swift's Dispatch module (swiftlang/swift-corelibs-libdispatch, src/swift), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$sSo17OS_dispatch_queueC8DispatchE20AutoreleaseFrequencyOMa",
+          "evidence": "`type metadata accessor for (extension in Dispatch):__C.OS_dispatch_queue.AutoreleaseFrequency`, a declaration of Swift's Dispatch module (swiftlang/swift-corelibs-libdispatch, src/swift), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$sSo17OS_dispatch_queueC8DispatchE4mainABvgZ",
+          "evidence": "`static (extension in Dispatch):__C.OS_dispatch_queue.main.getter : __C.OS_dispatch_queue`, a declaration of Swift's Dispatch module (swiftlang/swift-corelibs-libdispatch, src/swift), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$sSo17OS_dispatch_queueC8DispatchE5async5group3qos5flags7executeySo0a1_b1_F0CSg_AC0D3QoSVAC0D13WorkItemFlagsVyyXBtF",
+          "evidence": "`(extension in Dispatch):__C.OS_dispatch_queue.async(group: __C.OS_dispatch_group?, qos: Dispatch.DispatchQoS, flags: Dispatch.DispatchWorkItemFlags, execute: @convention(block) () -> ()) -> ()`, a declaration of Swift's Dispatch module (swiftlang/swift-corelibs-libdispatch, src/swift), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$sSo17OS_dispatch_queueC8DispatchE5label3qos10attributes20autoreleaseFrequency6targetABSS_AC0D3QoSVAbCE10AttributesVAbCE011AutoreleaseI0OABSgtcfC",
+          "evidence": "`(extension in Dispatch):__C.OS_dispatch_queue.init(label: Swift.String, qos: Dispatch.DispatchQoS, attributes: (extension in Dispatch):__C.OS_dispatch_queue.Attributes, autoreleaseFrequency: (extension in Dispatch):__C.OS_dispatch_queue.AutoreleaseFrequency, target: __C.OS_dispatch_queue?) -> __C.OS_dispatch_queue`, a declaration of Swift's Dispatch module (swiftlang/swift-corelibs-libdispatch, src/swift), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        }
       ]
     },
     {
       "name": "libswiftObjectiveC",
       "path": "usr/lib/libswiftObjectiveC.tbd",
       "install_name": "/usr/lib/swift/libswiftObjectiveC.dylib",
-      "evidence": "Swift declarations of module ObjectiveC (mangling `10ObjectiveC`, `10ObjectiveCE`); the host's own autolink directive names -lswiftObjectiveC.",
+      "evidence": "Swift's ObjectiveC overlay, shipped in the OS as /usr/lib/swift/libswiftObjectiveC.dylib; the host's autolink directive names -lswiftObjectiveC (swiftlang/swift, stdlib/public/Darwin/ObjectiveC).",
       "symbols": [
-        "_$s10ObjectiveC8SelectorV2eeoiySbAC_ACtFZ",
-        "_$sSo8NSObjectC10ObjectiveCE2eeoiySbAB_ABtFZ"
+        {
+          "name": "_$s10ObjectiveC8SelectorV2eeoiySbAC_ACtFZ",
+          "evidence": "`static ObjectiveC.Selector.== infix(ObjectiveC.Selector, ObjectiveC.Selector) -> Swift.Bool`, a declaration of Swift's ObjectiveC overlay (swiftlang/swift, stdlib/public/Darwin/ObjectiveC), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$sSo8NSObjectC10ObjectiveCE2eeoiySbAB_ABtFZ",
+          "evidence": "`static (extension in ObjectiveC):__C.NSObject.== infix(__C.NSObject, __C.NSObject) -> Swift.Bool`, a declaration of Swift's ObjectiveC overlay (swiftlang/swift, stdlib/public/Darwin/ObjectiveC), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        }
       ]
     },
     {
       "name": "AppKit",
       "path": "System/Library/Frameworks/AppKit.framework/AppKit.tbd",
       "install_name": "/System/Library/Frameworks/AppKit.framework/Versions/C/AppKit",
-      "evidence": "AppKit classes and globals documented at developer.apple.com/documentation/appkit (NSApplication, NSWindow, NSView, NSStackView, NSTextField, NSButton, NSSlider, NSBox, NSControl, NSFont, NSLayoutConstraint, NSMenu, NSMenuItem, NSApp, NSAlert, NSFontWeightMedium). AppKit classes and globals documented at developer.apple.com/documentation/appkit (NSApplication, NSWindow, NSView, NSStackView, NSTextField, NSButton, NSSlider, NSBox, NSControl, NSFont, NSLayoutConstraint, NSMenu, NSMenuItem, NSApp, NSFontWeightMedium). AppKit classes and globals documented at developer.apple.com/documentation/appkit (NSApplication, NSWindow, NSView, NSStackView, NSTextField, NSButton, NSSlider, NSBox, NSControl, NSFont, NSLayoutConstraint, NSMenu, NSMenuItem, NSApp, NSFontWeightMedium; for files NSOpenPanel, NSSavePanel, NSBezierPath, NSColor, NSPasteboardTypeFileURL and NSView's metaclass, which a Swift subclass of NSView references). AppKit classes and globals documented at developer.apple.com/documentation/appkit (NSApplication, NSWindow, NSView, NSStackView, NSTextField, NSButton, NSSlider, NSBox, NSControl, NSFont, NSLayoutConstraint, NSMenu, NSMenuItem, NSApp, NSFontWeightMedium, NSFontWeightRegular, NSColor, NSEvent, NSImage, NSImageSymbolConfiguration, NSImageView, NSPopUpButton, NSProgressIndicator, NSScrollView, NSSegmentedControl, NSTableView, NSTableColumn, NSTableCellView, NSTextView). For styling (docs/architecture.adoc): the NSFont.TextStyle constants NSFontTextStyleLargeTitle through NSFontTextStyleCaption2 (developer.apple.com/documentation/appkit/nsfont/textstyle), the NSFont.Weight constants NSFontWeightLight, NSFontWeightSemibold, NSFontWeightBold and NSFontWeightHeavy (developer.apple.com/documentation/appkit/nsfont/weight), and NSAppearanceNameAqua and NSAppearanceNameDarkAqua (developer.apple.com/documentation/appkit/nsappearance/name), which an adaptive colour matches against; NSAppearance, which ROC_APPEARANCE names; NSViewNoIntrinsicMetric (developer.apple.com/documentation/appkit/nsview/nointrinsicmetric), which a wrapping label answers for its width; and the NSTextField metaclass, which that Swift subclass of NSTextField references.",
+      "evidence": "AppKit, /System/Library/Frameworks/AppKit.framework/Versions/C/AppKit (https://developer.apple.com/documentation/appkit).",
       "symbols": [
-        "_NSApp",
-        "_NSAppearanceNameAqua",
-        "_NSAppearanceNameDarkAqua",
-        "_NSFontTextStyleBody",
-        "_NSFontTextStyleCallout",
-        "_NSFontTextStyleCaption1",
-        "_NSFontTextStyleCaption2",
-        "_NSFontTextStyleFootnote",
-        "_NSFontTextStyleHeadline",
-        "_NSFontTextStyleLargeTitle",
-        "_NSFontTextStyleSubheadline",
-        "_NSFontTextStyleTitle1",
-        "_NSFontTextStyleTitle2",
-        "_NSFontTextStyleTitle3",
-        "_NSFontWeightBold",
-        "_NSFontWeightHeavy",
-        "_NSFontWeightLight",
-        "_NSFontWeightMedium",
-        "_NSFontWeightRegular",
-        "_NSFontWeightSemibold",
-        "_NSPasteboardTypeFileURL",
-        "_NSViewNoIntrinsicMetric",
-        "_OBJC_CLASS_$_NSAlert",
-        "_OBJC_CLASS_$_NSAppearance",
-        "_OBJC_CLASS_$_NSApplication",
-        "_OBJC_CLASS_$_NSBezierPath",
-        "_OBJC_CLASS_$_NSBox",
-        "_OBJC_CLASS_$_NSButton",
-        "_OBJC_CLASS_$_NSColor",
-        "_OBJC_CLASS_$_NSControl",
-        "_OBJC_CLASS_$_NSEvent",
-        "_OBJC_CLASS_$_NSFont",
-        "_OBJC_CLASS_$_NSImage",
-        "_OBJC_CLASS_$_NSImageSymbolConfiguration",
-        "_OBJC_CLASS_$_NSImageView",
-        "_OBJC_CLASS_$_NSLayoutConstraint",
-        "_OBJC_CLASS_$_NSMenu",
-        "_OBJC_CLASS_$_NSMenuItem",
-        "_OBJC_CLASS_$_NSOpenPanel",
-        "_OBJC_CLASS_$_NSPopUpButton",
-        "_OBJC_CLASS_$_NSProgressIndicator",
-        "_OBJC_CLASS_$_NSSavePanel",
-        "_OBJC_CLASS_$_NSScrollView",
-        "_OBJC_CLASS_$_NSSegmentedControl",
-        "_OBJC_CLASS_$_NSSlider",
-        "_OBJC_CLASS_$_NSStackView",
-        "_OBJC_CLASS_$_NSTableCellView",
-        "_OBJC_CLASS_$_NSTableColumn",
-        "_OBJC_CLASS_$_NSTableView",
-        "_OBJC_CLASS_$_NSTextField",
-        "_OBJC_CLASS_$_NSTextView",
-        "_OBJC_CLASS_$_NSView",
-        "_OBJC_CLASS_$_NSWindow",
-        "_OBJC_METACLASS_$_NSScrollView",
-        "_OBJC_METACLASS_$_NSTextField",
-        "_OBJC_METACLASS_$_NSView"
+        {
+          "name": "_NSApp",
+          "evidence": "NSApp, the shared application (https://developer.apple.com/documentation/appkit/nsapp)"
+        },
+        {
+          "name": "_NSAppearanceNameAqua",
+          "evidence": "NSAppearanceNameAqua (https://developer.apple.com/documentation/appkit/nsappearance/name/aqua)"
+        },
+        {
+          "name": "_NSAppearanceNameDarkAqua",
+          "evidence": "NSAppearanceNameDarkAqua (https://developer.apple.com/documentation/appkit/nsappearance/name/darkaqua)"
+        },
+        {
+          "name": "_NSFontTextStyleBody",
+          "evidence": "the NSFont.TextStyle constant NSFontTextStyleBody (https://developer.apple.com/documentation/appkit/nsfont/textstyle)"
+        },
+        {
+          "name": "_NSFontTextStyleCallout",
+          "evidence": "the NSFont.TextStyle constant NSFontTextStyleCallout (https://developer.apple.com/documentation/appkit/nsfont/textstyle)"
+        },
+        {
+          "name": "_NSFontTextStyleCaption1",
+          "evidence": "the NSFont.TextStyle constant NSFontTextStyleCaption1 (https://developer.apple.com/documentation/appkit/nsfont/textstyle)"
+        },
+        {
+          "name": "_NSFontTextStyleCaption2",
+          "evidence": "the NSFont.TextStyle constant NSFontTextStyleCaption2 (https://developer.apple.com/documentation/appkit/nsfont/textstyle)"
+        },
+        {
+          "name": "_NSFontTextStyleFootnote",
+          "evidence": "the NSFont.TextStyle constant NSFontTextStyleFootnote (https://developer.apple.com/documentation/appkit/nsfont/textstyle)"
+        },
+        {
+          "name": "_NSFontTextStyleHeadline",
+          "evidence": "the NSFont.TextStyle constant NSFontTextStyleHeadline (https://developer.apple.com/documentation/appkit/nsfont/textstyle)"
+        },
+        {
+          "name": "_NSFontTextStyleLargeTitle",
+          "evidence": "the NSFont.TextStyle constant NSFontTextStyleLargeTitle (https://developer.apple.com/documentation/appkit/nsfont/textstyle)"
+        },
+        {
+          "name": "_NSFontTextStyleSubheadline",
+          "evidence": "the NSFont.TextStyle constant NSFontTextStyleSubheadline (https://developer.apple.com/documentation/appkit/nsfont/textstyle)"
+        },
+        {
+          "name": "_NSFontTextStyleTitle1",
+          "evidence": "the NSFont.TextStyle constant NSFontTextStyleTitle1 (https://developer.apple.com/documentation/appkit/nsfont/textstyle)"
+        },
+        {
+          "name": "_NSFontTextStyleTitle2",
+          "evidence": "the NSFont.TextStyle constant NSFontTextStyleTitle2 (https://developer.apple.com/documentation/appkit/nsfont/textstyle)"
+        },
+        {
+          "name": "_NSFontTextStyleTitle3",
+          "evidence": "the NSFont.TextStyle constant NSFontTextStyleTitle3 (https://developer.apple.com/documentation/appkit/nsfont/textstyle)"
+        },
+        {
+          "name": "_NSFontWeightBold",
+          "evidence": "the NSFont.Weight constant NSFontWeightBold (https://developer.apple.com/documentation/appkit/nsfont/weight)"
+        },
+        {
+          "name": "_NSFontWeightHeavy",
+          "evidence": "the NSFont.Weight constant NSFontWeightHeavy (https://developer.apple.com/documentation/appkit/nsfont/weight)"
+        },
+        {
+          "name": "_NSFontWeightLight",
+          "evidence": "the NSFont.Weight constant NSFontWeightLight (https://developer.apple.com/documentation/appkit/nsfont/weight)"
+        },
+        {
+          "name": "_NSFontWeightMedium",
+          "evidence": "the NSFont.Weight constant NSFontWeightMedium (https://developer.apple.com/documentation/appkit/nsfont/weight)"
+        },
+        {
+          "name": "_NSFontWeightRegular",
+          "evidence": "the NSFont.Weight constant NSFontWeightRegular (https://developer.apple.com/documentation/appkit/nsfont/weight)"
+        },
+        {
+          "name": "_NSFontWeightSemibold",
+          "evidence": "the NSFont.Weight constant NSFontWeightSemibold (https://developer.apple.com/documentation/appkit/nsfont/weight)"
+        },
+        {
+          "name": "_NSPasteboardTypeFileURL",
+          "evidence": "NSPasteboardTypeFileURL (https://developer.apple.com/documentation/appkit/nspasteboard/pasteboardtype/fileurl)"
+        },
+        {
+          "name": "_NSViewNoIntrinsicMetric",
+          "evidence": "NSViewNoIntrinsicMetric (https://developer.apple.com/documentation/appkit/nsview/nointrinsicmetric)"
+        },
+        {
+          "name": "_OBJC_CLASS_$_NSAlert",
+          "evidence": "the Objective-C class NSAlert (https://developer.apple.com/documentation/appkit/nsalert)"
+        },
+        {
+          "name": "_OBJC_CLASS_$_NSAppearance",
+          "evidence": "the Objective-C class NSAppearance (https://developer.apple.com/documentation/appkit/nsappearance)"
+        },
+        {
+          "name": "_OBJC_CLASS_$_NSApplication",
+          "evidence": "the Objective-C class NSApplication (https://developer.apple.com/documentation/appkit/nsapplication)"
+        },
+        {
+          "name": "_OBJC_CLASS_$_NSBezierPath",
+          "evidence": "the Objective-C class NSBezierPath (https://developer.apple.com/documentation/appkit/nsbezierpath)"
+        },
+        {
+          "name": "_OBJC_CLASS_$_NSBox",
+          "evidence": "the Objective-C class NSBox (https://developer.apple.com/documentation/appkit/nsbox)"
+        },
+        {
+          "name": "_OBJC_CLASS_$_NSButton",
+          "evidence": "the Objective-C class NSButton (https://developer.apple.com/documentation/appkit/nsbutton)"
+        },
+        {
+          "name": "_OBJC_CLASS_$_NSColor",
+          "evidence": "the Objective-C class NSColor (https://developer.apple.com/documentation/appkit/nscolor)"
+        },
+        {
+          "name": "_OBJC_CLASS_$_NSControl",
+          "evidence": "the Objective-C class NSControl (https://developer.apple.com/documentation/appkit/nscontrol)"
+        },
+        {
+          "name": "_OBJC_CLASS_$_NSEvent",
+          "evidence": "the Objective-C class NSEvent (https://developer.apple.com/documentation/appkit/nsevent)"
+        },
+        {
+          "name": "_OBJC_CLASS_$_NSFont",
+          "evidence": "the Objective-C class NSFont (https://developer.apple.com/documentation/appkit/nsfont)"
+        },
+        {
+          "name": "_OBJC_CLASS_$_NSImage",
+          "evidence": "the Objective-C class NSImage (https://developer.apple.com/documentation/appkit/nsimage)"
+        },
+        {
+          "name": "_OBJC_CLASS_$_NSImageSymbolConfiguration",
+          "evidence": "the Objective-C class NSImageSymbolConfiguration (https://developer.apple.com/documentation/appkit/nsimagesymbolconfiguration)"
+        },
+        {
+          "name": "_OBJC_CLASS_$_NSImageView",
+          "evidence": "the Objective-C class NSImageView (https://developer.apple.com/documentation/appkit/nsimageview)"
+        },
+        {
+          "name": "_OBJC_CLASS_$_NSLayoutConstraint",
+          "evidence": "the Objective-C class NSLayoutConstraint (https://developer.apple.com/documentation/appkit/nslayoutconstraint)"
+        },
+        {
+          "name": "_OBJC_CLASS_$_NSMenu",
+          "evidence": "the Objective-C class NSMenu (https://developer.apple.com/documentation/appkit/nsmenu)"
+        },
+        {
+          "name": "_OBJC_CLASS_$_NSMenuItem",
+          "evidence": "the Objective-C class NSMenuItem (https://developer.apple.com/documentation/appkit/nsmenuitem)"
+        },
+        {
+          "name": "_OBJC_CLASS_$_NSOpenPanel",
+          "evidence": "the Objective-C class NSOpenPanel (https://developer.apple.com/documentation/appkit/nsopenpanel)"
+        },
+        {
+          "name": "_OBJC_CLASS_$_NSPopUpButton",
+          "evidence": "the Objective-C class NSPopUpButton (https://developer.apple.com/documentation/appkit/nspopupbutton)"
+        },
+        {
+          "name": "_OBJC_CLASS_$_NSProgressIndicator",
+          "evidence": "the Objective-C class NSProgressIndicator (https://developer.apple.com/documentation/appkit/nsprogressindicator)"
+        },
+        {
+          "name": "_OBJC_CLASS_$_NSSavePanel",
+          "evidence": "the Objective-C class NSSavePanel (https://developer.apple.com/documentation/appkit/nssavepanel)"
+        },
+        {
+          "name": "_OBJC_CLASS_$_NSScrollView",
+          "evidence": "the Objective-C class NSScrollView (https://developer.apple.com/documentation/appkit/nsscrollview)"
+        },
+        {
+          "name": "_OBJC_CLASS_$_NSSegmentedControl",
+          "evidence": "the Objective-C class NSSegmentedControl (https://developer.apple.com/documentation/appkit/nssegmentedcontrol)"
+        },
+        {
+          "name": "_OBJC_CLASS_$_NSSlider",
+          "evidence": "the Objective-C class NSSlider (https://developer.apple.com/documentation/appkit/nsslider)"
+        },
+        {
+          "name": "_OBJC_CLASS_$_NSStackView",
+          "evidence": "the Objective-C class NSStackView (https://developer.apple.com/documentation/appkit/nsstackview)"
+        },
+        {
+          "name": "_OBJC_CLASS_$_NSTableCellView",
+          "evidence": "the Objective-C class NSTableCellView (https://developer.apple.com/documentation/appkit/nstablecellview)"
+        },
+        {
+          "name": "_OBJC_CLASS_$_NSTableColumn",
+          "evidence": "the Objective-C class NSTableColumn (https://developer.apple.com/documentation/appkit/nstablecolumn)"
+        },
+        {
+          "name": "_OBJC_CLASS_$_NSTableView",
+          "evidence": "the Objective-C class NSTableView (https://developer.apple.com/documentation/appkit/nstableview)"
+        },
+        {
+          "name": "_OBJC_CLASS_$_NSTextField",
+          "evidence": "the Objective-C class NSTextField (https://developer.apple.com/documentation/appkit/nstextfield)"
+        },
+        {
+          "name": "_OBJC_CLASS_$_NSTextView",
+          "evidence": "the Objective-C class NSTextView (https://developer.apple.com/documentation/appkit/nstextview)"
+        },
+        {
+          "name": "_OBJC_CLASS_$_NSView",
+          "evidence": "the Objective-C class NSView (https://developer.apple.com/documentation/appkit/nsview)"
+        },
+        {
+          "name": "_OBJC_CLASS_$_NSWindow",
+          "evidence": "the Objective-C class NSWindow (https://developer.apple.com/documentation/appkit/nswindow)"
+        },
+        {
+          "name": "_OBJC_METACLASS_$_NSScrollView",
+          "evidence": "the metaclass of the Objective-C class NSScrollView, which a Swift subclass of NSScrollView references (https://developer.apple.com/documentation/appkit/nsscrollview)"
+        },
+        {
+          "name": "_OBJC_METACLASS_$_NSTextField",
+          "evidence": "the metaclass of the Objective-C class NSTextField, which a Swift subclass of NSTextField references (https://developer.apple.com/documentation/appkit/nstextfield)"
+        },
+        {
+          "name": "_OBJC_METACLASS_$_NSView",
+          "evidence": "the metaclass of the Objective-C class NSView, which a Swift subclass of NSView references (https://developer.apple.com/documentation/appkit/nsview)"
+        }
       ]
     },
     {
       "name": "Foundation",
       "path": "System/Library/Frameworks/Foundation.framework/Foundation.tbd",
       "install_name": "/System/Library/Frameworks/Foundation.framework/Versions/C/Foundation",
-      "evidence": "Foundation classes and globals documented at developer.apple.com/documentation/foundation (NSProcessInfo, NSRunLoop, NSTimer, NSUserDefaults, NSThread, NSRunLoopCommonModes). Foundation classes and globals documented at developer.apple.com/documentation/foundation (NSProcessInfo, NSRunLoop, NSTimer, NSUserDefaults, NSRunLoopCommonModes; for HTTP: NSURLSession, NSURLSessionConfiguration, NSOperationQueue, NSHTTPURLResponse). Foundation classes and globals documented at developer.apple.com/documentation/foundation (NSProcessInfo, NSRunLoop, NSTimer, NSUserDefaults, NSRunLoopCommonModes, NSURL). Foundation classes and globals documented at developer.apple.com/documentation/foundation (NSProcessInfo, NSRunLoop, NSTimer, NSUserDefaults, NSRunLoopCommonModes).",
+      "evidence": "Foundation, /System/Library/Frameworks/Foundation.framework/Versions/C/Foundation (https://developer.apple.com/documentation/foundation).",
       "symbols": [
-        "_NSRunLoopCommonModes",
-        "_OBJC_CLASS_$_NSHTTPURLResponse",
-        "_OBJC_CLASS_$_NSOperationQueue",
-        "_OBJC_CLASS_$_NSProcessInfo",
-        "_OBJC_CLASS_$_NSRunLoop",
-        "_OBJC_CLASS_$_NSThread",
-        "_OBJC_CLASS_$_NSTimer",
-        "_OBJC_CLASS_$_NSURL",
-        "_OBJC_CLASS_$_NSURLSession",
-        "_OBJC_CLASS_$_NSURLSessionConfiguration",
-        "_OBJC_CLASS_$_NSUserDefaults"
+        {
+          "name": "_NSRunLoopCommonModes",
+          "evidence": "NSRunLoopCommonModes (https://developer.apple.com/documentation/foundation/runloop/mode/common)"
+        },
+        {
+          "name": "_OBJC_CLASS_$_NSHTTPURLResponse",
+          "evidence": "the Objective-C class NSHTTPURLResponse (https://developer.apple.com/documentation/foundation/nshttpurlresponse)"
+        },
+        {
+          "name": "_OBJC_CLASS_$_NSOperationQueue",
+          "evidence": "the Objective-C class NSOperationQueue (https://developer.apple.com/documentation/foundation/nsoperationqueue)"
+        },
+        {
+          "name": "_OBJC_CLASS_$_NSProcessInfo",
+          "evidence": "the Objective-C class NSProcessInfo (https://developer.apple.com/documentation/foundation/nsprocessinfo)"
+        },
+        {
+          "name": "_OBJC_CLASS_$_NSRunLoop",
+          "evidence": "the Objective-C class NSRunLoop (https://developer.apple.com/documentation/foundation/nsrunloop)"
+        },
+        {
+          "name": "_OBJC_CLASS_$_NSThread",
+          "evidence": "the Objective-C class NSThread (https://developer.apple.com/documentation/foundation/nsthread)"
+        },
+        {
+          "name": "_OBJC_CLASS_$_NSTimer",
+          "evidence": "the Objective-C class NSTimer (https://developer.apple.com/documentation/foundation/nstimer)"
+        },
+        {
+          "name": "_OBJC_CLASS_$_NSURL",
+          "evidence": "the Objective-C class NSURL (https://developer.apple.com/documentation/foundation/nsurl)"
+        },
+        {
+          "name": "_OBJC_CLASS_$_NSURLSession",
+          "evidence": "the Objective-C class NSURLSession (https://developer.apple.com/documentation/foundation/nsurlsession)"
+        },
+        {
+          "name": "_OBJC_CLASS_$_NSURLSessionConfiguration",
+          "evidence": "the Objective-C class NSURLSessionConfiguration (https://developer.apple.com/documentation/foundation/nsurlsessionconfiguration)"
+        },
+        {
+          "name": "_OBJC_CLASS_$_NSUserDefaults",
+          "evidence": "the Objective-C class NSUserDefaults (https://developer.apple.com/documentation/foundation/nsuserdefaults)"
+        }
       ]
     },
     {
       "name": "CoreGraphics",
       "path": "System/Library/Frameworks/CoreGraphics.framework/CoreGraphics.tbd",
       "install_name": "/System/Library/Frameworks/CoreGraphics.framework/Versions/A/CoreGraphics",
-      "evidence": "CGRectGetWidth, developer.apple.com/documentation/coregraphics/cgrectgetwidth(_:). CGRectGetWidth and CGRectInset, developer.apple.com/documentation/coregraphics/cgrectgetwidth(_:) and /cgrectinset(_:_:_:). CGRectGetWidth and CGRectGetHeight, developer.apple.com/documentation/coregraphics/cgrectgetwidth(_:) and cgrectgetheight(_:).",
+      "evidence": "Core Graphics, /System/Library/Frameworks/CoreGraphics.framework/Versions/A/CoreGraphics (https://developer.apple.com/documentation/coregraphics).",
       "symbols": [
-        "_CGRectGetHeight",
-        "_CGRectGetWidth",
-        "_CGRectInset"
+        {
+          "name": "_CGRectGetHeight",
+          "evidence": "CGRectGetHeight (https://developer.apple.com/documentation/coregraphics/cgrectgetheight(_:))"
+        },
+        {
+          "name": "_CGRectGetWidth",
+          "evidence": "CGRectGetWidth (https://developer.apple.com/documentation/coregraphics/cgrectgetwidth(_:))"
+        },
+        {
+          "name": "_CGRectInset",
+          "evidence": "CGRectInset (https://developer.apple.com/documentation/coregraphics/cgrectinset(_:_:_:))"
+        }
       ]
     }
   ]
