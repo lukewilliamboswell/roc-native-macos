@@ -339,11 +339,8 @@ To cut a release:
   interrupted publication": delete a draft and re-run the publish job; a
   published release is never repaired.
 
-The repository needs a `release` environment limited to `main` (with a
-required reviewer if wanted), immutable releases enabled, and Actions allowed
-to create attestations (the attest job asks for `id-token: write` and
-`attestations: write`). No secret is needed: every job uses the workflow's own
-token.
+No secret is needed: every job uses the workflow's own token. The settings
+the workflows rely on are listed under <<repository-settings>>.
 
 The scripts the workflow runs are tasks, so the build job's steps run the same
 way locally (with the nightly as `roc`):
@@ -357,6 +354,43 @@ blueprint run release -- archive 0.0.1-dryrun build/release
 blueprint run release -- test build/release
 blueprint run release -- notes 0.0.1-dryrun build/release build/release-notes.md
 ----
+
+[#repository-settings]
+=== Repository settings
+
+The workflows enforce nothing by themselves; these settings, from
+roc-automation's "Repository settings" chapter, do:
+
+* Actions: the default workflow token is read-only, and Actions may not
+  create or approve pull requests.
+* A ruleset on `main`: require a pull request, require the status checks
+  `Check` (`ci.yml`), `Release dry run` (`release.yml`) and `Build the manual`
+  (`docs.yml`) on the current commit with the branch up to date, require
+  signed commits, and give no bot a bypass. Merge commits stay allowed: the
+  linker-input publisher binds its evidence to the exact commits of a pull
+  request, which a squash would replace.
+* A tag ruleset on all tags that restricts updates and deletions.
+* Immutable releases.
+* A `release` environment restricted by name to `main` ("Selected branches
+  and tags"), with a required reviewer once there is more than one
+  maintainer.
+* Pages built from GitHub Actions, and a `github-pages` environment
+  restricted by name to `main`.
+* Private vulnerability reporting, as `SECURITY.md` describes.
+* Dependabot's weekly `github-actions` updates (`.github/dependabot.yml`).
+
+roc-automation's `check-settings` task reads them back with a maintainer's
+own `gh` login and only ever makes `GET` requests. From a checkout of
+roc-automation:
+
+[source,sh]
+----
+blueprint run check-settings -- --platform lukewilliamboswell/roc-native-macos
+----
+
+Every failing line is printed with the settings page or `gh api` command that
+fixes it. A real pull request with a failing check is still what shows that a
+merge is blocked.
 
 === Nightly compatibility
 
