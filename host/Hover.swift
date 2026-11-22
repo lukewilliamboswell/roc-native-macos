@@ -32,23 +32,25 @@ final class ContentView: NSView {
     // never by wherever the person's pointer happens to be.
     private var live: Bool { !Host.scripted }
 
-    override func mouseMoved(with event: NSEvent) { if live { host?.pointer(at: event.locationInWindow) } }
-    override func mouseEntered(with event: NSEvent) { if live { host?.pointer(at: event.locationInWindow) } }
+    override func mouseMoved(with event: NSEvent) { if live { host?.pointer(at: event.locationInWindow, time: event.timestamp) } }
+    override func mouseEntered(with event: NSEvent) { if live { host?.pointer(at: event.locationInWindow, time: event.timestamp) } }
     override func mouseExited(with event: NSEvent) { if live { host?.pointerLeft() } }
 }
 
 extension Host {
     static let scripted = ProcessInfo.processInfo.environment["ROC_SCRIPT"] != nil
 
-    /// The pointer is at `point`, in window coordinates.
-    func pointer(at point: NSPoint) {
+    /// The pointer is at `point`, in window coordinates, moved by an event
+    /// at `time` (`systemUptime`; a scripted move is now).
+    func pointer(at point: NSPoint, time: Double = Bench.now()) {
+        bench?.moved(time)
         guard let content = window.contentView, let frame = content.superview else { return }
         let hit = content.hitTest(frame.convert(point, from: nil))
-        hover(chain(under: hit))
+        hover(chain(under: hit), time: time)
     }
 
     /// The pointer has left the window.
-    func pointerLeft() { hover([]) }
+    func pointerLeft() { hover([], time: Bench.now()) }
 
     /// The elements listening for `hover` at or above the node whose view is
     /// at or above `view`, outermost first.
@@ -69,7 +71,7 @@ extension Host {
 
     /// Move the hover to `next`: leave what it no longer holds, innermost
     /// first, then enter what it newly holds, outermost first.
-    func hover(_ next: [Node]) {
+    func hover(_ next: [Node], time: Double) {
         var kept = 0
         while kept < hovered.count, kept < next.count, hovered[kept] === next[kept] { kept += 1 }
         if kept == hovered.count, kept == next.count { return }
@@ -82,6 +84,7 @@ extension Host {
         while i > kept { i -= 1; event(hovered[i], "leave") }
         for j in kept..<next.count { event(next[j], "enter") }
         hovered = next
+        if !events.isEmpty { bench?.eventTime = time }
         send(events, as: .hover)
     }
 

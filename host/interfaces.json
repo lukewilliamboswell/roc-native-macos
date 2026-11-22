@@ -7,7 +7,7 @@
       "name": "libSystem",
       "path": "usr/lib/libSystem.tbd",
       "install_name": "/usr/lib/libSystem.B.dylib",
-      "evidence": "C library, compiler stack-check and Blocks runtime, and libdispatch's OS_dispatch_queue class, all reached through libSystem (man 3 intro; Blocks: clang BlockLanguageSpec; libdispatch: apple-oss-distributions/libdispatch). dyld_stub_binder is required by the linker for lazy binding (apple-oss-distributions/dyld libdyld/threadLocalHelpers.s). _memset, _memcpy, _memmove, _fmod and _fmodf are C standard library functions that Roc-compiled code calls directly (ISO C 7.24, 7.12). _arc4random_buf is the C library's random-bytes call (man 3 arc4random). _getrusage (POSIX; man 2 getrusage) reads the peak resident set size for ROC_BENCH=1 reports. Files: stdio fopen/fseeko/fread/fwrite/fclose (ISO C 7.21; fseeko POSIX), stat and realpath (POSIX; macOS exports realpath as _realpath$DARWIN_EXTSN, man 3 realpath), pthread_main_np (man 3 pthread_main_np) and os_unfair_lock_lock/unlock (apple-oss-distributions/libplatform, include/os/lock.h), all in libSystem's re-exported libsystem_c, libsystem_kernel, libsystem_pthread and libsystem_platform. CC_SHA256_Init/Update/Final are libcommonCrypto (apple-oss-distributions/CommonCrypto, include/CommonDigest.h), which libSystem re-exports as /usr/lib/system/libcommonCrypto.dylib.",
+      "evidence": "C library, compiler stack-check and Blocks runtime, and libdispatch's OS_dispatch_queue class, all reached through libSystem (man 3 intro; Blocks: clang BlockLanguageSpec; libdispatch: apple-oss-distributions/libdispatch). dyld_stub_binder is required by the linker for lazy binding (apple-oss-distributions/dyld libdyld/threadLocalHelpers.s). _memset, _memcpy, _memmove, _fmod and _fmodf are C standard library functions that Roc-compiled code calls directly (ISO C 7.24, 7.12). _arc4random_buf is the C library's random-bytes call (man 3 arc4random). _getrusage (POSIX; man 2 getrusage) reads the peak resident set size, and _task_info with _mach_task_self_ the current one (apple-oss-distributions/xnu osfmk/mach/task_info.h, MACH_TASK_BASIC_INFO; libsystem_kernel), for ROC_BENCH=1 reports. Files: stdio fopen/fseeko/fread/fwrite/fclose (ISO C 7.21; fseeko POSIX), stat and realpath (POSIX; macOS exports realpath as _realpath$DARWIN_EXTSN, man 3 realpath), pthread_main_np (man 3 pthread_main_np) and os_unfair_lock_lock/unlock (apple-oss-distributions/libplatform, include/os/lock.h), all in libSystem's re-exported libsystem_c, libsystem_kernel, libsystem_pthread and libsystem_platform. CC_SHA256_Init/Update/Final are libcommonCrypto (apple-oss-distributions/CommonCrypto, include/CommonDigest.h), which libSystem re-exports as /usr/lib/system/libcommonCrypto.dylib.",
       "symbols": [
         "_CC_SHA256_Final",
         "_CC_SHA256_Init",
@@ -34,6 +34,7 @@
         "_fwrite",
         "_getenv",
         "_getrusage",
+        "_mach_task_self_",
         "_malloc",
         "_malloc_size",
         "_memcpy",
@@ -46,6 +47,7 @@
         "_realloc",
         "_realpath$DARWIN_EXTSN",
         "_stat",
+        "_task_info",
         "dyld_stub_binder"
       ]
     },
