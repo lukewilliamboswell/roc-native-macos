@@ -7,6 +7,11 @@ host/RocGlue.swift
 examples/*/*
 examples/*/*.app/
 !examples/*/*.roc
+# The bench harnesses' binaries (bench/<name>/<name>), beside their sources
+bench/*/*
+!bench/*/*.roc
+!bench/*/*.adoc
+!bench/*/*.sh
 
 # Blueprint's generated environment and links
 .blueprint/

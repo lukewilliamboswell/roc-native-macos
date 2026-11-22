@@ -53,8 +53,8 @@ vocabulary produces:
   xref:architecture.adoc#files[Files]).
 +
 It keeps a node tree mirroring what the engine built and gives each `ui-*`
-element one AppKit view. It routes AppKit actions back as turns: `click`,
-`input`, `change`, `submit`, a list row's `select`, key events, and the
+element one AppKit view (`ui-hover` lends its place to its child's). It routes AppKit actions back as turns: `click`,
+`input`, `change`, `submit`, a list row's `select`, key events, `hover` (text `enter` or `leave`), and the
 files-kind `change` and `drop`. Any other command or effect is a clear fatal
 error, not a silent skip.
 
@@ -80,6 +80,7 @@ error, not a silent skip.
 | `shortcut` | `ui-shortcut` | hidden; an `Engine.on_document_key` handler
 | `file_button` | `ui-file-button` | `NSButton` opening an `NSOpenPanel`
 | `drop_zone` | `ui-drop-zone` | a `Surface` with a dashed outline, registered for dragged file URLs
+| `hover` | `ui-hover` | none: its child's view stands in its place; one window-level `NSTrackingArea` (Hover.swift)
 | `divider`, `spacer` | `ui-divider`, `ui-spacer` | `NSBox` separator, flexible `NSView`
 |===
 

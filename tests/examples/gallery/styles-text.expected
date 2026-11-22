@@ -1,4 +1,4 @@
---- 560x403
+--- 560x424
 ui-vstack [1 views]
   ui-vstack [4 views]
     ui-hstack [2 views]
@@ -25,27 +25,39 @@ ui-vstack [1 views]
         ui-vstack [2 views]
           ui-text "COLOURS" {color=secondary-label text-style=subheadline weight=semibold}
           ui-box {border=line:1:separator}
-            ui-hstack [10 views]
-              ui-box {fill=red}
-                ui-spacer
-              ui-box {fill=orange}
-                ui-spacer
-              ui-box {fill=yellow}
-                ui-spacer
-              ui-box {fill=green}
-                ui-spacer
-              ui-box {fill=teal}
-                ui-spacer
-              ui-box {fill=blue}
-                ui-spacer
-              ui-box {fill=indigo}
-                ui-spacer
-              ui-box {fill=purple}
-                ui-spacer
-              ui-box {fill=pink}
-                ui-spacer
-              ui-box {fill=adaptive:24404b:9fc3cf}
-                ui-spacer
+            ui-vstack [2 views]
+              ui-hstack [10 views]
+                ui-hover
+                  ui-box {fill=red}
+                    ui-spacer
+                ui-hover
+                  ui-box {fill=orange}
+                    ui-spacer
+                ui-hover
+                  ui-box {fill=yellow}
+                    ui-spacer
+                ui-hover
+                  ui-box {fill=green}
+                    ui-spacer
+                ui-hover
+                  ui-box {fill=teal}
+                    ui-spacer
+                ui-hover
+                  ui-box {fill=blue}
+                    ui-spacer
+                ui-hover
+                  ui-box {fill=indigo}
+                    ui-spacer
+                ui-hover
+                  ui-box {fill=purple}
+                    ui-spacer
+                ui-hover
+                  ui-box {fill=pink}
+                    ui-spacer
+                ui-hover
+                  ui-box {fill=adaptive:24404b:9fc3cf}
+                    ui-spacer
+              ui-text "Point at a colour to name it" {color=secondary-label text-style=caption1}
     ui-shortcut
     ui-shortcut
 --- 560x336

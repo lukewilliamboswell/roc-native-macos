@@ -37,6 +37,11 @@ final class Host: NSObject, NSTextFieldDelegate {
     var dirty: [Node] = []
     var applying = false
     var queued: [(UInt32, UInt32, [UInt8])] = []
+    /// The nodes under the pointer that listen for `hover`, outermost first
+    /// (Hover.swift).
+    var hovered: [Node] = []
+    /// `ROC_BENCH=1` timings (Bench.swift); nil when off.
+    let bench: Bench? = Bench.on ? Bench() : nil
     /// Live document key declarations, in the order they were mounted.
     var documentKeys: [Node] = []
     /// Layout constraints the host made for a view, by view and purpose.
@@ -57,7 +62,8 @@ final class Host: NSObject, NSTextFieldDelegate {
         // The app's root element fills the window.
         for (name, value) in [("spacing", "12"), ("padding", "20 20 20 20"), ("align", "fill")] { setAttr(root, name, value) }
         stack.translatesAutoresizingMaskIntoConstraints = false
-        let content = NSView()
+        let content = ContentView()
+        content.host = self
         content.addSubview(stack)
         NSLayoutConstraint.activate([
             stack.topAnchor.constraint(equalTo: content.topAnchor),
@@ -72,7 +78,8 @@ final class Host: NSObject, NSTextFieldDelegate {
     func start() {
         let v = engine.version
         if v != 23 { fatal("engine speaks protocol \(v), this host speaks 23") }
-        timed { engine.mount() }
+        bench?.begin(.mount)
+        timed(.mount) { engine.mount() }
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .keyUp]) { [weak self] event in
             guard let self, event.window === self.window else { return event }
             return self.key(event) ? nil : event
@@ -81,13 +88,33 @@ final class Host: NSObject, NSTextFieldDelegate {
 
     // MARK: Turns
 
-    func send(_ node: UInt32, _ handler: UInt32, _ payload: [UInt8]) {
+    func send(_ node: UInt32, _ handler: UInt32, _ payload: [UInt8], as kind: Bench.Kind = .event) {
         if halted || engine.dropped { return }
         if applying { queued.append((node, handler, payload)); return }
-        timed { engine.event(node: node, handler: handler, payload: payload) }
+        bench?.begin(kind)
+        timed(kind) { engine.event(node: node, handler: handler, payload: payload) }
+        drain()
+    }
+
+    /// Several events, one engine turn each and in order, with one layout
+    /// pass after the last: a pointer move that leaves one element and
+    /// enters another lays the window out once.
+    func send(_ events: [(UInt32, UInt32, [UInt8])], as kind: Bench.Kind) {
+        if halted || engine.dropped || events.isEmpty { return }
+        if applying { queued.append(contentsOf: events); return }
+        bench?.begin(kind)
+        for (i, (node, handler, payload)) in events.enumerated() {
+            timed(kind, layout: i == events.count - 1) { engine.event(node: node, handler: handler, payload: payload) }
+        }
+        drain()
+    }
+
+    /// The events queued while a batch was being applied, one turn each.
+    private func drain() {
         while !queued.isEmpty {
             let (n, h, p) = queued.removeFirst()
-            timed { engine.event(node: n, handler: h, payload: p) }
+            bench?.begin(.event)
+            timed(.event) { engine.event(node: n, handler: h, payload: p) }
         }
     }
 
@@ -98,9 +125,7 @@ final class Host: NSObject, NSTextFieldDelegate {
         var cursor: Node? = target
         while let node = cursor {
             if let listener = node.listeners[type] {
-                var route: Node? = node
-                while let r = route, r.id == nil { route = r.parent }
-                guard let id = route?.id else { return }
+                guard let id = route(node) else { return }
                 let payload: [UInt8]
                 switch listener.kind {
                 case 10: payload = [0, 0]  // Click: no modifiers, not a link
@@ -114,23 +139,37 @@ final class Host: NSObject, NSTextFieldDelegate {
         }
     }
 
-    /// Run one engine call and apply its batch; `ROC_TRACE=1` reports how
-    /// long each half took.
-    func timed(_ call: () -> [UInt8]) {
-        let start = Date()
+    /// The engine id an event at `node` is routed through: the nearest node
+    /// at or above it with one (a row template's clones have none).
+    func route(_ node: Node) -> UInt32? {
+        var cursor: Node? = node
+        while let c = cursor, c.id == nil { cursor = c.parent }
+        return cursor?.id
+    }
+
+    /// Run one engine call and apply its batch, laying the window out unless
+    /// `layout` is false (a later turn will); `ROC_TRACE=1` reports how long
+    /// each half took, and `ROC_BENCH=1` records each phase (Bench.swift).
+    func timed(_ kind: Bench.Kind = .event, layout: Bool = true, _ call: () -> [UInt8]) {
+        let start = Bench.now()
         let batch = call()
-        let engineDone = Date()
-        apply(batch)
-        trace("turn: engine \(Int(engineDone.timeIntervalSince(start) * 1000)) ms, host \(Int(Date().timeIntervalSince(engineDone) * 1000)) ms, \(batch.count) bytes")
+        let engineDone = Bench.now()
+        bench?.engine(engineDone - start)
+        apply(batch, layout: layout)
+        if layout { bench?.end(self) }
+        trace("turn: engine \(Int((engineDone - start) * 1000)) ms, host \(Int((Bench.now() - engineDone) * 1000)) ms, \(batch.count) bytes")
     }
 
     // MARK: The batch
 
-    func apply(_ batch: [UInt8]) {
+    func apply(_ batch: [UInt8], layout: Bool = true) {
         // File handles Roc released during the call are dropped once the
         // batch, whose commands may still name them, has been applied.
         defer { releaseFiles() }
-        guard !batch.isEmpty else { return }
+        guard !batch.isEmpty else {
+            if layout, !dirty.isEmpty { sync() }
+            return
+        }
         applying = true
         var r = Reader(batch)
         let flags = r.u8()
@@ -288,7 +327,8 @@ final class Host: NSObject, NSTextFieldDelegate {
             }
         }
         applying = false
-        sync()
+        bench?.applied()
+        if layout { sync() }
         if acknowledge { queued.insert((EngineInstance.effectNode, 0, [254]), at: 0) }
         for generation in opportunities {
             DispatchQueue.main.async {
@@ -347,6 +387,7 @@ final class Host: NSObject, NSTextFieldDelegate {
                 v.removeFromSuperview()
             }
             if !documentKeys.isEmpty { documentKeys.removeAll { $0 === d } }
+            if !hovered.isEmpty { hovered.removeAll { $0 === d } }
         }
         refs = refs.filter { entry in
             var inside = false

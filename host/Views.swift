@@ -147,7 +147,8 @@ extension Host {
 
     /// Give an element its AppKit view, decided once by its name.
     func makeView(_ n: Node) {
-        guard n.view == nil, let name = n.name else { return }
+        // `ui-hover` has no view: its child's stands in its place (Hover.swift).
+        guard n.view == nil, let name = n.name, name != "ui-hover" else { return }
         let view: NSView
         switch name {
         case "ui-hstack", "ui-vstack", "ui-form", "ui-row":
@@ -803,7 +804,7 @@ extension Host {
             // the stack's spare room: the stack fills (`.fill`) and the
             // child, which hugs least, grows.
             let along = stack.orientation == .vertical ? "height" : "width"
-            let grows = n.children.contains { $0.name == "ui-spacer" || ($0.attrs[along] ?? "auto").hasPrefix("fill") }
+            let grows = n.children.compactMap(shownNode).contains { $0.name == "ui-spacer" || ($0.attrs[along] ?? "auto").hasPrefix("fill") }
             let distribution: NSStackView.Distribution = grows || (any && stack.orientation == .vertical) ? .fill : .gravityAreas
             if stack.distribution != distribution { stack.distribution = distribution }
         }
@@ -819,7 +820,7 @@ extension Host {
         case let box as ListBox:
             box.finish(owner)
         case let surface as Surface:
-            surface.hold(owner.children.first { $0.name != nil }?.view)
+            surface.hold(owner.children.first { $0.name != nil }.flatMap(shownView))
         case let button as NSButton where owner.name == "ui-button" || owner.name == "ui-file-button":
             button.title = owner.textContent
             setTitleDisplay(button, owner.attrs["title-display"] ?? "visible")
@@ -841,10 +842,9 @@ extension Host {
         let views: [NSView] = owner.children.compactMap { child in
             switch child.kind {
             case .element:
-                if let v = child.view {
-                    fills[ObjectIdentifier(v)] = all || (child.attrs[across] ?? "auto").hasPrefix("fill")
-                }
-                return child.view
+                guard let shown = shownNode(child), let v = shown.view else { return nil }
+                fills[ObjectIdentifier(v)] = all || (shown.attrs[across] ?? "auto").hasPrefix("fill")
+                return v
             case .comment: return nil
             case .text:
                 if child.text.isEmpty { return nil }

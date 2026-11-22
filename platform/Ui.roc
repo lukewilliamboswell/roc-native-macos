@@ -46,6 +46,7 @@ import Core
 ## | `shortcut` | `ui-shortcut` | none: a document key handler |
 ## | `file_button` | `ui-file-button` | `NSButton` opening an `NSOpenPanel` |
 ## | `drop_zone` | `ui-drop-zone` | a dashed drop target around one child |
+## | `hover` | `ui-hover` | none: its child's view, hit-tested on each pointer move |
 ## | `divider` | `ui-divider` | `NSBox` separator |
 ## | `spacer` | `ui-spacer` | flexible empty `NSView` |
 ##
@@ -712,6 +713,22 @@ Ui := [].{
 				Engine.attr("radius", props.radius.to_str()),
 				Engine.on_files(Drop, props.on_drop),
 			].concat(frame_attrs(Engine.const({ width: props.width, height: props.height, squeeze: Standard }))),
+			[content],
+		)
+
+	## What the pointer passing over an element does.
+	HoverProps(ctx) := { on_hover : HandlerOf(ctx, Bool) }
+
+	## `content`, hearing the pointer: `on_hover` receives `True` when the
+	## pointer enters it and `False` when it leaves it or the window. Hovers
+	## nest: an outer one stays entered while the pointer is over an inner
+	## one. It adds no view: `content` keeps its place and its frame.
+	## `Ui.hover({ on_hover: Engine.handle(|inside| [cells.hot.set(inside)]) }, Ui.box_s(look, Ui.text("Hover me", {})))`.
+	hover : HoverProps(ctx), Elem(ctx) -> Elem(ctx)
+	hover = |props, content|
+		Engine.element(
+			"ui-hover",
+			[Engine.on("hover", props.on_hover.from_payload_by(Engine.const({}), |_, word| word == "enter"))],
 			[content],
 		)
 
