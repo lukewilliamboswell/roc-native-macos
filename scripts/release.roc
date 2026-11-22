@@ -26,6 +26,8 @@ import src/Release
 ##     blueprint run release -- test DIR --binaries BIN   # run the archived examples' cases on prebuilt apps in BIN
 ##     blueprint run release -- notes VERSION DIR OUT     # the release notes, as Markdown, to OUT
 ##     blueprint run release -- bump VERSION [LATEST URL] # roc bump --expect against the latest final release
+##     blueprint run release -- cross-run DIR CROSS       # test DIR's cases on every CROSS/cross-<system>/ app
+##     blueprint run release -- versions                  # the compilers and the Swift toolchain
 ##
 ## `tool` writes `macos.roc`, the app author's tool: it stages the tool's
 ## package (`cli/`) with a generated `Bundle.roc` naming the release (its
@@ -73,7 +75,9 @@ main! = |raw_args| {
 		["notes", version, dir, out] => notes!(version, absolute(root, dir), absolute(root, out))
 		["bump", version] => bump!(version, "", "")
 		["bump", version, latest, url] => bump!(version, latest, url)
-		_ => Err("usage: release tool VERSION DIR [--base-url URL] | archive VERSION DIR | test DIR [--binaries BIN] | notes VERSION DIR OUT | bump VERSION [LATEST URL]")
+		["cross-run", dir, cross] => cross_run!(root, absolute(root, dir), absolute(root, cross))
+		["versions"] => versions!()
+		_ => Err("usage: release tool VERSION DIR [--base-url URL] | archive VERSION DIR | test DIR [--binaries BIN] | notes VERSION DIR OUT | bump VERSION [LATEST URL] | cross-run DIR CROSS | versions")
 	}
 	match result {
 		Ok({}) => Ok({})
@@ -510,6 +514,35 @@ bump! = |version, latest, url| {
 		Ok(Compare) => step!(compare.args(["--expect", Release.number_part(version)].map(OsStr.from_str)), "roc bump --old ${url} --expect ${Release.number_part(version)} platform/main.roc")
 		Err(NotAfter) => Err("${version} does not come after ${latest}, the latest release")
 	}
+}
+
+## The systems the release cross-compiles the examples on.
+cross_systems : List(Str)
+cross_systems = ["x86_64-linux", "aarch64-linux", "x86_64-windows"]
+
+## Every recorded case against each system's cross-compiled apps, which the
+## artifact download leaves without their executable bits.
+cross_run! : Str, Str, Str => Try({}, Str)
+cross_run! = |root, dir, cross| {
+	for system in cross_systems {
+		bin = "${cross}/cross-${system}"
+		note!("== apps cross-compiled on ${system}")
+		for name in names_in!(bin)? {
+			path = if (name.ends_with(".app")) "${bin}/${name}/Contents/MacOS/${name.drop_suffix(".app")}" else "${bin}/${name}"
+			step!(Cmd.new("chmod").args(["+x", OsStr.from_str(path)]), "chmod +x ${path}")?
+		}
+		test!(root, dir, Ok(bin))?
+	}
+	Ok({})
+}
+
+## What builds and tests a release, as its log and notes record it.
+versions! : () => Try({}, Str)
+versions! = || {
+	for (program, args) in [("roc", ["version"]), ("roc-stable", ["version"]), ("swiftc", ["--version"]), ("xcodebuild", ["-version"])] {
+		note!(capture!(program, args)?.trim())
+	}
+	Ok({})
 }
 
 ## The files git tracks under the given paths.

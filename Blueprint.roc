@@ -86,6 +86,19 @@ config = [
 			Expect(["sh", "realpath"]),
 		],
 	),
+	# The workflows' GitHub-facing steps (scripts/workflow.roc), which ask
+	# GitHub through `gh` with the job's token.
+	Environment(
+		"github",
+		[
+			Programs([roc_stable_program]),
+			RocPackages([
+				"https://github.com/roc-lang/basic-cli/releases/download/0.28.1/7brgwR8YUqfeGrkdfF1V4GPPN7DnP7ftqub9KcrTEZtr.tar.zst",
+				"https://github.com/roc-lang/http/releases/download/1.0.0/6ZUwqYhCS8PU9Mo6MF7oV82ET2o7KYb57CLKDq4cq4sS.tar.zst",
+			]),
+			Expect(["gh"]),
+		],
+	),
 	Shell("default", [Use("dev")]),
 	# The per-pull-request gate: compiler pins, formatting, the scripts'
 	# tests, the macos.roc tool's tests, the build, `roc test`, every
@@ -118,6 +131,10 @@ config = [
 	Task("release", [Use("dev"), Run(["scripts/release.roc", "--"])]),
 	# The tooling compiler, as a log records it.
 	Task("tooling-version", [Use("dev"), Run(["roc-stable", "version"])]),
+	# The workflows' steps that ask GitHub or hand values to later steps
+	# (scripts/workflow.roc): `-- validate`, `-- select`, `-- download TAG DIR`,
+	# `-- files VERSION DIR` and `-- summary VERSION DIR NOTES`.
+	Task("workflow", [Use("github"), Run(["scripts/workflow.roc", "--"])]),
 	# The manual, into .docs-out/: `site/` and roc-native-macos.pdf.
 	Task("docs", [Use("docs"), Run(["roc-docs", "build", "--workspace", ".", "--pdf-filename", "roc-native-macos.pdf", "--site-url", "https://lukewilliamboswell.github.io/roc-native-macos/"])]),
 	# The renderer's resolved path, for actions/blueprint-tool.

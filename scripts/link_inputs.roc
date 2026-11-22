@@ -19,6 +19,7 @@ import src/Tar
 ## the licence and its own source, and never an Apple SDK file.
 ##
 ##     blueprint run link-inputs -- build DIR [--workflow W]   # DIR/link-inputs-arm64mac.tar and its manifest
+##     blueprint run link-inputs -- candidate DIR              # build twice, require identical bytes (link-inputs.yml)
 ##     blueprint run link-inputs -- stubs DIR                  # the stub tree alone, DIR/<library path>
 ##     blueprint run link-inputs -- fingerprint                # this checkout's input fingerprint
 ##
@@ -36,9 +37,10 @@ main! = |raw_args| {
 	result = match args {
 		["build", dir] => build!(dir, "")
 		["build", dir, "--workflow", workflow] => build!(dir, workflow)
+		["candidate", dir] => candidate!(dir)
 		["stubs", dir] => stubs!(dir)
 		["fingerprint"] => print!(fingerprint!())
-		_ => Err("usage: link-inputs build DIR [--workflow W] | stubs DIR | fingerprint")
+		_ => Err("usage: link-inputs build DIR [--workflow W] | candidate DIR | stubs DIR | fingerprint")
 	}
 	match result {
 		Ok({}) => Ok({})
@@ -84,6 +86,29 @@ build! = |dir, workflow_given| {
 	manifest = LinkInputs.manifest({ repository, sha, ref, workflow, fingerprint: fingerprint!()?, sha256: sha256!(archive_path)?, size: archive.len() })
 	write!("${dir}/${LinkInputs.manifest_name}", manifest)?
 	Stdout.line!("link-inputs: ${archive_path}, ${found.libraries.len().to_str()} stubs, ${archive.len().to_str()} bytes") ?? {}
+	Ok({})
+}
+
+## The producer workflow's candidate: for a release candidate, the commit
+## the publisher asked for (EXPECTED_SHA) is the one checked out; the
+## archive and manifest are built twice, into DIR and DIR-again, and must be
+## identical; the workflow is this repository's `link-inputs.yml`.
+candidate! : Str => Try({}, Str)
+candidate! = |dir| {
+	expected = env!("EXPECTED_SHA", "")
+	if env!("RELEASE_CANDIDATE", "false") == "true" and (expected.is_empty() or expected != env!("GITHUB_SHA", "")) {
+		return Err("the publisher asked for ${expected}, but this run is at ${env!("GITHUB_SHA", "")}")
+	}
+	workflow = "${env!("GITHUB_REPOSITORY", "lukewilliamboswell/roc-native-macos")}/.github/workflows/link-inputs.yml"
+	again = "${dir}-again"
+	build!(dir, workflow)?
+	build!(again, workflow)?
+	for name in [LinkInputs.archive_name, LinkInputs.manifest_name] {
+		if bytes!("${dir}/${name}")? != bytes!("${again}/${name}")? {
+			return Err("two builds of ${name} differ")
+		}
+	}
+	Stdout.line!(read!("${dir}/${LinkInputs.manifest_name}")?.trim()) ?? {}
 	Ok({})
 }
 

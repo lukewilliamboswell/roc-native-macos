@@ -41,8 +41,8 @@ jobs:
   # One pair, resolved once: every later job uses these tags.
   select:
     name: Select the nightly and the release
-    runs-on: ubuntu-24.04
-    timeout-minutes: 5
+    runs-on: macos-15
+    timeout-minutes: 10
     permissions:
       contents: read
     outputs:
@@ -50,34 +50,19 @@ jobs:
       release-tag: ${{ steps.select.outputs.release-tag }}
       report: ${{ steps.select.outputs.report }}
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: lukewilliamboswell/roc-automation/actions/setup-blueprint@acc5efdcd929b38e665cd3ae6e694d1c4887f9c7
+      # The latest final release (a bare version, never a prerelease, a draft
+      # or a linker-inputs-* release) and nightly, unless the inputs name a
+      # past pair; selection fails when no final release exists.
       - id: select
         env:
           GH_TOKEN: ${{ github.token }}
           NIGHTLY: ${{ inputs.nightly-tag }}
           RELEASE: ${{ inputs.release-tag }}
-        run: |
-          set -euo pipefail
-          report=true
-          if [ -n "$NIGHTLY" ] || [ -n "$RELEASE" ]; then report=false; fi
-          nightly="${NIGHTLY:-$(gh api repos/roc-lang/nightlies/releases/latest --jq .tag_name)}"
-          release="$RELEASE"
-          if [ -z "$release" ]; then
-            # The latest final release: a bare version, never a prerelease, a
-            # draft or a linker-inputs-* release.
-            release=$(gh api "repos/$GITHUB_REPOSITORY/releases" --paginate \
-              --jq '.[] | select(.draft == false and .prerelease == false) | .tag_name' \
-              | { grep -E '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$' || true; } | sort -V | tail -n 1)
-          fi
-          if [ -z "$release" ]; then
-            echo "::error::$GITHUB_REPOSITORY has published no final release, so there is no release to test"
-            exit 1
-          fi
-          echo "Testing release $release on $nightly (reporting: $report)"
-          {
-            echo "nightly-tag=$nightly"
-            echo "release-tag=$release"
-            echo "report=$report"
-          } >> "$GITHUB_OUTPUT"
+        run: blueprint run workflow -- select
 
   test:
     name: Run the release's examples on macOS
@@ -99,17 +84,12 @@ jobs:
         with:
           nightly-tag: ${{ needs.select.outputs.nightly-tag }}
       - name: Report the compilers
-        run: |
-          roc version
-          blueprint run tooling-version
+        run: blueprint run release -- versions
       - name: Download the release's bundle, macos.roc and examples archive
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE: ${{ needs.select.outputs.release-tag }}
-        run: |
-          gh release download "$RELEASE" -R "$GITHUB_REPOSITORY" -D build/nightly \
-            -p '*.tar.zst' -p 'macos.roc' -p "roc-native-macos-examples-$RELEASE.zip"
-          ls -l build/nightly
+        run: blueprint run workflow -- download "$RELEASE" build/nightly
       - id: examples
         name: Build every archived example against the release's bundle and run its cases
         continue-on-error: true
@@ -118,9 +98,7 @@ jobs:
         if: steps.examples.outcome != 'success'
         env:
           OUTCOME: ${{ steps.examples.outcome }}
-        run: |
-          echo "::error::the release's examples did not pass on this nightly ($OUTCOME)"
-          exit 1
+        run: echo "::error::the release's examples did not pass on this nightly ($OUTCOME)" && exit 1
 
   # Only an established pass or failure of the latest pair reaches the issue.
   # A setup failure leaves the examples step unrun, and so the issue alone.

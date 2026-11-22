@@ -9,7 +9,7 @@ name: Release
 # and tests as a dry run, under 0.0.1-dryrun, and publishes nothing.
 #
 #   validate   the version, the default branch, an unused tag, the notes,
-#              the latest final release
+#              the nightly, the latest final release (workflow -- validate)
 #   build      macos-15: the version against that release (roc bump), the
 #              whole check gate, then the bundle from the very
 #              host the gate built and tested, the macos.roc tool, the
@@ -56,68 +56,32 @@ jobs:
   # job. The version is checked before anything is built.
   validate:
     name: Validate the release
-    runs-on: ubuntu-24.04
-    timeout-minutes: 5
+    runs-on: macos-15
+    timeout-minutes: 10
     permissions:
       contents: read
     outputs:
-      nightly-tag: ${{ steps.nightly.outputs.tag }}
-      version: ${{ steps.version.outputs.version }}
-      prerelease: ${{ steps.version.outputs.prerelease }}
-      latest-tag: ${{ steps.latest.outputs.tag }}
-      latest-url: ${{ steps.latest.outputs.url }}
+      nightly-tag: ${{ steps.validate.outputs.nightly-tag }}
+      version: ${{ steps.validate.outputs.version }}
+      prerelease: ${{ steps.validate.outputs.prerelease }}
+      latest-tag: ${{ steps.validate.outputs.latest-tag }}
+      latest-url: ${{ steps.validate.outputs.latest-url }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
-      - id: nightly
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: echo "tag=$(gh api repos/roc-lang/nightlies/releases/latest --jq .tag_name)" >> "$GITHUB_OUTPUT"
-      - id: version
+      - uses: lukewilliamboswell/roc-automation/actions/setup-blueprint@acc5efdcd929b38e665cd3ae6e694d1c4887f9c7
+      # scripts/workflow.roc: the version (a dispatch from the default branch,
+      # an unused tag, written notes, SemVer), the nightly for the whole run,
+      # and the latest final release with its bundle URL, which `roc bump`
+      # compares the API with.
+      - id: validate
         env:
           EVENT: ${{ github.event_name }}
           REQUESTED: ${{ inputs.version }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
           GH_TOKEN: ${{ github.token }}
-        run: |
-          if [ "$EVENT" = workflow_dispatch ]; then
-            version="$REQUESTED"
-            if [ "$GITHUB_REF_TYPE" != branch ] || [ "$GITHUB_REF_NAME" != "$DEFAULT_BRANCH" ]; then
-              echo "::error::release from $DEFAULT_BRANCH only, not $GITHUB_REF"; exit 1
-            fi
-            if gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$version" >/dev/null 2>&1; then
-              echo "::error::tag $version already exists"; exit 1
-            fi
-            test -s "docs/releases/$version.adoc" || { echo "::error::write docs/releases/$version.adoc first"; exit 1; }
-          else
-            version=0.0.1-dryrun
-          fi
-          echo "$version" | grep -Eq '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?$' \
-            || { echo "::error::version must be SemVer without a v prefix: $version"; exit 1; }
-          case "$version" in *-*) prerelease=true ;; *) prerelease=false ;; esac
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-          echo "prerelease=$prerelease" >> "$GITHUB_OUTPUT"
-      # The latest final release and its platform bundle, which `roc bump`
-      # compares the API with: a bare version, never a prerelease, a draft or
-      # a linker-inputs-* release. Empty before the first release.
-      - id: latest
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          latest=$(gh api "repos/$GITHUB_REPOSITORY/releases" --paginate \
-            --jq '.[] | select(.draft == false and .prerelease == false) | .tag_name' \
-            | { grep -E '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$' || true; } | sort -V | tail -n 1)
-          url=""
-          if [ -n "$latest" ]; then
-            bundles=$(gh release view "$latest" -R "$GITHUB_REPOSITORY" --json assets \
-              --jq '.assets[].name | select(endswith(".tar.zst") and (startswith("macos-") | not))')
-            test "$(grep -c . <<< "$bundles")" -eq 1 || { echo "::error::release $latest does not hold exactly one platform bundle"; exit 1; }
-            url="https://github.com/$GITHUB_REPOSITORY/releases/download/$latest/$bundles"
-          fi
-          echo "tag=$latest" >> "$GITHUB_OUTPUT"
-          echo "url=$url" >> "$GITHUB_OUTPUT"
+        run: blueprint run workflow -- validate
 
   # Build once. The check gate builds the Swift host and runs every example
   # against it; the bundle is then made from that same libhost.a (`--prebuilt`),
@@ -130,6 +94,9 @@ jobs:
     timeout-minutes: 75
     permissions:
       contents: read
+    outputs:
+      bundle: ${{ steps.bundle.outputs.name }}
+      tool: ${{ steps.bundle.outputs.tool-name }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -141,10 +108,7 @@ jobs:
           nightly-tag: ${{ needs.validate.outputs.nightly-tag }}
           cache: 'false'
       - name: Report the compilers and the Swift toolchain
-        run: |
-          roc version
-          blueprint run tooling-version
-          swiftc --version
+        run: blueprint run release -- versions
       # A version understating the API change stops here: `roc bump --expect`
       # against the latest final release (scripts/release.roc -- bump). A dry
       # run reports the bump the change needs.
@@ -153,12 +117,7 @@ jobs:
           VERSION: ${{ needs.validate.outputs.version }}
           LATEST: ${{ needs.validate.outputs.latest-tag }}
           LATEST_URL: ${{ needs.validate.outputs.latest-url }}
-        run: |
-          if [ -n "$LATEST" ]; then
-            blueprint run release -- bump "$VERSION" "$LATEST" "$LATEST_URL"
-          else
-            blueprint run release -- bump "$VERSION"
-          fi
+        run: blueprint run release -- bump "$VERSION" "$LATEST" "$LATEST_URL"
       - name: Check the source (the whole gate, which builds and tests the host)
         run: blueprint run check
       - name: Bundle the host the gate tested
@@ -177,20 +136,7 @@ jobs:
         name: Name the files the release publishes
         env:
           VERSION: ${{ needs.validate.outputs.version }}
-        run: |
-          # The platform's bundle; macos-<hash>.tar.zst is the tool's.
-          bundles=()
-          for file in build/release/*.tar.zst; do
-            case "$(basename "$file")" in macos-*) ;; *) bundles+=("$file") ;; esac
-          done
-          tools=(build/release/macos-*.tar.zst)
-          test "${#bundles[@]}" -eq 1 && test "${#tools[@]}" -eq 1
-          test -f "build/release/roc-native-macos-examples-$VERSION.zip" && test -f build/release/macos.roc
-          {
-            echo "file=${bundles[0]}"
-            echo "name=$(basename "${bundles[0]}")"
-            echo "tool=${tools[0]}"
-          } >> "$GITHUB_OUTPUT"
+        run: blueprint run workflow -- files "$VERSION" build/release
       # Each composition under sbom/ says what its files hold and why; the
       # tool checks it against Blueprint.roc and Blueprint.lock, lists every
       # member of a .tar.zst, and binds SPDX 3, SPDX 2.3 and CycloneDX
@@ -232,15 +178,11 @@ jobs:
       - name: Render the release notes
         env:
           VERSION: ${{ needs.validate.outputs.version }}
-          BUNDLE: ${{ steps.bundle.outputs.name }}
-        run: |
-          mkdir -p build/release-notes
-          blueprint run release -- notes "$VERSION" build/release build/release-notes/release-notes.md
-          {
-            echo "Platform URL: \`https://github.com/$GITHUB_REPOSITORY/releases/download/$VERSION/$BUNDLE\`"
-            echo
-            cat build/release-notes/release-notes.md
-          } >> "$GITHUB_STEP_SUMMARY"
+        run: blueprint run release -- notes "$VERSION" build/release build/release-notes/release-notes.md
+      - name: Summarise the release
+        env:
+          VERSION: ${{ needs.validate.outputs.version }}
+        run: blueprint run workflow -- summary "$VERSION" build/release build/release-notes/release-notes.md
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: release-candidate
@@ -412,13 +354,7 @@ jobs:
           pattern: cross-*
           path: build/cross
       - name: Run every recorded case against each system's apps
-        run: |
-          set -euo pipefail
-          for system in x86_64-linux aarch64-linux x86_64-windows; do
-            echo "== apps cross-compiled on $system"
-            chmod +x build/cross/cross-$system/* build/cross/cross-$system/*.app/Contents/MacOS/*
-            blueprint run release -- test build/release --binaries "build/cross/cross-$system"
-          done
+        run: blueprint run release -- cross-run build/release build/cross
 
   attest:
     name: Attest the tested files
@@ -440,39 +376,21 @@ jobs:
       - uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6
         with:
           subject-path: candidate/*
-      - id: sbom-file
-        name: Resolve the files that carry an SBOM
-        run: |
-          bundles=()
-          for file in candidate/*.tar.zst; do
-            case "$(basename "$file")" in macos-*) ;; *) bundles+=("$file") ;; esac
-          done
-          tools=(candidate/macos-*.tar.zst)
-          examples=(candidate/roc-native-macos-examples-*.zip)
-          test "${#bundles[@]}" -eq 1 && test "${#tools[@]}" -eq 1 && test "${#examples[@]}" -eq 1
-          for file in "${bundles[0]}" "${tools[0]}" "${examples[0]}" candidate/macos.roc; do
-            test -f "$file.cdx.json" || { echo "::error::$file has no CycloneDX SBOM"; exit 1; }
-          done
-          {
-            echo "bundle=${bundles[0]}"
-            echo "tool=${tools[0]}"
-            echo "examples=${examples[0]}"
-          } >> "$GITHUB_OUTPUT"
       - name: Attest the bundle's SBOM
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6
         with:
-          subject-path: ${{ steps.sbom-file.outputs.bundle }}
-          sbom-path: ${{ steps.sbom-file.outputs.bundle }}.cdx.json
+          subject-path: candidate/${{ needs.build.outputs.bundle }}
+          sbom-path: candidate/${{ needs.build.outputs.bundle }}.cdx.json
       - name: Attest the examples archive's SBOM
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6
         with:
-          subject-path: ${{ steps.sbom-file.outputs.examples }}
-          sbom-path: ${{ steps.sbom-file.outputs.examples }}.cdx.json
+          subject-path: candidate/roc-native-macos-examples-${{ needs.validate.outputs.version }}.zip
+          sbom-path: candidate/roc-native-macos-examples-${{ needs.validate.outputs.version }}.zip.cdx.json
       - name: Attest the tool package's SBOM
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6
         with:
-          subject-path: ${{ steps.sbom-file.outputs.tool }}
-          sbom-path: ${{ steps.sbom-file.outputs.tool }}.cdx.json
+          subject-path: candidate/${{ needs.build.outputs.tool }}
+          sbom-path: candidate/${{ needs.build.outputs.tool }}.cdx.json
       - name: Attest macos.roc's SBOM
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6
         with:

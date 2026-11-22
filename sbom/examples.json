@@ -134,6 +134,16 @@
       "input": "task:docs-path",
       "component": "",
       "reason": "Development or release task; the examples archive's contents are stated by its components"
+    },
+    {
+      "input": "task:link-inputs",
+      "component": "",
+      "reason": "Development or release task; it produces the linker-input release, whose stubs the platform bundle carries as targets/macos-sysroot"
+    },
+    {
+      "input": "task:workflow",
+      "component": "",
+      "reason": "Workflow step task; it asks GitHub about releases and adds nothing to any released file"
     }
   ],
   "imported_documents": [],

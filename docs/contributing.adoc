@@ -97,6 +97,7 @@ xref:apps.adoc#the-examples[The examples].
 | `blueprint run examples` | every example's recorded scripted runs; `examples -- --update` records new output
 | `blueprint run bundle` | the platform bundle, in `build/platform/` (see xref:contributing.adoc#the-bundle[The bundle])
 | `blueprint run release` | the release steps after the bundle: `tool`, `archive`, `test`, `notes` and `bump` (see xref:contributing.adoc#releasing[Releasing])
+| `blueprint run workflow` | the workflows' steps that ask GitHub or hand values to later steps (`scripts/workflow.roc`): `validate`, `select`, `download`, `files`, `summary`
 | `blueprint run docs` | this manual as a website, Markdown and `roc-native-macos.pdf`, in `.docs-out/`, with roc-automation's roc-docs renderer
 | `blueprint run tooling-version` | the scripts' compiler version
 |===
@@ -363,6 +364,17 @@ To cut a release:
 
 No secret is needed: every job uses the workflow's own token. The settings
 the workflows rely on are listed under <<repository-settings>>.
+
+Every workflow step that runs repository code is one line calling a
+Blueprint task, with the logic in `scripts/` and its decisions in
+`scripts/src` with `expect`s; values from the run reach a script through its
+environment, never its arguments' shell expansion. What stays inline is the
+nightly's one-line resolution roc-automation prescribes, and the steps of the
+jobs that hold write or attestation authority, which run no repository code:
+exporting the attestations, the published digests and the dry run's
+aggregate. The cross-compiling jobs are inline too: they show that an author
+needs nothing but Roc and the release's files, with no checkout, Blueprint or
+Xcode.
 
 The scripts the workflow runs are tasks, so the build job's steps run the same
 way locally (with the nightly as `roc`):
