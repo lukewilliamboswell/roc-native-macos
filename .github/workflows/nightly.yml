@@ -1,0 +1,142 @@
+name: Nightly compatibility
+
+# Does the release users download today still work with today's Roc nightly?
+# The latest final release's bundle, macos.roc tool and examples archive are
+# downloaded unchanged; every archived example is built against that bundle
+# (served on localhost, byte for byte the published file, as release.yml tests
+# a candidate) and runs its recorded cases on a macOS GUI session, and a
+# counter is created, built and tested with the release's macos.roc. One
+# tracking issue records a failure and is closed by the next pass.
+#
+# roc-automation's shared nightly-compatibility.yml cannot run these cases:
+# they are ROC_SCRIPT runs of a GUI app compared with recorded output, not the
+# argv/stdin cases of its spec.json. The selection, the one-compiler rule and
+# the reporting follow its contract, and the issue is kept by
+# actions/nightly-report.
+#
+# It never changes a compiler pin, the archive or the repository. A manual run
+# with either input set reproduces a past pair and leaves the issue alone.
+
+on:
+  schedule:
+    - cron: '17 13 * * *'
+  workflow_dispatch:
+    inputs:
+      nightly-tag:
+        description: Exact roc-lang/nightlies tag; empty tests the latest
+        type: string
+        default: ''
+      release-tag:
+        description: Release to test; empty tests the latest final release
+        type: string
+        default: ''
+
+permissions: {}
+
+concurrency:
+  group: nightly-compatibility
+  cancel-in-progress: false
+
+jobs:
+  # One pair, resolved once: every later job uses these tags.
+  select:
+    name: Select the nightly and the release
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      nightly-tag: ${{ steps.select.outputs.nightly-tag }}
+      release-tag: ${{ steps.select.outputs.release-tag }}
+      report: ${{ steps.select.outputs.report }}
+    steps:
+      - id: select
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NIGHTLY: ${{ inputs.nightly-tag }}
+          RELEASE: ${{ inputs.release-tag }}
+        run: |
+          set -euo pipefail
+          report=true
+          if [ -n "$NIGHTLY" ] || [ -n "$RELEASE" ]; then report=false; fi
+          nightly="${NIGHTLY:-$(gh api repos/roc-lang/nightlies/releases/latest --jq .tag_name)}"
+          release="$RELEASE"
+          if [ -z "$release" ]; then
+            # The latest final release: a bare version, never a prerelease, a
+            # draft or a linker-inputs-* release.
+            release=$(gh api "repos/$GITHUB_REPOSITORY/releases" --paginate \
+              --jq '.[] | select(.draft == false and .prerelease == false) | .tag_name' \
+              | { grep -E '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$' || true; } | sort -V | tail -n 1)
+          fi
+          if [ -z "$release" ]; then
+            echo "::error::$GITHUB_REPOSITORY has published no final release, so there is no release to test"
+            exit 1
+          fi
+          echo "Testing release $release on $nightly (reporting: $report)"
+          {
+            echo "nightly-tag=$nightly"
+            echo "release-tag=$release"
+            echo "report=$report"
+          } >> "$GITHUB_OUTPUT"
+
+  test:
+    name: Run the release's examples on macOS
+    needs: select
+    runs-on: macos-15
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    outputs:
+      outcome: ${{ steps.examples.outcome }}
+    steps:
+      # The default branch's scripts run the archived cases; nothing of the
+      # working tree is built or substituted.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: lukewilliamboswell/roc-automation/actions/setup-blueprint@acc5efdcd929b38e665cd3ae6e694d1c4887f9c7
+      - uses: lukewilliamboswell/roc-automation/actions/setup-roc-nightly@acc5efdcd929b38e665cd3ae6e694d1c4887f9c7
+        with:
+          nightly-tag: ${{ needs.select.outputs.nightly-tag }}
+      - name: Report the compilers
+        run: |
+          roc version
+          blueprint run tooling-version
+      - name: Download the release's bundle, macos.roc and examples archive
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE: ${{ needs.select.outputs.release-tag }}
+        run: |
+          gh release download "$RELEASE" -R "$GITHUB_REPOSITORY" -D build/nightly \
+            -p '*.tar.zst' -p 'macos.roc' -p "roc-native-macos-examples-$RELEASE.zip"
+          ls -l build/nightly
+      - id: examples
+        name: Build every archived example against the release's bundle and run its cases
+        continue-on-error: true
+        run: blueprint run release -- test build/nightly
+      - name: Fail when the release's examples failed
+        if: steps.examples.outcome != 'success'
+        env:
+          OUTCOME: ${{ steps.examples.outcome }}
+        run: |
+          echo "::error::the release's examples did not pass on this nightly ($OUTCOME)"
+          exit 1
+
+  # Only an established pass or failure of the latest pair reaches the issue.
+  # A setup failure leaves the examples step unrun, and so the issue alone.
+  report:
+    name: Report to the tracking issue
+    needs: [select, test]
+    if: >-
+      always() && needs.select.outputs.report == 'true' &&
+      (needs.test.outputs.outcome == 'success' || needs.test.outputs.outcome == 'failure')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      issues: write
+    steps:
+      - uses: lukewilliamboswell/roc-automation/actions/nightly-report@acc5efdcd929b38e665cd3ae6e694d1c4887f9c7
+        with:
+          outcome: ${{ needs.test.outputs.outcome }}
+          nightly-tag: ${{ needs.select.outputs.nightly-tag }}
+          release-tag: ${{ needs.select.outputs.release-tag }}

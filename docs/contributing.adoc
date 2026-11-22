@@ -298,8 +298,8 @@ examples, the scripts, the notes or the workflow runs it as a dry run under
 |===
 | Job | Does
 
-| Validate | resolves the Roc nightly for the whole run, and refuses a version that is not SemVer, a dispatch off `main`, an existing tag, or a missing `docs/releases/<version>.adoc`
-| Build (`macos-15`) | selects the pinned Xcode, runs `blueprint run check` (the whole gate, which builds the host and runs every recorded case against it), bundles that same `libhost.a` (`bundle -- --prebuilt`), makes the `macos.roc` tool naming it (`release -- tool`), writes the examples archive (`release -- archive`), builds every archived example against the bundle served on localhost with an empty package cache and runs every recorded case, then with the served `macos.roc` creates, builds and tests a counter (`release -- test`), binds the bundle's SBOM sidecars (`actions/sbom-sidecars`, from `sbom/composition.json`) and renders the notes (`release -- notes`)
+| Validate | resolves the Roc nightly for the whole run and the latest final release, and refuses a version that is not SemVer, a dispatch off `main`, an existing tag, or a missing `docs/releases/<version>.adoc`
+| Build (`macos-15`) | selects the pinned Xcode, checks the version against the latest final release (`release -- bump`, below), runs `blueprint run check` (the whole gate, which builds the host and runs every recorded case against it), bundles that same `libhost.a` (`bundle -- --prebuilt`), makes the `macos.roc` tool naming it (`release -- tool`), writes the examples archive (`release -- archive`), builds every archived example against the bundle served on localhost with an empty package cache and runs every recorded case, then with the served `macos.roc` creates, builds and tests a counter (`release -- test`), binds the bundle's SBOM sidecars (`actions/sbom-sidecars`, from `sbom/composition.json`) and renders the notes (`release -- notes`)
 | Cross-compile (`ubuntu-24.04`, `ubuntu-24.04-arm`, `windows-2025`) | with only Roc installed and no checkout, serves the candidate on localhost, builds every archived example with `--target=arm64mac`, and with `macos.roc` creates a counter and builds `counter.app`; each program must be an arm64 Mach-O executable. It also records what `roc build` without `--target` does there.
 | Run the cross-compiled apps (`macos-15`) | runs every recorded case against each system's cross-compiled apps and the counter's against its `counter.app` (`release -- test DIR --binaries BIN`)
 | Attest | build-provenance attestations for every file, an SBOM attestation for the bundle, exported as `<file>.intoto.jsonl`
@@ -318,6 +318,14 @@ the compilers, the Xcode and Swift versions, and every file's SHA-256.
 The bundle's hash depends on `libhost.a`, which is not byte-reproducible, so
 the URL is known only once the build job has run. It is printed at the top of
 that job's summary, in the notes, and in the dry run's summary.
+
+`release -- bump VERSION LATEST URL` runs `roc bump --old URL --expect
+VERSION platform/main.roc` against the latest final release's bundle, so a
+version that understates the API change never goes out. A first release, or
+a version past the latest one's breaking boundary (the major, or before 1.0
+the minor), needs no comparison. A dry run only reports the bump the change
+needs. Run `roc bump --old <latest bundle URL> platform/main.roc` to choose a
+version before writing its notes.
 
 To cut a release:
 
@@ -349,6 +357,20 @@ blueprint run release -- archive 0.0.1-dryrun build/release
 blueprint run release -- test build/release
 blueprint run release -- notes 0.0.1-dryrun build/release build/release-notes.md
 ----
+
+=== Nightly compatibility
+
+`.github/workflows/nightly.yml` asks each day whether the latest final
+release still works with the latest Roc nightly. It downloads that release's
+bundle, `macos.roc` and examples archive, and runs `blueprint run release --
+test` on them on `macos-15`: every archived example is built against the
+published bundle and runs its recorded cases, and a counter is created, built
+and tested with the release's `macos.roc`. A failure opens or comments on one
+tracking issue, kept by roc-automation's `actions/nightly-report`, and the
+next pass closes it. The fix is a patch release that works with the new
+compiler; the archive is never changed. A manual run with `nightly-tag` or
+`release-tag` reproduces a past pair and leaves the issue alone. Before the
+first release it fails selection, since there is nothing to test.
 
 [#styling]
 == Styling

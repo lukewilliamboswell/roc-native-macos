@@ -25,6 +25,7 @@ import src/Release
 ##     blueprint run release -- test DIR                  # build and run the archived examples against DIR's bundle
 ##     blueprint run release -- test DIR --binaries BIN   # run the archived examples' cases on prebuilt apps in BIN
 ##     blueprint run release -- notes VERSION DIR OUT     # the release notes, as Markdown, to OUT
+##     blueprint run release -- bump VERSION [LATEST URL] # roc bump --expect against the latest final release
 ##
 ## `tool` writes `macos.roc`, the app author's tool: it stages the tool's
 ## package (`cli/`) with a generated `Bundle.roc` naming the release (its
@@ -48,6 +49,12 @@ import src/Release
 ## apps cross-compiled on another system from the same archive and bundle,
 ## and against `BIN/<example>.app` where `macos.roc build` made one there.
 ##
+## `bump` checks that VERSION goes far enough past LATEST, the latest final
+## release, whose platform bundle is at URL: `roc bump --old URL --expect
+## VERSION platform/main.roc` when they share a breaking boundary. A first
+## release, or one past the boundary, needs no comparison. For the dry-run
+## version it reports the bump the change needs and fails nothing.
+##
 ## `notes` renders `docs/releases/VERSION.adoc` (for the dry-run version, the
 ## highest version there) with the real URLs, then adds the compilers, the
 ## Swift toolchain and the SHA-256 of every file in DIR.
@@ -64,7 +71,9 @@ main! = |raw_args| {
 		["test", dir] => test!(root, absolute(root, dir), Err(NoBinaries))
 		["test", dir, "--binaries", bin] => test!(root, absolute(root, dir), Ok(absolute(root, bin)))
 		["notes", version, dir, out] => notes!(version, absolute(root, dir), absolute(root, out))
-		_ => Err("usage: release tool VERSION DIR [--base-url URL] | archive VERSION DIR | test DIR [--binaries BIN] | notes VERSION DIR OUT")
+		["bump", version] => bump!(version, "", "")
+		["bump", version, latest, url] => bump!(version, latest, url)
+		_ => Err("usage: release tool VERSION DIR [--base-url URL] | archive VERSION DIR | test DIR [--binaries BIN] | notes VERSION DIR OUT | bump VERSION [LATEST URL]")
 	}
 	match result {
 		Ok({}) => Ok({})
@@ -459,6 +468,42 @@ notes! = |version, dir, out| {
 	write!(out, body)?
 	note!("release: notes for ${notes_version} written to ${out}")
 	Ok({})
+}
+
+## `roc bump` against the latest final release, as `Release.bump_plan` decides.
+bump! : Str, Str, Str => Try({}, Str)
+bump! = |version, latest, url| {
+	if !Release.version_ok(version) {
+		return Err("${version} is not a release version")
+	}
+	if !latest.is_empty() and !Release.version_ok(latest) {
+		return Err("${latest} is not a release version")
+	}
+	compare = Cmd.new("roc").args(["bump", "--old", url, "platform/main.roc"].map(OsStr.from_str))
+	if version == Release.dry_run {
+		if latest.is_empty() {
+			note!("release: no final release yet, so there is no API to compare with")
+			return Ok({})
+		}
+		# A dry run chooses no version: report what the change needs.
+		match step!(compare, "roc bump --old ${url} platform/main.roc") {
+			Ok({}) => {}
+			Err(problem) => warn!("release: the dry run could not compare the API with ${latest}: ${problem}")
+		}
+		return Ok({})
+	}
+	match Release.bump_plan(version, latest) {
+		Ok(FirstRelease) => {
+			note!("release: ${version} is the first release; there is no API to compare with")
+			Ok({})
+		}
+		Ok(NewBoundary) => {
+			note!("release: ${version} starts a new breaking boundary after ${latest}, which permits every API change")
+			Ok({})
+		}
+		Ok(Compare) => step!(compare.args(["--expect", Release.number_part(version)].map(OsStr.from_str)), "roc bump --old ${url} --expect ${Release.number_part(version)} platform/main.roc")
+		Err(NotAfter) => Err("${version} does not come after ${latest}, the latest release")
+	}
 }
 
 ## The files git tracks under the given paths.

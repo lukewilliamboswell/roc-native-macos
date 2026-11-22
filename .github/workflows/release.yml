@@ -8,8 +8,10 @@ name: Release
 # A pull request that changes what a release is made of runs the same build
 # and tests as a dry run, under 0.0.1-dryrun, and publishes nothing.
 #
-#   validate   the version, the default branch, an unused tag, the notes
-#   build      macos-15: the whole check gate, then the bundle from the very
+#   validate   the version, the default branch, an unused tag, the notes,
+#              the latest final release
+#   build      macos-15: the version against that release (roc bump), the
+#              whole check gate, then the bundle from the very
 #              host the gate built and tested, the macos.roc tool, the
 #              examples archive, every archived example built against the
 #              served bundle and run, a counter created, built and tested with
@@ -61,6 +63,8 @@ jobs:
       nightly-tag: ${{ steps.nightly.outputs.tag }}
       version: ${{ steps.version.outputs.version }}
       prerelease: ${{ steps.version.outputs.prerelease }}
+      latest-tag: ${{ steps.latest.outputs.tag }}
+      latest-url: ${{ steps.latest.outputs.url }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -93,6 +97,26 @@ jobs:
           case "$version" in *-*) prerelease=true ;; *) prerelease=false ;; esac
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "prerelease=$prerelease" >> "$GITHUB_OUTPUT"
+      # The latest final release and its platform bundle, which `roc bump`
+      # compares the API with: a bare version, never a prerelease, a draft or
+      # a linker-inputs-* release. Empty before the first release.
+      - id: latest
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          latest=$(gh api "repos/$GITHUB_REPOSITORY/releases" --paginate \
+            --jq '.[] | select(.draft == false and .prerelease == false) | .tag_name' \
+            | { grep -E '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$' || true; } | sort -V | tail -n 1)
+          url=""
+          if [ -n "$latest" ]; then
+            bundles=$(gh release view "$latest" -R "$GITHUB_REPOSITORY" --json assets \
+              --jq '.assets[].name | select(endswith(".tar.zst") and (startswith("macos-") | not))')
+            test "$(grep -c . <<< "$bundles")" -eq 1 || { echo "::error::release $latest does not hold exactly one platform bundle"; exit 1; }
+            url="https://github.com/$GITHUB_REPOSITORY/releases/download/$latest/$bundles"
+          fi
+          echo "tag=$latest" >> "$GITHUB_OUTPUT"
+          echo "url=$url" >> "$GITHUB_OUTPUT"
 
   # Build once. The check gate builds the Swift host and runs every example
   # against it; the bundle is then made from that same libhost.a (`--prebuilt`),
@@ -120,6 +144,20 @@ jobs:
           roc version
           blueprint run tooling-version
           swiftc --version
+      # A version understating the API change stops here: `roc bump --expect`
+      # against the latest final release (scripts/release.roc -- bump). A dry
+      # run reports the bump the change needs.
+      - name: Check the version against the latest release with roc bump
+        env:
+          VERSION: ${{ needs.validate.outputs.version }}
+          LATEST: ${{ needs.validate.outputs.latest-tag }}
+          LATEST_URL: ${{ needs.validate.outputs.latest-url }}
+        run: |
+          if [ -n "$LATEST" ]; then
+            blueprint run release -- bump "$VERSION" "$LATEST" "$LATEST_URL"
+          else
+            blueprint run release -- bump "$VERSION"
+          fi
       - name: Check the source (the whole gate, which builds and tests the host)
         run: blueprint run check
       - name: Bundle the host the gate tested
