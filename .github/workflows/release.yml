@@ -173,20 +173,27 @@ jobs:
       - name: Build every archived example against the served bundle and run its cases, then init, build and test a counter with macos.roc
         run: blueprint run release -- test build/release
       - id: bundle
-        name: Name the bundle the release publishes
+        name: Name the files the release publishes
+        env:
+          VERSION: ${{ needs.validate.outputs.version }}
         run: |
           # The platform's bundle; macos-<hash>.tar.zst is the tool's.
           bundles=()
           for file in build/release/*.tar.zst; do
             case "$(basename "$file")" in macos-*) ;; *) bundles+=("$file") ;; esac
           done
-          test "${#bundles[@]}" -eq 1
-          echo "file=${bundles[0]}" >> "$GITHUB_OUTPUT"
-          echo "name=$(basename "${bundles[0]}")" >> "$GITHUB_OUTPUT"
-      # sbom/composition.json says what the bundle holds and why; the tool
-      # checks it against Blueprint.roc and Blueprint.lock, lists every member
-      # of the archive, and binds SPDX and CycloneDX documents and an evidence
-      # manifest to the bundle's final bytes.
+          tools=(build/release/macos-*.tar.zst)
+          test "${#bundles[@]}" -eq 1 && test "${#tools[@]}" -eq 1
+          test -f "build/release/roc-native-macos-examples-$VERSION.zip" && test -f build/release/macos.roc
+          {
+            echo "file=${bundles[0]}"
+            echo "name=$(basename "${bundles[0]}")"
+            echo "tool=${tools[0]}"
+          } >> "$GITHUB_OUTPUT"
+      # Each composition under sbom/ says what its files hold and why; the
+      # tool checks it against Blueprint.roc and Blueprint.lock, lists every
+      # member of a .tar.zst, and binds SPDX 3, SPDX 2.3 and CycloneDX
+      # documents and an evidence manifest to each file's final bytes.
       - id: sbom
         name: Bind the bundle's SBOM sidecars
         uses: lukewilliamboswell/roc-automation/actions/sbom-sidecars@acc5efdcd929b38e665cd3ae6e694d1c4887f9c7
@@ -195,6 +202,31 @@ jobs:
           version: ${{ needs.validate.outputs.version }}
           target: source
           author: 'Person: Luke Boswell'
+          spdx-2-3: 'true'
+          url-base: https://github.com/${{ github.repository }}/releases/download/${{ needs.validate.outputs.version }}
+      - id: examples-sbom
+        name: Bind the examples archive's SBOM sidecars
+        uses: lukewilliamboswell/roc-automation/actions/sbom-sidecars@acc5efdcd929b38e665cd3ae6e694d1c4887f9c7
+        with:
+          files: build/release/roc-native-macos-examples-${{ needs.validate.outputs.version }}.zip
+          composition: sbom/examples.json
+          version: ${{ needs.validate.outputs.version }}
+          target: source
+          author: 'Person: Luke Boswell'
+          spdx-2-3: 'true'
+          url-base: https://github.com/${{ github.repository }}/releases/download/${{ needs.validate.outputs.version }}
+      - id: tool-sbom
+        name: Bind the macos.roc tool's SBOM sidecars
+        uses: lukewilliamboswell/roc-automation/actions/sbom-sidecars@acc5efdcd929b38e665cd3ae6e694d1c4887f9c7
+        with:
+          files: |
+            ${{ steps.bundle.outputs.tool }}
+            build/release/macos.roc
+          composition: sbom/tool.json
+          version: ${{ needs.validate.outputs.version }}
+          target: source
+          author: 'Person: Luke Boswell'
+          spdx-2-3: 'true'
           url-base: https://github.com/${{ github.repository }}/releases/download/${{ needs.validate.outputs.version }}
       - name: Render the release notes
         env:
@@ -391,18 +423,43 @@ jobs:
         with:
           subject-path: candidate/*
       - id: sbom-file
-        name: Resolve the bundle's CycloneDX SBOM
+        name: Resolve the files that carry an SBOM
         run: |
-          files=(candidate/*.tar.zst.cdx.json)
-          test "${#files[@]}" -eq 1
-          echo "path=${files[0]}" >> "$GITHUB_OUTPUT"
-          echo "bundle=${files[0]%.cdx.json}" >> "$GITHUB_OUTPUT"
-      # The platform's bundle only; the tool's has no SBOM of its own.
+          bundles=()
+          for file in candidate/*.tar.zst; do
+            case "$(basename "$file")" in macos-*) ;; *) bundles+=("$file") ;; esac
+          done
+          tools=(candidate/macos-*.tar.zst)
+          examples=(candidate/roc-native-macos-examples-*.zip)
+          test "${#bundles[@]}" -eq 1 && test "${#tools[@]}" -eq 1 && test "${#examples[@]}" -eq 1
+          for file in "${bundles[0]}" "${tools[0]}" "${examples[0]}" candidate/macos.roc; do
+            test -f "$file.cdx.json" || { echo "::error::$file has no CycloneDX SBOM"; exit 1; }
+          done
+          {
+            echo "bundle=${bundles[0]}"
+            echo "tool=${tools[0]}"
+            echo "examples=${examples[0]}"
+          } >> "$GITHUB_OUTPUT"
       - name: Attest the bundle's SBOM
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6
         with:
           subject-path: ${{ steps.sbom-file.outputs.bundle }}
-          sbom-path: ${{ steps.sbom-file.outputs.path }}
+          sbom-path: ${{ steps.sbom-file.outputs.bundle }}.cdx.json
+      - name: Attest the examples archive's SBOM
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6
+        with:
+          subject-path: ${{ steps.sbom-file.outputs.examples }}
+          sbom-path: ${{ steps.sbom-file.outputs.examples }}.cdx.json
+      - name: Attest the tool package's SBOM
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6
+        with:
+          subject-path: ${{ steps.sbom-file.outputs.tool }}
+          sbom-path: ${{ steps.sbom-file.outputs.tool }}.cdx.json
+      - name: Attest macos.roc's SBOM
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6
+        with:
+          subject-path: candidate/macos.roc
+          sbom-path: candidate/macos.roc.cdx.json
       # Exported beside the files, so provenance can be checked offline.
       - name: Export the attestations
         env:

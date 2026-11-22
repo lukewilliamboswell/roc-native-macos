@@ -1,0 +1,141 @@
+{
+  "profile": "blueprint-spdx-3.0-v1",
+  "components": [
+    {
+      "id": "roc-native-macos-examples",
+      "name": "roc-native-macos examples",
+      "version": "NOASSERTION",
+      "producer": "Person: Luke Boswell",
+      "license": "UPL-1.0",
+      "license_url": "",
+      "identity": "https://github.com/lukewilliamboswell/roc-native-macos/tree/main/examples",
+      "download": "https://github.com/lukewilliamboswell/roc-native-macos",
+      "sha256": "",
+      "modified": "",
+      "target": "",
+      "origin": "reviewed"
+    },
+    {
+      "id": "roc-native-macos-platform",
+      "name": "roc-native-macos platform bundle",
+      "version": "NOASSERTION",
+      "producer": "Person: Luke Boswell",
+      "license": "UPL-1.0",
+      "license_url": "",
+      "identity": "https://github.com/lukewilliamboswell/roc-native-macos",
+      "download": "https://github.com/lukewilliamboswell/roc-native-macos/releases",
+      "sha256": "",
+      "modified": "",
+      "target": "",
+      "origin": "reviewed"
+    }
+  ],
+  "relationships": [
+    {
+      "from": "Subject",
+      "to": "roc-native-macos-examples",
+      "relation": "contains",
+      "scope": "",
+      "basis": "Every example's main.roc from examples/, its header naming the release's platform bundle URL; the recorded cases (tests/examples/<example>/<case>.script and .expected) and fixtures (tests/fixtures) they run with; and a generated README.md. All are this repository's own files."
+    },
+    {
+      "from": "Subject",
+      "to": "roc-native-macos-platform",
+      "relation": "dependsOn",
+      "scope": "",
+      "basis": "Each example's header names the platform bundle published in the same release, by its content-addressed URL; the compiler fetches it when an example builds, and it is not in the archive. It has its own SBOM beside it."
+    }
+  ],
+  "coverage": [
+    {
+      "scope": "release-compiler",
+      "status": "incomplete",
+      "reason": "The archive is written by scripts/release.roc on roc-stable and zip, and the tool's package by roc bundle on the latest Roc nightly at release time; the release notes name both compilers under Compilers. Neither adds code of its own.",
+      "contact": "https://github.com/lukewilliamboswell/roc-native-macos/security"
+    }
+  ],
+  "inputs": [
+    {
+      "input": "program:roc-stable:aarch64-darwin",
+      "component": "",
+      "reason": "Pinned compiler that runs repository scripts; it does not build the examples archive"
+    },
+    {
+      "input": "program:roc-policy:aarch64-darwin",
+      "component": "",
+      "reason": "roc-automation's source-policy utility, which checks the compiler pins in the check gate; it does not build the examples archive"
+    },
+    {
+      "input": "roc-package:7brgwR8YUqfeGrkdfF1V4GPPN7DnP7ftqub9KcrTEZtr",
+      "component": "",
+      "reason": "Package the repository scripts import (https://github.com/roc-lang/basic-cli/releases/download/0.28.1/7brgwR8YUqfeGrkdfF1V4GPPN7DnP7ftqub9KcrTEZtr.tar.zst); scripts do not ship"
+    },
+    {
+      "input": "build-source:roc-7brgwR8YUqfeGrkdfF1V4GPPN7DnP7ftqub9KcrTEZtr",
+      "component": "",
+      "reason": "The same script package, as the source the environment prefetches; scripts do not ship"
+    },
+    {
+      "input": "roc-package:6ZUwqYhCS8PU9Mo6MF7oV82ET2o7KYb57CLKDq4cq4sS",
+      "component": "",
+      "reason": "Package the repository scripts import (https://github.com/roc-lang/http/releases/download/1.0.0/6ZUwqYhCS8PU9Mo6MF7oV82ET2o7KYb57CLKDq4cq4sS.tar.zst); scripts do not ship"
+    },
+    {
+      "input": "build-source:roc-6ZUwqYhCS8PU9Mo6MF7oV82ET2o7KYb57CLKDq4cq4sS",
+      "component": "",
+      "reason": "The same script package, as the source the environment prefetches; scripts do not ship"
+    },
+    {
+      "input": "task:check",
+      "component": "",
+      "reason": "Development or release task; the examples archive's contents are stated by its components"
+    },
+    {
+      "input": "task:build",
+      "component": "",
+      "reason": "Development or release task; the examples archive's contents are stated by its components"
+    },
+    {
+      "input": "task:test",
+      "component": "",
+      "reason": "Development or release task; the examples archive's contents are stated by its components"
+    },
+    {
+      "input": "task:examples",
+      "component": "",
+      "reason": "Development or release task; the examples archive's contents are stated by its components"
+    },
+    {
+      "input": "task:bundle",
+      "component": "",
+      "reason": "Development or release task; the examples archive's contents are stated by its components"
+    },
+    {
+      "input": "task:release",
+      "component": "",
+      "reason": "Development or release task; the examples archive's contents are stated by its components"
+    },
+    {
+      "input": "task:tooling-version",
+      "component": "",
+      "reason": "Development or release task; the examples archive's contents are stated by its components"
+    },
+    {
+      "input": "program:roc-docs:aarch64-darwin",
+      "component": "",
+      "reason": "roc-automation's documentation renderer, which builds the manual; it does not build the examples archive"
+    },
+    {
+      "input": "task:docs",
+      "component": "",
+      "reason": "Development or release task; the examples archive's contents are stated by its components"
+    },
+    {
+      "input": "task:docs-path",
+      "component": "",
+      "reason": "Development or release task; the examples archive's contents are stated by its components"
+    }
+  ],
+  "imported_documents": [],
+  "unavailable_sboms": []
+}

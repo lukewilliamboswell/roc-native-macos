@@ -305,18 +305,18 @@ examples, the scripts, the notes or the workflow runs it as a dry run under
 | Job | Does
 
 | Validate | resolves the Roc nightly for the whole run and the latest final release, and refuses a version that is not SemVer, a dispatch off `main`, an existing tag, or a missing `docs/releases/<version>.adoc`
-| Build (`macos-15`) | selects the pinned Xcode, checks the version against the latest final release (`release -- bump`, below), runs `blueprint run check` (the whole gate, which builds the host and runs every recorded case against it), bundles that same `libhost.a` (`bundle -- --prebuilt`), makes the `macos.roc` tool naming it (`release -- tool`), writes the examples archive (`release -- archive`), builds every archived example against the bundle served on localhost with an empty package cache and runs every recorded case, then with the served `macos.roc` creates, builds and tests a counter (`release -- test`), binds the bundle's SBOM sidecars (`actions/sbom-sidecars`, from `sbom/composition.json`) and renders the notes (`release -- notes`)
+| Build (`macos-15`) | selects the pinned Xcode, checks the version against the latest final release (`release -- bump`, below), runs `blueprint run check` (the whole gate, which builds the host and runs every recorded case against it), bundles that same `libhost.a` (`bundle -- --prebuilt`), makes the `macos.roc` tool naming it (`release -- tool`), writes the examples archive (`release -- archive`), builds every archived example against the bundle served on localhost with an empty package cache and runs every recorded case, then with the served `macos.roc` creates, builds and tests a counter (`release -- test`), binds the SBOM sidecars of the bundle, the examples archive and the tool (`actions/sbom-sidecars`, from `sbom/composition.json`, `sbom/examples.json` and `sbom/tool.json`) and renders the notes (`release -- notes`)
 | Cross-compile (`ubuntu-24.04`, `ubuntu-24.04-arm`, `windows-2025`) | with only Roc installed and no checkout, serves the candidate on localhost, builds every archived example with `--target=arm64mac`, and with `macos.roc` creates a counter and builds `counter.app`; each program must be an arm64 Mach-O executable. It also records what `roc build` without `--target` does there.
 | Run the cross-compiled apps (`macos-15`) | runs every recorded case against each system's cross-compiled apps and the counter's against its `counter.app` (`release -- test DIR --binaries BIN`)
-| Attest | build-provenance attestations for every file, an SBOM attestation for the bundle, exported as `<file>.intoto.jsonl`
+| Attest | build-provenance attestations for every file, and SBOM attestations for the bundle, the examples archive, the tool's package and `macos.roc`, exported as `<file>.intoto.jsonl`
 | Publish (`release` environment) | checks out nothing and runs no repository code: `actions/publish-release` stages a draft at the tested commit, downloads every asset back and compares it with the tested file, then publishes
 |===
 
-A release holds the bundle `<hash>.tar.zst`, its SBOM documents
-(`.spdx.json`, `.spdx-2.3.json`, `.cdx.json`, `.sbom-manifest.json`),
-`macos.roc` and the tool's package `macos-<hash>.tar.zst`,
-`roc-native-macos-examples-<version>.zip` (every example naming the release
-URL, with its recorded cases and fixtures), and the exported attestations. The
+A release holds the bundle `<hash>.tar.zst`, `macos.roc` and the tool's
+package `macos-<hash>.tar.zst`, `roc-native-macos-examples-<version>.zip`
+(every example naming the release URL, with its recorded cases and
+fixtures), each with its SBOM documents (`.spdx.json`, `.spdx-2.3.json`,
+`.cdx.json`, `.sbom-manifest.json`), and the exported attestations. The
 notes are `docs/releases/<version>.adoc` with `{platform-url}`,
 `{examples-url}` and `{launcher-url}` (`macos.roc`) filled in, followed by
 the compilers, the Xcode and Swift versions, and every file's SHA-256.
