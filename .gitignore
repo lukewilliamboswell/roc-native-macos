@@ -16,3 +16,6 @@ examples/*/*.app/
 
 # scripts/bundle.roc: the bundle, its staging tree and its consumer test
 build/
+
+# roc-docs output, from building the manual locally
+.docs-out/

@@ -7,15 +7,17 @@ roc-native-macos is a Roc platform for native macOS apps, built on the
 roc-signals reactive engine with a Swift host that draws AppKit controls.
 It is an early proof of concept.
 
-App authors start with the README's getting started and then
-xref:ui.adoc#builders[the Ui reference]. Contributors start with
+App authors need only Roc and a release: start with
+xref:apps.adoc#get-started[Build an app], then look things up in
+xref:ui.adoc#builders[the Ui reference]. Contributors, who change the
+platform itself from a checkout, start with
 xref:contributing.adoc#build-the-platform[Contributing] and
 xref:architecture.adoc#how-it-fits-together[Architecture].
+
+include::apps.adoc[leveloffset=+1]
 
 include::ui.adoc[leveloffset=+1]
 
 include::architecture.adoc[leveloffset=+1]
 
 include::contributing.adoc[leveloffset=+1]
-
-include::roc-automation-review.adoc[leveloffset=+1]

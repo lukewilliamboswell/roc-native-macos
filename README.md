@@ -35,32 +35,9 @@ roc macos.roc run
 ```
 
 `init` writes a counter app, `main.roc`, whose header names the platform
-release, two recorded runs of it in `tests/`, and a copy of `macos.roc`. `run`
-builds `counter.app` and starts it, with its output (`dbg`, a crash report) in
-the terminal. Edit `main.roc` and run it again.
-
-| Command | What it does |
-|---|---|
-| `roc macos.roc init [DIR]` | create an app in `DIR`, or in this directory |
-| `roc macos.roc build` | build `<name>.app`, on any system |
-| `roc macos.roc run` | build the app and start it, on an Apple silicon Mac |
-| `roc macos.roc test` | build the app and run its recorded cases, on an Apple silicon Mac; `--update` records what they print now |
-
-`build` and `run` take `--id ID` (the bundle identifier, by default
-`com.example.<name>`) and `--name TEXT` (the name in the menu bar), where
-`<name>` is the app's directory. `roc macos.roc COMMAND --help` describes a
-command.
-
-A recorded case is `tests/<case>.script`, steps such as `click:+;dump;quit`
-that drive the app's real controls without taking focus, and
-`tests/<case>.expected`, what that run prints. The steps are listed in
-[Driving an app](docs/contributing.adoc#driving-an-app).
-
-`build` runs `roc build main.roc --target=arm64mac` and puts the program in a
-minimal `<name>.app`. Roc's linker signs the program ad hoc wherever it is
-built. A `.app` copied to a Mac from elsewhere (downloaded, or built on Linux
-or Windows) may be quarantined by Gatekeeper, which then refuses to open it;
-clear that with `xattr -dr com.apple.quarantine counter.app`.
+release, and two recorded runs of it in `tests/`. `run` builds `counter.app`
+and starts it. Edit `main.roc` and run it again; `roc macos.roc build` builds
+the app on any system, and `roc macos.roc test` runs its recorded cases.
 
 An app is one `main.roc`. A smaller counter than the one `init` writes:
 
@@ -93,80 +70,16 @@ view = |count|
 	)
 ```
 
-To build against an unreleased change, see
-[the bundle](docs/contributing.adoc#the-bundle) in Contributing.
-
-## Writing an app
-
-**Programs and state.** `Engine.program(|| view)` is an app with no store;
-local state comes from `Engine.state(initial, |s| ...)`, as in the counter.
-An app with shared state declares a store of cells and builds its view from
-their signals:
-
-```roc
-main : Engine.Program(_)
-main = Engine.program_store({}, |_boot| store, |_boot| view())
-
-store = Engine.store(
-	Stopwatch,
-	{
-		running: Engine.cell(Bool.False),
-		elapsed_ms: Engine.cell(0.I64),
-	}.Engine.Cells,
-)
-
-cells = store.cells()
-```
-
-A store needs at least two cells: a single-field record builder builds but
-fails at run time with current compilers (`roc test` reports it).
-
-**The view.** Every builder in `Ui` is a native control: stacks, forms,
-scroll areas, lists backed by `NSTableView`, labels, buttons, text fields,
-checkboxes, sliders, pop-up menus, segmented controls and tabs, SF Symbols,
-progress bars, keyboard shortcuts, file pickers and drop zones, and `box`
-surfaces. Each takes its subject first and a props record of defaulted
-fields beside it (containers take their children last); name only what
-differs: `Ui.text("Saved", { style: Caption1, color: SecondaryLabel })`,
-`Ui.vstack({ spacing: 12, align: Fill }, kids)`. Looks are AppKit's own:
-text styles, semantic colours that follow dark mode, control sizes, bezels
-and SF Symbols. State is a signal and looks are values: a literal text is a
-constant and `"${count} left"` follows `count`; when a look must follow state
-too, the `_s` form takes the props as a signal,
-`Ui.text_s(total, over.map(|o| if (o) { color: Red } else {}))`. An app
-shares a look as a plain annotated value, `theme : Theme`, not a stylesheet.
-
-**Events.** Handlers are props fields that return writes to state:
-`Ui.button("Reset", { on_press: Engine.handle(|_| [cells.elapsed_ms.set(0)]) })`.
-A text field's `on_input` receives the text, a checkbox's `on_change` its
-new state.
-
-**Effects.** HTTP requests, timers and intervals, file reads and digests
-are asks that a watch site issues when a signal changes, and whose answers
-come back as writes. `Engine.watch_latest` cancels what it issued when the
-signal changes again:
-
-```roc
-Engine.watch_latest(
-	cells.request.signal(),
-	|r| if r.active [Engine.http({ url: r.url, timeout: Ms(2000), cache: NoStore })] else [],
-	Engine.react(answered),
-)
-```
-
-Files reach the app as handles, never bytes: `Ui.file_button` and
-`Ui.drop_zone` deliver `File`s, which `sha256`, `read_utf8`, `read_bytes`
-and `File.save` act on. Local storage is `UserDefaults`: declare the keys in
-`Engine.program_store({ storage_keys: ["todos"] }, ...)`, read them at boot
-with `Engine.boot_storage` and write them with
-`Engine.command(StorageSet(key, text))`.
-
-Each example below is a complete app. [The `Ui` reference](docs/ui.adoc)
-lists every builder with its signature, what it draws and the events it
-sends. The engine itself (`Engine`: signals, stores, tables, watches) is
-documented in roc-signals.
+[Build an app](docs/apps.adoc) covers the tool, writing an app, testing it
+with recorded runs, and sharing it. [The `Ui` reference](docs/ui.adoc) lists
+every builder with its signature, what it draws and the events it sends.
 
 ## Examples
+
+Each example is a complete app. To try one, download the examples archive
+from the [latest release](https://github.com/lukewilliamboswell/roc-native-macos/releases/latest)
+and run it with `macos.roc`, as [Try an example](docs/apps.adoc#try-an-example)
+describes.
 
 | Example | Shows |
 |---|---|
@@ -178,25 +91,10 @@ documented in roc-signals.
 | [`http-fetch`](examples/http-fetch/main.roc)<br><img src="docs/images/http-fetch.png" width="200" alt="http-fetch"> | `Engine.http` under `watch_latest`: Fetch, Cancel (a pure cancel), a second Fetch superseding the first, an optional 2 s timeout, transfer progress (`with_progress`), and a status badge whose colour follows the answer (`box_s`) |
 | [`file-inspector`](examples/file-inspector/main.roc)<br><img src="docs/images/file-inspector.png" width="200" alt="file-inspector"> | `Ui.file_button` and a `Ui.drop_zone` delivering `File` handles, sizes in KB and MB; for an inspected file its SHA-256 (`sha256`), its first 200 bytes as text or "binary" (`slice`, `read_bytes`), its URL (`object_url`) and "Save Copy…" (`File.save`); Clear releases the handles |
 
-The examples name the platform by its path in the checkout
-(`../../platform/main.roc`). To try one as your own app, copy its `main.roc`
-over the one `init` wrote and keep `init`'s platform line. To run them all
-here, build the platform first:
+## Contributing
 
-```sh
-scripts/build.sh                    # the platform and every example
-./examples/todos/todos
-```
-
-## More
-
-- [The `Ui` reference](docs/ui.adoc), for app authors.
-- [Architecture](docs/architecture.adoc): the engine, the host, the wire,
-  effects and threads, files, glue and linker inputs.
-- [Contributing](docs/contributing.adoc): building the platform, the bundle,
-  driving apps with `ROC_SCRIPT`, the check gate and findings.
-  [AGENTS.md](AGENTS.md) has the repository's rules.
-- Report vulnerabilities as [SECURITY.md](SECURITY.md) describes.
+To change the platform itself, see [CONTRIBUTING.md](CONTRIBUTING.md). Report
+vulnerabilities as [SECURITY.md](SECURITY.md) describes.
 
 ## Licence
 
