@@ -52,7 +52,25 @@ private func text(_ bytes: UnsafePointer<UInt8>?, _ len: Int) -> String {
     return String(decoding: UnsafeBufferPointer(start: bytes, count: len), as: UTF8.self)
 }
 
+/// Set once the app is stopping on an error: no further turn runs, so the
+/// alert's modal loop cannot re-enter Roc from a timer or queued event.
+var halted = false
+
+/// Stop on an error: print it, show it in an alert (not in a scripted run,
+/// which must never block), then exit non-zero. A Roc crash arrives here
+/// from inside a Roc call, so nothing after it calls Roc again.
 func fatal(_ message: String) -> Never {
     fputs("roc-native-macos: \(message)\n", __stderrp)
+    if !halted, ProcessInfo.processInfo.environment["ROC_SCRIPT"] == nil, Thread.isMainThread {
+        halted = true
+        let alert = NSAlert()
+        alert.alertStyle = .critical
+        alert.messageText = "\(ProcessInfo.processInfo.processName) stopped"
+        alert.informativeText = message
+        alert.addButton(withTitle: "Quit")
+        NSApp.activate(ignoringOtherApps: true)
+        alert.runModal()
+    }
+    halted = true
     exit(1)
 }

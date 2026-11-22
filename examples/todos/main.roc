@@ -5,9 +5,10 @@ import pf.Ui
 
 ## A to-do list, after the roc-signals tutorial: a table of to-dos in the
 ## store, a form that adds one, a filtered view of the table whose rows each
-## own a checkbox and a remove button, and a count of what is left.
+## own a checkbox and a remove button, and a count of what is left. The
+## list is saved under the local storage key `todos` and read back at boot.
 main : Engine.Program(_)
-main = Engine.program_store({}, |_boot| store, |_boot| view())
+main = Engine.program_store({ storage_keys: ["todos"] }, start, |_boot| view())
 
 Todo : { title : Str, done : Bool }
 
@@ -22,12 +23,51 @@ store = Engine.store(
 
 cells = store.cells()
 
+## The store a launch starts with: the saved to-dos under the keys 0, 1, 2
+## and so on, and the key after the last as the next.
+start : Engine.Boot -> Engine.Store(_, _)
+start = |boot| {
+	saved = decode(Engine.boot_storage(boot, "todos") ?? "")
+	match Table.from_list(saved.map_with_index(|todo, index| { key: index, row: todo })) {
+		Ok(todos) =>
+			store
+				.with_initial(cells.todos, todos)
+				.with_initial(cells.next, saved.len())
+		Err(DuplicateKey(place)) => crash "start: the saved place ${place.to_str()} repeats"
+	}
+}
+
+## The saved list: one to-do per line in key order, `+` for done and `-`
+## for open.
+encode : Table(U64, Todo) -> Str
+encode = |table| {
+	rows = table.fold([], |found, key, todo| found.append({ key, todo })).sort_by(|held| held.key)
+	Str.join_with(rows.map(|{ todo, .. }| "${if (todo.done) "+" else "-"}${todo.title}"), "\n")
+}
+
+## The to-dos a saved text holds, in its order. A line that starts with
+## neither sign is skipped.
+decode : Str -> List(Todo)
+decode = |text|
+	text.split_on("\n").keep_oks(
+		|line|
+			if line.starts_with("+") {
+				Ok({ title: line.drop_prefix("+"), done: Bool.True })
+			} else if line.starts_with("-") {
+				Ok({ title: line.drop_prefix("-"), done: Bool.False })
+			} else {
+				Err(Blank)
+			},
+	)
+
 view : () -> Elem(Engine.StoreRoot(_))
 view = || {
 	todos = cells.todos.signal()
 	Ui.vstack(
 		[
 			Ui.title("To-do"),
+			## Every change to the table after mount is saved.
+			Engine.watch_changes(todos.map(encode), |text| [Engine.command(StorageSet("todos", text))], Engine.ignore({})),
 			Ui.form(
 				Engine.handle_by(adding(), |at, _| added(at)),
 				[
@@ -127,3 +167,10 @@ expect {
 }
 
 expect added({ title: "", next: 3 }).is_empty()
+
+## The saved text reads back as the same to-dos, in the order they were added.
+expect {
+	todos = [{ title: "Water the plants", done: Bool.False }, { title: "Buy milk", done: Bool.True }]
+	table = Table.from_list(todos.map_with_index(|todo, index| { key: index, row: todo }))?
+	encode(table) == "-Water the plants\n+Buy milk" and decode(encode(table)) == todos
+}

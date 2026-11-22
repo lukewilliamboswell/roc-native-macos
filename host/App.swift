@@ -30,6 +30,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ app: NSApplication) -> Bool { true }
+
+    /// Closing the window or quitting tears the engine down once.
+    func applicationWillTerminate(_ note: Notification) { host?.stop() }
+}
+
+extension Host {
+    /// Teardown: stop every timer, then release the engine (`roc_engine_drop`)
+    /// once. No turn runs after it.
+    func stop() {
+        guard !halted, !engine.dropped else { return }
+        for timer in timers.values { timer.invalidate() }
+        timers.removeAll()
+        engine.drop()
+        trace("DROP")
+    }
 }
 
 @main

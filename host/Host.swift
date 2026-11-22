@@ -66,6 +66,7 @@ final class Host: NSObject, NSTextFieldDelegate {
     // MARK: Turns
 
     func send(_ node: UInt32, _ handler: UInt32, _ payload: [UInt8]) {
+        if halted || engine.dropped { return }
         if applying { queued.append((node, handler, payload)); return }
         apply(engine.event(node: node, handler: handler, payload: payload))
         while !queued.isEmpty {
@@ -204,7 +205,7 @@ final class Host: NSObject, NSTextFieldDelegate {
                 _ = r.u8(); _ = r.str()
             case 16: // STORAGE op key [value]
                 let op = r.u8(), key = r.str()
-                if op == 1 || op == 3 { UserDefaults.standard.set(r.str(), forKey: key) } else { UserDefaults.standard.removeObject(forKey: key) }
+                storage(op, key, &r)
             case 17: // TITLE text
                 window.title = r.str()
             case 18: // REF op node ...

@@ -37,6 +37,35 @@ build_example() {
 	name="$1"
 	echo "building examples/$name"
 	(cd "$here/examples/$name" && "$ROC" build main.roc --output="$here/examples/$name/$name")
+	bundle_example "$name"
+}
+
+# A minimal .app beside the bare binary, so `open examples/<name>/<name>.app`
+# launches it with a bundle identifier (window tabbing, UserDefaults domain).
+# LSMinimumSystemVersion matches the minos Roc's linker writes (11.0).
+bundle_example() {
+	name="$1"
+	app="$here/examples/$name/$name.app"
+	rm -rf "$app"
+	mkdir -p "$app/Contents/MacOS"
+	cp "$here/examples/$name/$name" "$app/Contents/MacOS/$name"
+	cat >"$app/Contents/Info.plist" <<-PLIST
+	<?xml version="1.0" encoding="UTF-8"?>
+	<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+	<plist version="1.0">
+	<dict>
+		<key>CFBundleIdentifier</key><string>dev.roc.native.$name</string>
+		<key>CFBundleName</key><string>$name</string>
+		<key>CFBundleExecutable</key><string>$name</string>
+		<key>CFBundlePackageType</key><string>APPL</string>
+		<key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
+		<key>CFBundleShortVersionString</key><string>0.1</string>
+		<key>NSPrincipalClass</key><string>NSApplication</string>
+		<key>NSHighResolutionCapable</key><true/>
+		<key>LSMinimumSystemVersion</key><string>11.0</string>
+	</dict>
+	</plist>
+	PLIST
 }
 
 if [[ $# -eq 0 ]]; then

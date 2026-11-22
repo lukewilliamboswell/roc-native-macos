@@ -20,9 +20,9 @@ extension Host {
             }
             RunLoop.main.add(timer, forMode: .common)
             timers[id] = timer
-        case 2, 17: // storage reads: answered one task later
+        case 2, 17: // local and session storage reads: answered one task later
             let key = r.str()
-            let value = UserDefaults.standard.string(forKey: key)
+            let value = kind == 2 ? UserDefaults.standard.string(forKey: key) : SessionStorage.values[key]
             DispatchQueue.main.async {
                 self.send(EngineInstance.effectNode, id, value.map { [3] + Array($0.utf8) } ?? [4])
             }
