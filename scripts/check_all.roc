@@ -47,38 +47,60 @@ main! = |raw_args| {
 			return Err(Exit(2))
 		}
 	}
+	colour = { out: colour!(1), err: colour!(2) }
 	var $problems = []
 	for stage in chosen.stages {
 		note!("== ${stage}")
 		start = Monotonic.now!()
-		found = run_stage!(stage, chosen.update)?
-		note!("== ${stage}: ${if (found.is_empty()) "passed" else "failed"} in ${Repo.millis(Monotonic.elapsed!(start).to_millis())}")
+		found = run_stage!(stage, chosen.update, colour.out)?
+		result = Repo.paint(if (found.is_empty()) "passed" else "failed", colour.out)
+		note!("== ${stage}: ${result} in ${Repo.millis(Monotonic.elapsed!(start).to_millis())}")
 		$problems = $problems.concat(found.map(|problem| "${stage}: ${problem}"))
 	}
 	if $problems.is_empty() {
-		note!("check: passed (${Str.join_with(chosen.stages, ", ")})")
+		note!("check: ${Repo.paint("passed", colour.out)} (${Str.join_with(chosen.stages, ", ")})")
 		Ok({})
 	} else {
-		warn!("\nFailed")
+		warn!("\n${Repo.paint("Failed", colour.err)}")
 		for problem in $problems {
 			warn!("  ${problem}")
 		}
-		warn!("check: ${$problems.len().to_str()} problems")
+		warn!("check: ${Repo.paint("failed", colour.err)} with ${$problems.len().to_str()} problems")
 		Err(Exit(1))
 	}
 }
 
-run_stage! : Str, Bool => Try(List(Str), _)
-run_stage! = |stage, update|
+## Whether to colour what is written to file descriptor `fd` (1 or 2).
+## Colour is an aid, never the only signal: the word is always printed, and
+## it is left plain when `NO_COLOR` is set or nobody is watching a terminal.
+colour! : U8 => Bool
+colour! = |fd| {
+	no_colour = match Env.var_str!(OsStr.from_str("NO_COLOR")) {
+		Ok(value) => !value.is_empty()
+		Err(_) => Bool.False
+	}
+	if no_colour {
+		Bool.False
+	} else {
+		# `test` inherits this script's descriptors, and -t asks whether one is a terminal.
+		match Cmd.new("test").args(["-t", OsStr.from_str(fd.to_str())]).inherit_stdio().run!() {
+			Ok(output) => output.status == Exited(0)
+			Err(_) => Bool.False
+		}
+	}
+}
+
+run_stage! : Str, Bool, Bool => Try(List(Str), _)
+run_stage! = |stage, update, colour|
 	match stage {
 		"pins" => pins!()
 		"engine" => engine!()
-		"fmt" => fmt!()
+		"fmt" => fmt!(colour)
 		"tool" => tool!(update)
 		"scripts" => Ok(run!("roc-stable", ["test", "scripts/check_all.roc"])?.concat(run!("roc-stable", ["test", "scripts/bundle.roc"])?).concat(run!("roc-stable", ["test", "scripts/release.roc"])?).concat(run!("roc-stable", ["test", "scripts/record_demos.roc"])?))
 		"build" => build!()
 		"test" => test!()
-		"examples" => examples!(update)
+		"examples" => examples!(update, colour)
 		"bundle" => run!("roc-stable", ["scripts/bundle.roc", "--", "--prebuilt", "--test"])
 		_ => Ok(["no such stage"])
 	}
@@ -115,13 +137,13 @@ engine! = || {
 	Ok(missing.map(|path| "tests/engine-modules.sha256 records no digest for ${path}").concat(digests))
 }
 
-fmt! : () => Try(List(Str), _)
-fmt! = || {
+fmt! : Bool => Try(List(Str), _)
+fmt! = |colour| {
 	sources = tracked!(["platform", "glue", "examples", "cli"])?.keep_if(|path| path.ends_with(".roc"))
 	var $checked = []
 	for path in sources {
 		match Repo.fmt_skip(path) {
-			Ok(reason) => note!(" SKIP ${path}: ${reason}")
+			Ok(reason) => note!(" ${Repo.paint("SKIP", colour)} ${path}: ${reason}")
 			Err(Checked) => {
 				$checked = $checked.append(path)
 			}
@@ -174,8 +196,8 @@ examples_present! = || {
 
 ## Every recorded case of every example: the built app, run with the case's
 ## `ROC_SCRIPT` steps, must exit 0 having printed exactly the recorded output.
-examples! : Bool => Try(List(Str), _)
-examples! = |update| {
+examples! : Bool, Bool => Try(List(Str), _)
+examples! = |update, colour| {
 	var $cases = []
 	var $problems = []
 	for example in examples_present!()? {
@@ -207,7 +229,7 @@ examples! = |update| {
 			Ok(Recorded) => "SAVE"
 			Err(_) => "FAIL"
 		}
-		note!(Repo.progress({ index: $index, total: $cases.len(), name: "${case.example}/${case.name}", outcome: label, ms }))
+		note!(Repo.progress({ index: $index, total: $cases.len(), name: "${case.example}/${case.name}", outcome: Repo.paint(label, colour), ms }))
 		match outcome {
 			Ok(_) => {
 				$passed = $passed + 1

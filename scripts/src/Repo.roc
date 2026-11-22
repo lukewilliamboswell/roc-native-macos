@@ -55,6 +55,19 @@ Repo := [].{
 			Err(_) => Err(Checked)
 		}
 
+	## A result word, in its colour when `colour` is set: green for a pass,
+	## red for a failure, yellow for a skip or a recording. The word itself
+	## is always printed.
+	paint : Str, Bool -> Str
+	paint = |word, colour| {
+		code = match word {
+			"PASS" | "passed" => "32"
+			"FAIL" | "failed" | "Failed" => "31"
+			_ => "33"
+		}
+		if (colour) "\u(001b)[${code}m${word}\u(001b)[0m" else word
+	}
+
 	## A duration as whole milliseconds with digit separators: `1_204ms`.
 	millis : U64 -> Str
 	millis = |ms| "${Repo.separated(ms)}ms"
@@ -92,6 +105,11 @@ expect Repo.selection(["test", "build"]) == Ok({ stages: ["build", "test"], upda
 expect Repo.selection(["bogus"]) == Err(Unknown("bogus"))
 
 expect Repo.engine_modules.len() == 13
+
+expect Repo.paint("PASS", Bool.False) == "PASS"
+expect Repo.paint("PASS", Bool.True) == "\u(001b)[32mPASS\u(001b)[0m"
+expect Repo.paint("failed", Bool.True) == "\u(001b)[31mfailed\u(001b)[0m"
+expect Repo.paint("SKIP", Bool.True) == "\u(001b)[33mSKIP\u(001b)[0m"
 
 expect Repo.fmt_skip("platform/Core.roc") == Err(Checked)
 expect Repo.fmt_skip("examples/todos/main.roc").is_ok()

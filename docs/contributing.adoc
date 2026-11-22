@@ -281,7 +281,7 @@ same one CI runs on `macos-15`. Its stages, in order:
 | `bundle` | the bundle from the `build` stage's inputs, and its consumer test: `macos.roc` `init`, `build` and `test` against it
 |===
 
-`check -- STAGE...` runs only the named stages.
+`check -- STAGE...` runs only the named stages. On a terminal the result words (`PASS`, `FAIL`, `SKIP`, `passed`, `failed`) are coloured; `NO_COLOR` or a redirected output leaves them plain, and the word is always printed.
 
 [#releasing]
 == Releasing
