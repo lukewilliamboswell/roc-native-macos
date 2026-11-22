@@ -10,6 +10,11 @@ examples/*/*.app/
 !examples/*/*.roc
 !examples/*/demo.script
 !examples/*/assets/
+# The bench harnesses' binaries (bench/<name>/<name>), beside their sources
+bench/*/*
+!bench/*/*.roc
+!bench/*/*.adoc
+!bench/*/*.sh
 
 # Blueprint's generated environment and links
 .blueprint/

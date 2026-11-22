@@ -147,7 +147,8 @@ extension Host {
 
     /// Give an element its AppKit view, decided once by its name.
     func makeView(_ n: Node) {
-        guard n.view == nil, let name = n.name else { return }
+        // `ui-hover` has no view: its child's stands in its place (Hover.swift).
+        guard n.view == nil, let name = n.name, name != "ui-hover" else { return }
         let view: NSView
         switch name {
         case "ui-hstack", "ui-vstack", "ui-form", "ui-row":
@@ -246,7 +247,17 @@ extension Host {
 
     func setAttr(_ n: Node, _ name: String, _ value: String?) {
         if let value { n.attrs[name] = value } else { n.attrs.removeValue(forKey: name) }
+        if !Host.paintOnly(name) { relayout = true }
         applyAttr(n, name, value)
+    }
+
+    /// Attributes that change how a view draws but never its size or place:
+    /// a batch that only sets these needs a display, not a layout pass.
+    static func paintOnly(_ name: String) -> Bool {
+        switch name {
+        case "fill", "border", "radius", "color": return true
+        default: return false
+        }
     }
 
     /// Apply one attribute to the live control. A control's own state
@@ -759,7 +770,13 @@ extension Host {
     /// views, a list applies its row changes. Then size the window: to fit
     /// its content exactly, or, once it holds a scroll area or list, never
     /// smaller than its content needs (the scroll areas take the slack).
+    /// A batch that changed no structure, text or layout attribute (a
+    /// colour change, the common case of a hover or a timer) skips all of
+    /// it: measuring the window rebuilds a constraint solver over every
+    /// view, which at 10,000 views takes seconds.
     func sync() {
+        guard relayout || !dirty.isEmpty else { return }
+        relayout = false
         var seen = Set<ObjectIdentifier>()
         let pending = dirty
         dirty = []
@@ -812,7 +829,7 @@ extension Host {
             // the stack's spare room: the stack fills (`.fill`) and the
             // child, which hugs least, grows.
             let along = stack.orientation == .vertical ? "height" : "width"
-            let grows = n.children.contains { $0.name == "ui-spacer" || ($0.attrs[along] ?? "auto").hasPrefix("fill") }
+            let grows = n.children.compactMap(shownNode).contains { $0.name == "ui-spacer" || ($0.attrs[along] ?? "auto").hasPrefix("fill") }
             let distribution: NSStackView.Distribution = grows || (any && stack.orientation == .vertical) ? .fill : .gravityAreas
             if stack.distribution != distribution { stack.distribution = distribution }
         }
@@ -828,7 +845,7 @@ extension Host {
         case let box as ListBox:
             box.finish(owner)
         case let surface as Surface:
-            surface.hold(owner.children.first { $0.name != nil }?.view)
+            surface.hold(owner.children.first { $0.name != nil }.flatMap(shownView))
         case let button as NSButton where owner.name == "ui-button" || owner.name == "ui-file-button":
             button.title = owner.textContent
             setTitleDisplay(button, owner.attrs["title-display"] ?? "visible")
@@ -850,10 +867,9 @@ extension Host {
         let views: [NSView] = owner.children.compactMap { child in
             switch child.kind {
             case .element:
-                if let v = child.view {
-                    fills[ObjectIdentifier(v)] = all || (child.attrs[across] ?? "auto").hasPrefix("fill")
-                }
-                return child.view
+                guard let shown = shownNode(child), let v = shown.view else { return nil }
+                fills[ObjectIdentifier(v)] = all || (shown.attrs[across] ?? "auto").hasPrefix("fill")
+                return v
             case .comment: return nil
             case .text:
                 if child.text.isEmpty { return nil }

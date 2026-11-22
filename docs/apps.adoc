@@ -283,11 +283,20 @@ Steps are separated by `;` and run every 100 ms.
 | `key:cmd+shift+n` | presses a key, delivered as if nothing had focus; the modifiers are `cmd`, `shift`, `ctrl` and `alt` (or `opt`)
 | `files:<path>,<path>…` | gives files as if picked on the first file button or drop zone, with no panel
 | `drop:<path>,…` | gives files as if dropped on the first drop zone
+| `hover:<text>`, `hover:#<k>` | moves the pointer to the middle of the `Ui.hover` whose text is that, or of the k-th one in the tree
+| `move:<x>,<y>` | moves the pointer to that point of the window's content, in points from its top-left corner
+| `leave` | moves the pointer out of the window
+| `sweep:<x0>,<y0>,<x1>,<y1>,<moves>,<ms>` | moves the pointer along a line in `moves` steps, one every `ms`; the next step follows the last move, and it prints how long the sweep took
+| `stats` | with `ROC_BENCH=1`, prints the timings so far to standard output
 | `wait:<ms>` | waits
 | `dump` | prints the window size (`--- 360x237`), then the view tree; a list shows its visible rows, and a text, box or drop zone the look attributes that differ from the usual (`{color=secondary-label text-style=caption1}`)
 | `window` | prints `window <number>`, for `screencapture -l<number>`
 | `quit` | quits, through the same teardown as quitting
 |===
+
+The pointer steps drive the same hit test the mouse does, and a scripted run
+ignores the real mouse, so where your pointer happens to be never changes a
+run.
 
 A case reads `files:` and `drop:` paths relative to the app's directory. An
 unknown step, or a `click:`, `toggle:`, `choose:` or `select:` that finds no
@@ -307,6 +316,7 @@ as in `ROC_APPEARANCE=dark roc macos.roc run`.
 | `ROC_SCRIPT` | runs these steps, as a recorded case does: `ROC_SCRIPT="click:+;dump;quit" .macos/counter`
 | `ROC_APPEARANCE=dark` (or `light`) | draws the app in that appearance whatever the system's, to check both looks
 | `ROC_TRACE=1` | logs effect requests, cancellations, minted and released file handles, the teardown (`DROP`), and each turn's engine and host time
+| `ROC_BENCH=1` | times each operation (a mount, an event, a pointer move, a timer) in four phases: engine, applying the commands, layout and a forced display, and shows them live in the window; `stats` prints them with the view count and RSS
 | `ROC_POISON=1` | fills every new allocation with `Z`, to expose reads of uninitialised memory
 | `ROC_SAVE_DIR` | where a scripted save writes; without it a scripted save is skipped
 | `ROC_MAX_FILE_BYTES` | lowers the file ceiling, to check `TooLarge`
