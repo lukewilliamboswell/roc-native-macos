@@ -48,6 +48,10 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
+      # The Swift compiler decides which runtime symbols the host references,
+      # and so what the stub audit accepts: select the reviewed Xcode, the
+      # same one release.yml builds with.
+      - uses: ./.github/actions/setup-xcode
       - uses: lukewilliamboswell/roc-automation/actions/setup-blueprint@6c796f299012707d2e9bad23fd6449ed93f1f475
         with:
           cache: 'true'

@@ -17,11 +17,17 @@ HTML, no web view) and updates only what changed.
 
 ## Quick start
 
-You need Apple silicon macOS and a Roc compiler: a current
-[nightly](https://github.com/roc-lang/nightlies/releases) or 0.1.0 RC1.
-Intel Macs (`x64mac`) are not supported.
+Building an app needs only a Roc compiler, a current
+[nightly](https://github.com/roc-lang/nightlies/releases) or 0.1.0 RC1, on
+any system: macOS, Linux or Windows. The platform package carries the prebuilt
+Swift host and its linker inputs, so no Xcode, Swift, Apple SDK or Mac is
+involved. The app runs on Apple silicon Macs with macOS 11 or later; Intel
+Macs (`x64mac`) are not supported.
 
-Create `main.roc`:
+Create `main.roc`, with the `platform` URL from the
+[latest release](https://github.com/lukewilliamboswell/roc-native-macos/releases/latest)
+(its notes give the whole header line; the URL ends in the bundle's content
+hash):
 
 ```roc
 app [main] { pf: platform "https://github.com/lukewilliamboswell/roc-native-macos/releases/download/<version>/<hash>.tar.zst" }
@@ -52,34 +58,23 @@ view = |count|
 	)
 ```
 
-> [!IMPORTANT]
-> No release is published yet, so the URL above is a placeholder. Until there
-> is one, build the bundle from a checkout and serve it on localhost (Roc
-> accepts `http` URLs for localhost only):
->
-> ```sh
-> git clone https://github.com/lukewilliamboswell/roc-native-macos
-> cd roc-native-macos
-> blueprint run bundle                    # prints build/platform/<hash>.tar.zst
-> python3 -m http.server 8000 --bind :: --directory build/platform
-> ```
->
-> Then name `platform "http://localhost:8000/<hash>.tar.zst"` in the header,
-> or name the checkout's `platform/main.roc` by a relative path.
-> Building the bundle needs Xcode's `swiftc` and
-> [Blueprint](https://github.com/lukewilliamboswell/roc-blueprint); see
-> [Contributing](docs/contributing.adoc#build-the-platform).
-
-Build and run it:
+Build it:
 
 ```sh
-roc build main.roc
-./main
+roc build main.roc                      # on an Apple silicon Mac
+roc build main.roc --target=arm64mac    # anywhere else: Linux, Windows or an Intel Mac
 ```
+
+The platform has one target, `arm64mac`. Without `--target`, `roc build`
+builds for the machine it runs on, so on any other system it stops with
+`roc build requires --target or a platform target for ... the detected native host`.
+Either way the result is `main`, a macOS executable: run `./main` on the Mac.
 
 The window opens sized to its content. To launch it from the Finder or with
 `open`, put the binary in a minimal `.app` bundle with an `Info.plist` that
 names a `CFBundleIdentifier`; `scripts/build.sh` shows one (`bundle_example`).
+To build against an unreleased change, see
+[the bundle](docs/contributing.adoc#the-bundle) in Contributing.
 
 ## Writing an app
 

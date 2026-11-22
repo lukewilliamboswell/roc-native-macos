@@ -1,0 +1,412 @@
+name: Release
+
+# Builds what a release contains once, tests those exact bytes, and publishes
+# them once (roc-automation's "A platform's release workflow").
+#
+# A maintainer dispatches it from the default branch with a version, such as
+# 0.0.1 or 0.1.0-rc1; the publisher creates the tag, which is the bare version.
+# A pull request that changes what a release is made of runs the same build
+# and tests as a dry run, under 0.0.1-dryrun, and publishes nothing.
+#
+#   validate   the version, the default branch, an unused tag, the notes
+#   build      macos-15: the whole check gate, then the bundle from the very
+#              host the gate built and tested, the examples archive, every
+#              archived example built against the served bundle and run, the
+#              bundle's SBOM sidecars and the notes
+#   cross      Linux x64, Linux arm64 and Windows, with nothing but Roc: every
+#              archived example cross-compiled for arm64mac from the bundle
+#   cross-run  macos-15: those cross-compiled apps run their recorded cases
+#   attest     build provenance for every published file
+#   publish    actions/publish-release: draft, verify every asset, publish
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Release version without a v prefix, such as 0.0.1 or 0.1.0-rc1; docs/releases/VERSION.adoc must exist
+        type: string
+        required: true
+  pull_request:
+    paths:
+      - .github/workflows/release.yml
+      - .github/actions/**
+      - Blueprint.roc
+      - Blueprint.lock
+      - docs/releases/**
+      - examples/**
+      - host/**
+      - platform/**
+      - sbom/**
+      - scripts/**
+      - tests/examples/**
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.event_name == 'workflow_dispatch' && 'release' || format('release-dry-run-{0}', github.ref) }}
+  cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' }}
+
+jobs:
+  # One run, one compiler: the nightly is resolved here and passed to every
+  # job. The version is checked before anything is built.
+  validate:
+    name: Validate the release
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      nightly-tag: ${{ steps.nightly.outputs.tag }}
+      version: ${{ steps.version.outputs.version }}
+      prerelease: ${{ steps.version.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - id: nightly
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: echo "tag=$(gh api repos/roc-lang/nightlies/releases/latest --jq .tag_name)" >> "$GITHUB_OUTPUT"
+      - id: version
+        env:
+          EVENT: ${{ github.event_name }}
+          REQUESTED: ${{ inputs.version }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ "$EVENT" = workflow_dispatch ]; then
+            version="$REQUESTED"
+            if [ "$GITHUB_REF_TYPE" != branch ] || [ "$GITHUB_REF_NAME" != "$DEFAULT_BRANCH" ]; then
+              echo "::error::release from $DEFAULT_BRANCH only, not $GITHUB_REF"; exit 1
+            fi
+            if gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$version" >/dev/null 2>&1; then
+              echo "::error::tag $version already exists"; exit 1
+            fi
+            test -s "docs/releases/$version.adoc" || { echo "::error::write docs/releases/$version.adoc first"; exit 1; }
+          else
+            version=0.0.1-dryrun
+          fi
+          echo "$version" | grep -Eq '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?$' \
+            || { echo "::error::version must be SemVer without a v prefix: $version"; exit 1; }
+          case "$version" in *-*) prerelease=true ;; *) prerelease=false ;; esac
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "prerelease=$prerelease" >> "$GITHUB_OUTPUT"
+
+  # Build once. The check gate builds the Swift host and runs every example
+  # against it; the bundle is then made from that same libhost.a (`--prebuilt`),
+  # because a rebuilt host is not byte-identical and would name a different
+  # bundle. Everything later in the run tests and publishes these files.
+  build:
+    name: Build and test the release on macOS
+    needs: validate
+    runs-on: macos-15
+    timeout-minutes: 75
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-xcode
+      - uses: lukewilliamboswell/roc-automation/actions/setup-blueprint@6c796f299012707d2e9bad23fd6449ed93f1f475
+      - uses: roc-lang/setup-roc@dd81390553b0a1236aedb61cdd4c0ed7cf7eaec4
+        with:
+          version: nightly
+          nightly-tag: ${{ needs.validate.outputs.nightly-tag }}
+          cache: 'false'
+      - name: Report the compilers and the Swift toolchain
+        run: |
+          roc version
+          blueprint run tooling-version
+          swiftc --version
+      - name: Check the source (the whole gate, which builds and tests the host)
+        run: blueprint run check
+      - name: Bundle the host the gate tested
+        run: blueprint run bundle -- --prebuilt --output-dir build/release
+      - name: Archive the examples against the release URL
+        env:
+          VERSION: ${{ needs.validate.outputs.version }}
+        run: blueprint run release -- archive "$VERSION" build/release
+      - name: Build every archived example against the served bundle and run its cases
+        run: blueprint run release -- test build/release
+      - id: bundle
+        name: Name the bundle the release publishes
+        run: |
+          bundles=(build/release/*.tar.zst)
+          test "${#bundles[@]}" -eq 1
+          echo "file=${bundles[0]}" >> "$GITHUB_OUTPUT"
+          echo "name=$(basename "${bundles[0]}")" >> "$GITHUB_OUTPUT"
+      # sbom/composition.json says what the bundle holds and why; the tool
+      # checks it against Blueprint.roc and Blueprint.lock, lists every member
+      # of the archive, and binds SPDX and CycloneDX documents and an evidence
+      # manifest to the bundle's final bytes.
+      - id: sbom
+        name: Bind the bundle's SBOM sidecars
+        uses: lukewilliamboswell/roc-automation/actions/sbom-sidecars@6c796f299012707d2e9bad23fd6449ed93f1f475
+        with:
+          files: ${{ steps.bundle.outputs.file }}
+          version: ${{ needs.validate.outputs.version }}
+          target: source
+          author: 'Person: Luke Boswell'
+          url-base: https://github.com/${{ github.repository }}/releases/download/${{ needs.validate.outputs.version }}
+      - name: Render the release notes
+        env:
+          VERSION: ${{ needs.validate.outputs.version }}
+          BUNDLE: ${{ steps.bundle.outputs.name }}
+        run: |
+          mkdir -p build/release-notes
+          blueprint run release -- notes "$VERSION" build/release build/release-notes/release-notes.md
+          {
+            echo "Platform URL: \`https://github.com/$GITHUB_REPOSITORY/releases/download/$VERSION/$BUNDLE\`"
+            echo
+            cat build/release-notes/release-notes.md
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: release-candidate
+          path: build/release/
+          if-no-files-found: error
+          retention-days: 14
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: release-notes
+          path: build/release-notes/release-notes.md
+          if-no-files-found: error
+          retention-days: 14
+
+  # An app author on any system: install Roc, name the bundle, build for
+  # arm64mac. No checkout, no Xcode, no Swift, no Apple SDK: only the release
+  # candidate's files and the compiler. The bundle is served on localhost in
+  # place of its release URL (Roc fetches only https URLs, or http from
+  # localhost).
+  cross:
+    name: Cross-compile from ${{ matrix.system }}
+    needs: [validate, build]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: bash
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { runner: ubuntu-24.04, system: x86_64-linux }
+          - { runner: ubuntu-24.04-arm, system: aarch64-linux }
+          - { runner: windows-2025, system: x86_64-windows }
+    steps:
+      - uses: roc-lang/setup-roc@dd81390553b0a1236aedb61cdd4c0ed7cf7eaec4
+        with:
+          version: nightly
+          nightly-tag: ${{ needs.validate.outputs.nightly-tag }}
+          cache: 'false'
+      # Everything lives under the runner's temporary directory, whose path
+      # Windows programs (roc.exe, python, tar.exe) and Git Bash both read.
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          name: release-candidate
+          path: ${{ runner.temp }}/candidate
+      - name: Build every archived example for arm64mac against the served bundle
+        env:
+          SYSTEM: ${{ matrix.system }}
+        run: |
+          set -euo pipefail
+          roc version
+          # Mixed paths (D:/a/_temp) on Windows, which Git Bash and native programs both read.
+          tmp="$RUNNER_TEMP"
+          if [ "$RUNNER_OS" = Windows ]; then tmp=$(cygpath -m "$RUNNER_TEMP"); fi
+          candidate="$tmp/candidate"
+          bundles=("$candidate"/*.tar.zst)
+          archives=("$candidate"/roc-native-macos-examples-*.zip)
+          test "${#bundles[@]}" -eq 1 && test "${#archives[@]}" -eq 1
+          bundle=$(basename "${bundles[0]}")
+          work="$tmp/cross"
+          apps="$tmp/apps"
+          mkdir -p "$work" "$apps"
+          if [ "$RUNNER_OS" = Windows ]; then
+            # Windows has no unzip; its own tar reads ZIP.
+            "$(cygpath "$SYSTEMROOT")/System32/tar.exe" -xf "$(cygpath -w "${archives[0]}")" -C "$(cygpath -w "$work")"
+            python=python
+          else
+            unzip -q "${archives[0]}" -d "$work"
+            python=python3
+          fi
+          top=$(echo "$work"/roc-native-macos-examples-*)
+          "$python" -u -m http.server 8765 --bind :: --directory "$candidate" > "$tmp/server.log" 2>&1 &
+          server=$!
+          trap 'kill "$server" 2>/dev/null || true' EXIT
+          for _ in $(seq 30); do curl -fsI "http://localhost:8765/$bundle" >/dev/null 2>&1 && break; sleep 1; done
+          url="http://localhost:8765/$bundle"
+          export XDG_CACHE_HOME="$tmp/roc-cache"
+          for dir in "$top"/examples/*/; do
+            name=$(basename "$dir")
+            sed -i "s#platform \"https://[^\"]*/$bundle\"#platform \"$url\"#" "$dir/main.roc"
+            grep -q "platform \"$url\"" "$dir/main.roc" || { echo "::error::$name does not name the release URL of $bundle"; exit 1; }
+            echo "::group::$name"
+            (cd "$dir" && roc build main.roc --target=arm64mac --output="$apps/$name")
+            echo "::endgroup::"
+            # A Mach-O arm64 executable: magic cf fa ed fe, CPU type 0x0100000c.
+            test "$(od -An -tx1 -N8 "$apps/$name" | tr -d ' \n')" = cffaedfe0c000001 \
+              || { echo "::error::$apps/$name is not an arm64 Mach-O executable"; exit 1; }
+          done
+          ls -l "$apps"
+          # Record what a plain `roc build` does here. The README tells authors
+          # on a non-Mac system to pass --target=arm64mac because the compiler
+          # defaults to the machine's own target, which the platform does not
+          # declare. This step reports, and never fails on, that behaviour.
+          counter="$top/examples/counter"
+          if (cd "$counter" && roc build main.roc --output="$tmp/probe") > "$tmp/probe.log" 2>&1; then
+            echo "::warning::roc build without --target succeeded on $SYSTEM; the README's --target=arm64mac rule may be relaxable"
+          else
+            echo "roc build without --target on $SYSTEM:"; cat "$tmp/probe.log"
+          fi
+          { echo "### $SYSTEM"; echo; echo '```'; tail -n 5 "$tmp/probe.log"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: cross-${{ matrix.system }}
+          path: ${{ runner.temp }}/apps/
+          if-no-files-found: error
+          retention-days: 14
+
+  # The cross-compiled apps on the Mac they are for: every recorded case of
+  # every example, against the binaries built elsewhere.
+  cross-run:
+    name: Run the cross-compiled apps on macOS
+    needs: [validate, build, cross]
+    runs-on: macos-15
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: lukewilliamboswell/roc-automation/actions/setup-blueprint@6c796f299012707d2e9bad23fd6449ed93f1f475
+      - uses: roc-lang/setup-roc@dd81390553b0a1236aedb61cdd4c0ed7cf7eaec4
+        with:
+          version: nightly
+          nightly-tag: ${{ needs.validate.outputs.nightly-tag }}
+          cache: 'false'
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          name: release-candidate
+          path: build/release
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          pattern: cross-*
+          path: build/cross
+      - name: Run every recorded case against each system's apps
+        run: |
+          set -euo pipefail
+          for system in x86_64-linux aarch64-linux x86_64-windows; do
+            echo "== apps cross-compiled on $system"
+            chmod +x build/cross/cross-$system/*
+            blueprint run release -- test build/release --binaries "build/cross/cross-$system"
+          done
+
+  attest:
+    name: Attest the tested files
+    if: github.event_name == 'workflow_dispatch'
+    needs: [validate, build, cross-run]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+      artifact-metadata: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          name: release-candidate
+          path: candidate
+      # Every published file, the SBOM sidecars included.
+      - uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6
+        with:
+          subject-path: candidate/*
+      - id: sbom-file
+        name: Resolve the bundle's CycloneDX SBOM
+        run: |
+          files=(candidate/*.tar.zst.cdx.json)
+          test "${#files[@]}" -eq 1
+          echo "path=${files[0]}" >> "$GITHUB_OUTPUT"
+      - name: Attest the bundle's SBOM
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6
+        with:
+          subject-path: candidate/*.tar.zst
+          sbom-path: ${{ steps.sbom-file.outputs.path }}
+      # Exported beside the files, so provenance can be checked offline.
+      - name: Export the attestations
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p supply-chain
+          for asset in candidate/*.tar.zst candidate/*.zip; do
+            work="$RUNNER_TEMP/attestations-$(basename "$asset")"
+            mkdir -p "$work"
+            (cd "$work" && gh attestation download "$GITHUB_WORKSPACE/$asset" --repo "$GITHUB_REPOSITORY")
+            exported=$(find "$work" -maxdepth 1 -type f -name 'sha256*.jsonl')
+            test -n "$exported" && test "$(wc -l <<< "$exported")" -eq 1
+            cp "$exported" "supply-chain/$(basename "$asset").intoto.jsonl"
+          done
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: release-supply-chain
+          path: supply-chain/*
+          if-no-files-found: error
+          retention-days: 14
+
+  # The only job that can write. It checks out nothing and runs no repository
+  # code: it hands this run's tested files to actions/publish-release, which
+  # stages a draft at the tested commit, downloads every asset back and
+  # compares it with the tested file, and only then publishes.
+  publish:
+    name: Publish the tested release
+    if: github.event_name == 'workflow_dispatch'
+    needs: [validate, build, cross-run, attest]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment: release
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          name: release-candidate
+          path: assets
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          name: release-supply-chain
+          path: assets
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          name: release-notes
+          path: notes
+      - id: publish
+        uses: lukewilliamboswell/roc-automation/actions/publish-release@6c796f299012707d2e9bad23fd6449ed93f1f475
+        with:
+          version: ${{ needs.validate.outputs.version }}
+          prerelease: ${{ needs.validate.outputs.prerelease }}
+          notes-file: notes/release-notes.md
+          assets: assets/*
+      - name: Record the published digests
+        env:
+          DIGESTS: ${{ steps.publish.outputs.digests }}
+          RELEASE_URL: ${{ steps.publish.outputs.release-url }}
+        run: |
+          { echo "Published $RELEASE_URL"; echo; echo '```'; cat "$DIGESTS"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+
+  # The dry run's required check: green only when every job above passed.
+  required:
+    name: Release dry run
+    if: always() && github.event_name == 'pull_request'
+    needs: [validate, build, cross, cross-run]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      - env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: for result in $RESULTS; do test "$result" = success; done

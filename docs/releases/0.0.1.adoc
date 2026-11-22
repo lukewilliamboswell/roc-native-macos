@@ -1,0 +1,42 @@
+= roc-native-macos 0.0.1
+
+The first release of roc-native-macos, an early proof of concept: a Roc
+platform for native macOS apps, written against the roc-signals reactive
+engine and drawn with real AppKit controls.
+
+== Use this release
+
+Name the platform by this release's bundle in your app's header:
+
+[source,roc]
+----
+app [main] { pf: platform "{platform-url}" }
+----
+
+Building an app needs only a Roc compiler, on any system: the bundle carries
+the prebuilt Swift host and the generated macOS linker stubs, so no Xcode,
+Swift, Apple SDK or Mac is involved. The app runs on Apple silicon Macs with
+macOS 11 or later. On an Apple silicon Mac, `roc build main.roc` builds it.
+Anywhere else (Linux, Windows or an Intel Mac) name the target, since the
+platform's one target is not the machine's own:
+
+[source,sh]
+----
+roc build main.roc --target=arm64mac
+----
+
+The [examples archive]({examples-url}) holds every example with its header
+naming this release, and the recorded runs each is tested against.
+
+== What is in it
+
+* `Engine`, the roc-signals engine (signals, stores, tables, watches and
+  effects), copied verbatim from roc-signals.
+* `Ui`: stacks, forms, scroll areas, `NSTableView` lists, labels, buttons,
+  text fields and areas, checkboxes, sliders, pop-up menus, segmented
+  controls, tabs, SF Symbols, progress bars, keyboard shortcuts, file pickers
+  and drop zones.
+* Effects: HTTP requests, timers and intervals, file reads and digests, saving
+  files, and `UserDefaults` local storage.
+
+This is a spike. Expect the API to change in every release before 1.0.
