@@ -15,19 +15,54 @@ HTML, no web view) and updates only what changed.
 
 <img src="docs/images/todos.png" width="440" alt="The todos example: a large title with the count left, a text field and Add button, a segmented filter, and a list of to-dos with checkboxes and trash buttons">
 
-## Quick start
+## Getting started
 
-Building an app needs only a Roc compiler, a current
-[nightly](https://github.com/roc-lang/nightlies/releases) or 0.1.0 RC1, on
-any system: macOS, Linux or Windows. The platform package carries the prebuilt
-Swift host and its linker inputs, so no Xcode, Swift, Apple SDK or Mac is
+You need Roc as `roc` on your PATH: a current
+[nightly](https://github.com/roc-lang/nightlies/releases) or 0.1.0 RC1. That
+is all, on any system: macOS, Linux or Windows. The platform carries the
+prebuilt Swift host and its linker inputs, so no Xcode, Swift or Apple SDK is
 involved. The app runs on Apple silicon Macs with macOS 11 or later; Intel
-Macs (`x64mac`) are not supported.
+Macs are not supported.
 
-Create `main.roc`, with the `platform` URL from the
-[latest release](https://github.com/lukewilliamboswell/roc-native-macos/releases/latest)
-(its notes give the whole header line; the URL ends in the bundle's content
-hash):
+Download `macos.roc`, the tool for creating, building, running and testing an
+app, and create one:
+
+```sh
+curl -LO https://github.com/lukewilliamboswell/roc-native-macos/releases/latest/download/macos.roc
+roc macos.roc init counter
+cd counter
+roc macos.roc run
+```
+
+`init` writes a counter app, `main.roc`, whose header names the platform
+release, two recorded runs of it in `tests/`, and a copy of `macos.roc`. `run`
+builds `counter.app` and starts it, with its output (`dbg`, a crash report) in
+the terminal. Edit `main.roc` and run it again.
+
+| Command | What it does |
+|---|---|
+| `roc macos.roc init [DIR]` | create an app in `DIR`, or in this directory |
+| `roc macos.roc build` | build `<name>.app`, on any system |
+| `roc macos.roc run` | build the app and start it, on an Apple silicon Mac |
+| `roc macos.roc test` | build the app and run its recorded cases, on an Apple silicon Mac; `--update` records what they print now |
+
+`build` and `run` take `--id ID` (the bundle identifier, by default
+`com.example.<name>`) and `--name TEXT` (the name in the menu bar), where
+`<name>` is the app's directory. `roc macos.roc COMMAND --help` describes a
+command.
+
+A recorded case is `tests/<case>.script`, steps such as `click:+;dump;quit`
+that drive the app's real controls without taking focus, and
+`tests/<case>.expected`, what that run prints. The steps are listed in
+[Driving an app](docs/contributing.adoc#driving-an-app).
+
+`build` runs `roc build main.roc --target=arm64mac` and puts the program in a
+minimal `<name>.app`. Roc's linker signs the program ad hoc wherever it is
+built. A `.app` copied to a Mac from elsewhere (downloaded, or built on Linux
+or Windows) may be quarantined by Gatekeeper, which then refuses to open it;
+clear that with `xattr -dr com.apple.quarantine counter.app`.
+
+An app is one `main.roc`. A smaller counter than the one `init` writes:
 
 ```roc
 app [main] { pf: platform "https://github.com/lukewilliamboswell/roc-native-macos/releases/download/<version>/<hash>.tar.zst" }
@@ -58,21 +93,6 @@ view = |count|
 	)
 ```
 
-Build it:
-
-```sh
-roc build main.roc                      # on an Apple silicon Mac
-roc build main.roc --target=arm64mac    # anywhere else: Linux, Windows or an Intel Mac
-```
-
-The platform has one target, `arm64mac`. Without `--target`, `roc build`
-builds for the machine it runs on, so on any other system it stops with
-`roc build requires --target or a platform target for ... the detected native host`.
-Either way the result is `main`, a macOS executable: run `./main` on the Mac.
-
-The window opens sized to its content. To launch it from the Finder or with
-`open`, put the binary in a minimal `.app` bundle with an `Info.plist` that
-names a `CFBundleIdentifier`; `scripts/build.sh` shows one (`bundle_example`).
 To build against an unreleased change, see
 [the bundle](docs/contributing.adoc#the-bundle) in Contributing.
 
@@ -159,7 +179,9 @@ documented in roc-signals.
 | [`file-inspector`](examples/file-inspector/main.roc)<br><img src="docs/images/file-inspector.png" width="200" alt="file-inspector"> | `Ui.file_button` and a `Ui.drop_zone` delivering `File` handles, sizes in KB and MB; for an inspected file its SHA-256 (`sha256`), its first 200 bytes as text or "binary" (`slice`, `read_bytes`), its URL (`object_url`) and "Save Copy…" (`File.save`); Clear releases the handles |
 
 The examples name the platform by its path in the checkout
-(`../../platform/main.roc`). To run them, build the platform first:
+(`../../platform/main.roc`). To try one as your own app, copy its `main.roc`
+over the one `init` wrote and keep `init`'s platform line. To run them all
+here, build the platform first:
 
 ```sh
 scripts/build.sh                    # the platform and every example
