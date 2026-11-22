@@ -1,0 +1,127 @@
+name: Linker inputs
+
+# The producer of the platform's external linker inputs: the macOS TAPI stubs
+# generated from host/interfaces.json alone (host/PROVENANCE.md). It runs PR
+# code with read-only access and no publication authority. A pull request
+# that changes the catalog or the producer runs it to check the candidate;
+# publish-link-inputs.yml, dispatched from main, dispatches it on that pull
+# request's branch with release_candidate set, verifies this run and its
+# attestations, publishes the archive and commits link-inputs.lock.json.
+#
+#   build     macos-15: the archive twice (identical bytes required), then a
+#             host built from the same commit linked against it: every example
+#             built and its recorded cases run (the final link and the run)
+#   assemble  the manifest and the archive, attested for a release candidate,
+#             uploaded as the one artifact the publisher admits
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_candidate:
+        description: Build and attest bytes for the trusted publisher
+        type: boolean
+        default: false
+        required: true
+      expected_sha:
+        description: Exact branch commit the trusted publisher requested
+        type: string
+        required: false
+  pull_request:
+    paths:
+      - .github/workflows/link-inputs.yml
+      - host/interfaces.json
+      - LICENSE
+      - host/PROVENANCE.md
+      - scripts/link_inputs.roc
+      - scripts/src/LinkInputs.roc
+      - scripts/src/Tar.roc
+
+permissions: {}
+
+concurrency:
+  group: link-inputs-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  resolve:
+    name: Resolve the Roc nightly
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      tag: ${{ steps.nightly.outputs.tag }}
+    steps:
+      - id: nightly
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: echo "tag=$(gh api repos/roc-lang/nightlies/releases/latest --jq .tag_name)" >> "$GITHUB_OUTPUT"
+
+  build:
+    name: Build the stubs twice and link every example against them
+    needs: resolve
+    runs-on: macos-15
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-xcode
+      - uses: lukewilliamboswell/roc-automation/actions/setup-blueprint@acc5efdcd929b38e665cd3ae6e694d1c4887f9c7
+      - uses: lukewilliamboswell/roc-automation/actions/setup-roc-nightly@acc5efdcd929b38e665cd3ae6e694d1c4887f9c7
+        with:
+          nightly-tag: ${{ needs.resolve.outputs.tag }}
+      # The publisher's exact requested commit, then the stubs twice with
+      # identical bytes required, bound to this repository, commit, branch and
+      # workflow (scripts/link_inputs.roc -- candidate).
+      - name: Generate the stubs twice and require identical archives
+        env:
+          RELEASE_CANDIDATE: ${{ inputs.release_candidate }}
+          EXPECTED_SHA: ${{ inputs.expected_sha }}
+        run: blueprint run link-inputs -- candidate build/link-inputs
+      - name: Build the host and every example against the candidate
+        run: blueprint run build -- --link-inputs build/link-inputs
+      - name: Run every example's recorded cases against it
+        run: blueprint run examples
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: link-input-candidate
+          path: |
+            build/link-inputs/build-input-release.json
+            build/link-inputs/link-inputs-arm64mac.tar
+          if-no-files-found: error
+          retention-days: 30
+
+  assemble:
+    name: Attest and hand over the exact candidate
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          name: link-input-candidate
+          path: release
+      - name: Require exactly the manifest and the archive it names
+        run: |
+          set -euo pipefail
+          test "$(find release -mindepth 1 | LC_ALL=C sort | tr '\n' ' ')" = "release/build-input-release.json release/link-inputs-arm64mac.tar "
+          jq -e '.schema_version == 1 and .kind == "link-inputs" and (.assets | keys) == ["arm64mac"]' release/build-input-release.json
+          test "$(jq -r '.assets.arm64mac.sha256' release/build-input-release.json)" = "$(sha256sum release/link-inputs-arm64mac.tar | cut -d' ' -f1)"
+          test "$(jq -r '.source.sha' release/build-input-release.json)" = "$GITHUB_SHA"
+      - uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6
+        if: inputs.release_candidate
+        with:
+          subject-path: release/*
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: link-input-release
+          path: release/*
+          if-no-files-found: error
+          retention-days: 30

@@ -9,7 +9,8 @@ import AppKit
 /// every 100 ms. `dump` prints the node tree as the views show it.
 /// `files:/a.txt,/b.png` delivers files as if picked on the first file
 /// button or drop zone (`drop:` as if dropped on the first drop zone),
-/// without opening a panel.
+/// without opening a panel. `hover:Label`, `move:x,y` and `leave` move the
+/// pointer through the same hit test the mouse uses (Hover.swift).
 extension Host {
     func run(script: String) {
         var steps = script.split(separator: ";").map(String.init)
@@ -83,6 +84,47 @@ extension Host {
                 let prevented = deliverKey(down: true, key: name, code: code, flags: flags, target: nil, inText: false)
                 _ = deliverKey(down: false, key: name, code: code, flags: flags, target: nil, inText: false)
                 say("key \(arg)\(prevented ? " (heard)" : "")")
+            case "hover":
+                // The pointer to the middle of a hover target: the one whose
+                // text is `arg`, or with `#k` the k-th in the tree.
+                var targets: [Node] = []
+                root.walk { if $0.listeners["hover"] != nil { targets.append($0) } }
+                let target = arg.hasPrefix("#")
+                    ? Int(String(arg.dropFirst())).flatMap { k in targets.indices.contains(k - 1) ? targets[k - 1] : nil }
+                    : targets.first { $0.textContent == arg }
+                guard let n = target, let view = shownView(n) else { fatal("script: no hover target \(arg)") }
+                let b = view.bounds
+                pointer(at: view.convert(NSPoint(x: b.origin.x + b.size.width / 2, y: b.origin.y + b.size.height / 2), to: nil))
+            case "move":
+                // `move:x,y`: the pointer to a point of the content view,
+                // from its top-left corner.
+                guard let p = Host.point(arg) else { fatal("script: move needs x,y, not \(arg)") }
+                pointer(at: windowPoint(p))
+            case "leave":
+                pointerLeft()
+            case "sweep":
+                // `sweep:x0,y0,x1,y1,moves,ms`: `moves` pointer moves along
+                // the line, one every `ms` milliseconds, as a steady hand
+                // would make; the next step follows the last move.
+                let v = arg.split(separator: ",").compactMap { Double(String($0)) }
+                guard v.count == 6, v[4] >= 1 else { fatal("script: sweep needs x0,y0,x1,y1,moves,ms, not \(arg)") }
+                let moves = Int(v[4]), interval = v[5] / 1000, began = Bench.now()
+                func move(_ i: Int) {
+                    let t = moves == 1 ? 1 : Double(i) / Double(moves - 1)
+                    pointer(at: windowPoint(NSPoint(x: v[0] + (v[2] - v[0]) * t, y: v[1] + (v[3] - v[1]) * t)))
+                    if i + 1 < moves {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + interval) { move(i + 1) }
+                    } else {
+                        say("sweep: \(moves) moves in \(Int((Bench.now() - began) * 1000)) ms (planned \(Int(Double(moves - 1) * interval * 1000)) ms)")
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1, execute: next)
+                    }
+                }
+                move(0)
+                return
+            case "stats":
+                // `ROC_BENCH=1`'s timings so far, on stdout.
+                guard let bench else { fatal("script: stats needs ROC_BENCH=1") }
+                bench.report(self)
             case "window":
                 // The window number, for `screencapture -l<number>`.
                 say("window \(window.windowNumber)")
@@ -103,6 +145,19 @@ extension Host {
 
     func say(_ line: String) { fputs(line + "\n", __stderrp) }
 
+    /// `x,y` as a point.
+    static func point(_ text: String) -> NSPoint? {
+        let v = text.split(separator: ",").compactMap { Double(String($0)) }
+        return v.count == 2 ? NSPoint(x: v[0], y: v[1]) : nil
+    }
+
+    /// A point of the content view, from its top-left corner, in window
+    /// coordinates.
+    func windowPoint(_ p: NSPoint) -> NSPoint {
+        guard let content = window.contentView else { return p }
+        return content.convert(NSPoint(x: p.x, y: content.isFlipped ? p.y : content.bounds.height - p.y), to: nil)
+    }
+
     func find(_ test: (Node) -> Bool) -> Node? {
         var found: Node?
         root.walk { if found == nil, test($0) { found = $0 } }
@@ -112,6 +167,11 @@ extension Host {
     func dump(_ n: Node, _ depth: Int) {
         let pad = String(repeating: "  ", count: depth)
         let name = n.name ?? "text"
+        if name == "ui-hover" {
+            say("\(pad)\(name)\(hovered.contains { $0 === n } ? " (pointer inside)" : "")")
+            for c in n.children where c.name != nil { dump(c, depth + 1) }
+            return
+        }
         switch n.view {
         case let s as NSStackView where n.name != nil:
             say("\(pad)\(name) [\(s.arrangedSubviews.count) views]")
@@ -147,6 +207,9 @@ extension Host {
             say("\(pad)\(name) \"\(text.replacingOccurrences(of: "\n", with: "\\n"))\"")
         case let image as NSImageView:
             say("\(pad)\(name) \(n.attrs["symbol"] ?? "")\(image.image == nil ? " (missing)" : "")")
+        case let picture as Picture:
+            let (wide, high) = picture.pixels
+            say("\(pad)\(name) \(picture.name) [\(wide)x\(high), \(Int(picture.frame.width))pt wide, \(Int(picture.frame.height))pt high]\(look(n, ["scaling": "fit", "label": ""]))")
         case let bar as NSProgressIndicator:
             say("\(pad)\(name) " + (bar.isIndeterminate ? (n.attrs["value"] == "1" ? "busy" : "idle") : "\(Int(bar.doubleValue))/\(Int(bar.maxValue))"))
         case is Surface:

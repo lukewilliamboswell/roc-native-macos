@@ -57,8 +57,8 @@ vocabulary produces:
   xref:architecture.adoc#files[Files]).
 +
 It keeps a node tree mirroring what the engine built and gives each `ui-*`
-element one AppKit view. It routes AppKit actions back as turns: `click`,
-`input`, `change`, `submit`, a list row's `select`, key events, and the
+element one AppKit view (`ui-hover` lends its place to its child's). It routes AppKit actions back as turns: `click`,
+`input`, `change`, `submit`, a list row's `select`, key events, `hover` (text `enter` or `leave`), and the
 files-kind `change` and `drop`. Any other command or effect is a clear fatal
 error, not a silent skip.
 
@@ -80,10 +80,12 @@ error, not a silent skip.
 | `dropdown` | `ui-dropdown` | `NSPopUpButton`
 | `segmented`, `tabs` | `ui-segmented` | `NSSegmentedControl`; `tabs` adds an `Engine.switch` of pages
 | `image`, `image_s` | `ui-image` | `NSImageView` of an SF Symbol
+| `asset_image`, `asset_image_s` | `ui-asset-image` | `Picture` (`host/Assets.swift`): an `NSView` drawing an `NSImage` read from the app's assets
 | `progress`, `busy` | `ui-progress` | `NSProgressIndicator` bar, determinate or indeterminate
 | `shortcut` | `ui-shortcut` | hidden; an `Engine.on_document_key` handler
 | `file_button` | `ui-file-button` | `NSButton` opening an `NSOpenPanel`
 | `drop_zone` | `ui-drop-zone` | a `Surface` with a dashed outline, registered for dragged file URLs
+| `hover` | `ui-hover` | none: its child's view stands in its place; one window-level `NSTrackingArea` (Hover.swift)
 | `divider`, `spacer` | `ui-divider`, `ui-spacer` | `NSBox` separator, flexible `NSView`
 |===
 
@@ -103,36 +105,89 @@ engine writes one only when its text changes. The words come from one pure
 function per type in `Ui.roc`, each with `expect`s. The host parses each
 value into its AppKit setting; a word outside the grammar is a fatal error.
 
-[cols="1,2,3",options="header"]
-|===
-| Attribute | Grammar | AppKit
+`width`, `height` (every element)::
+`auto`, `fill`, `fill-at-least:N`, `fixed:N`, `at-least:N`, `at-most:N`, `between:MIN:MAX`. AppKit: host-owned constraints (`==`, `>=`, `<=`, required); `fill` sets content hugging to 1 on that side, and across a stack pins the side to the stack's, inside its padding.
 
-| `width`, `height` (every element) | `auto`, `fill`, `fill-at-least:N`, `fixed:N`, `at-least:N`, `at-most:N`, `between:MIN:MAX` | host-owned constraints (`==`, `>=`, `<=`, required); `fill` sets content hugging to 1 on that side, and across a stack pins the side to the stack's, inside its padding
-| `squeeze` (every element) | `standard`, `yield`, `resist` | horizontal compression resistance: the view's own, 250 or 999
-| `spacing` | `N` | `NSStackView.spacing`
-| `padding` | `TOP LEADING BOTTOM TRAILING` | `NSStackView.edgeInsets`; a surface's child insets
-| `align` (vertical stack, form) | `leading`, `center`, `trailing`, `fill` | `NSStackView.alignment` `.leading`, `.centerX`, `.trailing`; `fill` pins every child's width
-| `align` (horizontal stack, row) | `top`, `center`, `bottom`, `first-baseline`, `fill` | `.top`, `.centerY`, `.bottom`, `.firstBaseline`; `fill` pins every child's height
-| `distribution` | `gravity`, `fill`, `fill-equally`, `fill-proportionally`, `equal-spacing`, `equal-centering` | `NSStackView.distribution`; `gravity` is `.gravityAreas` unless the stack must fill (below)
-| `text-style` | `large-title`, `title1` … `title3`, `headline`, `subheadline`, `body`, `callout`, `footnote`, `caption1`, `caption2` | `NSFont.preferredFont(forTextStyle:)`; on a symbol, `NSImage.SymbolConfiguration(textStyle:scale:)`
-| `font-size` | `standard`, `N` | the style's point size, or `N`
-| `weight` | `standard`, `light`, `regular`, `medium`, `semibold`, `bold`, `heavy` | `standard` keeps the style's font; otherwise `NSFont.systemFont(ofSize:weight:)`
-| `design` | `proportional`, `monospaced-digits`, `monospaced` | `monospacedDigitSystemFont(ofSize:weight:)`, `monospacedSystemFont(ofSize:weight:)`
-| `overflow` | `clip`, `truncate-head`, `truncate-middle`, `truncate-tail`, `wrap`, `wrap:N` | `lineBreakMode` and `maximumNumberOfLines`; a wrapping `Label` has no intrinsic width and sets `preferredMaxLayoutWidth` to the width it is given
-| `text-align` | `natural`, `leading`, `center`, `trailing`, `justified` | `NSTextField.alignment`
-| `color`, `fill` | `label`, `secondary-label`, … `clear`, or `adaptive:RRGGBB:RRGGBB` | `NSColor.labelColor`, `.secondaryLabelColor`, `.controlAccentColor`, `.systemRed`, …; `adaptive` is `NSColor(name:dynamicProvider:)` choosing between two sRGB colours by `bestMatch(from: [.aqua, .darkAqua])`
-| `border` | `none`, `line:W:COLOUR`, `dashed:W:COLOUR` | stroked by the surface
-| `radius` | `N` | the surface's corner radius
-| `bezel` (button) | `push`, `flexible-push`, `toolbar`, `accessory-bar`, `badge`, `circular`, `small-square`, `borderless` | `NSButton.bezelStyle`; `borderless` is `isBordered = false`
-| `bezel` (text field) | `square`, `rounded` | `NSTextField.bezelStyle`
-| `role` | `normal`, `default`, `cancel`, `destructive` | `keyEquivalent` Return or Escape; `hasDestructiveAction`
-| `icon` | `none`, `symbol:NAME` | `NSButton.image`, an SF Symbol
-| `title-display` | `visible`, `hidden` | `imagePosition` (`.imageOnly` hides the title, which still names the control to VoiceOver); reapplied after a title, bezel or size change, since attributes arrive in any order
-| `size` | `mini`, `small`, `regular`, `large` | `NSControl.controlSize`, with the font `NSFont.systemFontSize(for:)`
-| `enabled` | `true`, `false` | `NSControl.isEnabled`
-| `scale` (symbol) | `small`, `medium`, `large` | `NSImage.SymbolScale`
-| `opening-height` (scroll, list) | `N` | a height preference (priority 300) until the window has been sized for it, then 49
-|===
+`squeeze` (every element)::
+`standard`, `yield`, `resist`. AppKit: horizontal compression resistance: the view's own, 250 or 999.
+
+`spacing`::
+`N`. AppKit: `NSStackView.spacing`.
+
+`padding`::
+`TOP LEADING BOTTOM TRAILING`. AppKit: `NSStackView.edgeInsets`; a surface's child insets.
+
+`align` (vertical stack, form)::
+`leading`, `center`, `trailing`, `fill`. AppKit: `NSStackView.alignment` `.leading`, `.centerX`, `.trailing`; `fill` pins every child's width.
+
+`align` (horizontal stack, row)::
+`top`, `center`, `bottom`, `first-baseline`, `fill`. AppKit: `.top`, `.centerY`, `.bottom`, `.firstBaseline`; `fill` pins every child's height.
+
+`distribution`::
+`gravity`, `fill`, `fill-equally`, `fill-proportionally`, `equal-spacing`, `equal-centering`. AppKit: `NSStackView.distribution`; `gravity` is `.gravityAreas` unless the stack must fill (below).
+
+`text-style`::
+`large-title`, `title1` … `title3`, `headline`, `subheadline`, `body`, `callout`, `footnote`, `caption1`, `caption2`. AppKit: `NSFont.preferredFont(forTextStyle:)`; on a symbol, `NSImage.SymbolConfiguration(textStyle:scale:)`.
+
+`font-size`::
+`standard`, `N`. AppKit: the style's point size, or `N`.
+
+`weight`::
+`standard`, `light`, `regular`, `medium`, `semibold`, `bold`, `heavy`. AppKit: `standard` keeps the style's font; otherwise `NSFont.systemFont(ofSize:weight:)`.
+
+`design`::
+`proportional`, `monospaced-digits`, `monospaced`. AppKit: `monospacedDigitSystemFont(ofSize:weight:)`, `monospacedSystemFont(ofSize:weight:)`.
+
+`overflow`::
+`clip`, `truncate-head`, `truncate-middle`, `truncate-tail`, `wrap`, `wrap:N`. AppKit: `lineBreakMode` and `maximumNumberOfLines`; a wrapping `Label` has no intrinsic width and sets `preferredMaxLayoutWidth` to the width it is given.
+
+`text-align`::
+`natural`, `leading`, `center`, `trailing`, `justified`. AppKit: `NSTextField.alignment`.
+
+`color`, `fill`::
+`label`, `secondary-label`, … `clear`, or `adaptive:RRGGBB:RRGGBB`. AppKit: `NSColor.labelColor`, `.secondaryLabelColor`, `.controlAccentColor`, `.systemRed`, …; `adaptive` is `NSColor(name:dynamicProvider:)` choosing between two sRGB colours by `bestMatch(from: [.aqua, .darkAqua])`.
+
+`border`::
+`none`, `line:W:COLOUR`, `dashed:W:COLOUR`. AppKit: stroked by the surface.
+
+`radius`::
+`N`. AppKit: the surface's corner radius.
+
+`bezel` (button)::
+`push`, `flexible-push`, `toolbar`, `accessory-bar`, `badge`, `circular`, `small-square`, `borderless`. AppKit: `NSButton.bezelStyle`; `borderless` is `isBordered = false`.
+
+`bezel` (text field)::
+`square`, `rounded`. AppKit: `NSTextField.bezelStyle`.
+
+`role`::
+`normal`, `default`, `cancel`, `destructive`. AppKit: `keyEquivalent` Return or Escape; `hasDestructiveAction`.
+
+`icon`::
+`none`, `symbol:NAME`. AppKit: `NSButton.image`, an SF Symbol.
+
+`title-display`::
+`visible`, `hidden`. AppKit: `imagePosition` (`.imageOnly` hides the title, which still names the control to VoiceOver); reapplied after a title, bezel or size change, since attributes arrive in any order.
+
+`size`::
+`mini`, `small`, `regular`, `large`. AppKit: `NSControl.controlSize`, with the font `NSFont.systemFontSize(for:)`.
+
+`enabled`::
+`true`, `false`. AppKit: `NSControl.isEnabled`.
+
+`scale` (symbol)::
+`small`, `medium`, `large`. AppKit: `NSImage.SymbolScale`.
+
+`asset` (asset image)::
+a path inside `assets/`. AppKit: `NSImage(contentsOfFile:)` of the file `Assets.path` resolves, cached by name; see xref:architecture.adoc#assets[Assets].
+
+`scaling` (asset image)::
+`fit`, `fill`, `stretch`, `original`. AppKit: the rectangle `Picture.draw(_:)` draws the image in, clipped to its bounds.
+
+`label` (asset image)::
+text. AppKit: `setAccessibilityLabel`; empty leaves the view out of the accessibility tree (`setAccessibilityElement(false)`).
+
+`opening-height` (scroll, list)::
+`N`. AppKit: a height preference (priority 300) until the window has been sized for it, then 49.
 
 A surface (`Surface`, for `ui-box` and `ui-drop-zone`) draws its fill and
 border in `draw(_:)` with `NSColor`s, where AppKit has set the view's
@@ -152,6 +207,45 @@ area or list it grows only when its content needs more room.
 
 `ROC_APPEARANCE=dark` (or `light`) draws the app in that appearance whatever
 the system's, to check both looks.
+
+[#assets]
+== Assets
+
+An app's assets are the files of `assets/` beside its `main.roc`
+(xref:apps.adoc#assets[Assets and the icon]). They are delivered as files,
+not compiled into the program: `macos.roc build` copies the directory into
+`<name>.app/Contents/Resources/assets/` and to `.macos/assets/` beside the
+program `test` runs, and `scripts/build.roc` copies a repository example's
+into its `.app` (the bare `examples/<name>/<name>` finds `assets/` beside
+it). Copying files works from any system, keeps images out of the binary and
+out of the engine's attribute strings, and is how AppKit loads images anyway.
+Data an app reads as values is better compiled in with Roc's
+`import "file" as x : Str`, which needs no host support.
+
+Lookup (`Assets`, `host/Assets.swift`):: The directory is decided once:
+`ROC_ASSETS` if set (the release tests run bare programs away from their
+examples), else `Contents/Resources/assets` when the program (`Bundle.main.executablePath`,
+resolved with `realpath`) is in `<x>.app/Contents/MacOS`, else `assets/`
+beside the program. A name with an empty, `.` or `..` component, a missing
+directory or file, and a file `NSImage` cannot read are each a fatal error
+naming the asset and where the host looked. Images are read synchronously on
+the main thread when first shown and kept by name for the process's life.
+`Picture`:: Its intrinsic size is the image's size in points, hugged and
+resisted at 750; a width-to-height constraint at the image's ratio, priority
+760, makes a frame bound on one side follow the aspect ratio. It draws in
+`draw(_:)`, so `fill` can crop, which `NSImageView`'s scalings cannot. A
+dump prints the name, the first representation's pixel size (a PDF's is its
+size in points) and the frame.
+The icon:: `CFBundleIconFile` names `Contents/Resources/AppIcon.icns`.
+`cli/Icon.roc` makes it from a square PNG with no Apple tool: an `.icns` is
+`icns`, a big-endian length, then entries of an OSType, a length and data,
+and since macOS 10.7 an entry (`ic10` for 1024 pixels, `ic09` 512, …,
+`icp4` 16) may hold a PNG as it is. One entry is enough: macOS scales it,
+and `iconutil` writes the same layout for a one-image set. `scripts/build.roc`
+only copies an `assets/icon.icns`.
+Signing:: Roc's linker signs the program ad hoc; nothing seals the bundle's
+resources (`_CodeSignature/CodeResources`), as before. Gatekeeper's
+quarantine applies to a downloaded `.app` whatever it holds.
 
 [#lists]
 == Lists
@@ -416,20 +510,37 @@ It covers only the shapes this platform uses (byte lists, opaque boxes,
 lists of boxes of an integer, integers, records of those, unit) and 64-bit
 hosts. It fails generation, naming the entry point, on anything else,
 including hosted functions. The list helpers were the point: the stock C glue
-leaves list construction to the host, and a hand-written encoding was this
-spike's one real crash (see xref:contributing.adoc#findings[Findings]).
+leaves list construction to the host, and a hand-written list encoding is
+easy to get wrong (see xref:contributing.adoc#findings[Constraints to build with]).
 
 [#linker-inputs]
 == Linker inputs: no Apple SDK files
 
 Following roc-gui, the platform ships no Apple SDK material. Roc's linker
-links a platform's `targets/macos-sysroot`. `scripts/build_macos_stubs.py`
-writes that sysroot as minimal TAPI v4 `.tbd` stubs, built only from the
-reviewed catalog `host/interfaces.json`: install names, symbol names and
-stated evidence per library. It reads no SDK file. With `--audit` it also
-fails the build if `libhost.a` references a symbol the catalog does not own,
-so adding one is a reviewed edit. The platform bundle carries these generated
-stubs, never an SDK file.
+links a platform's `targets/macos-sysroot`: minimal TAPI v4 `.tbd` stubs
+written only from the reviewed catalog `host/interfaces.json`, which records
+each library's install name and evidence and each symbol's own evidence
+(`host/PROVENANCE.md` states what may count as evidence and what is never
+read). The platform bundle carries these generated stubs, never an SDK file.
+
+The stubs are an external linker input with a release of their own, as
+roc-automation's "Publish linker inputs from a pull request" describes.
+`scripts/link_inputs.roc` (the `link-inputs` task) writes them, with the
+catalog, `PROVENANCE.md` and the licence, into a deterministic
+`link-inputs-arm64mac.tar`, and a `build-input-release.json` manifest that
+binds its SHA-256 and size to the source commit and an input fingerprint (the
+catalog, the provenance statement, the licence, the producer's source and the
+tooling compiler). The producer workflow `link-inputs.yml` builds it twice,
+requires identical bytes, and links and runs every example against it; the
+trusted publisher `publish-link-inputs.yml` (`actions/publish-build-inputs`)
+publishes it as `linker-inputs-sha256-<manifest digest>` and commits
+`link-inputs.lock.json` to the pull request. Every other build installs the
+archive the lock selects (`scripts/build.roc`, cached under
+`build/link-inputs-cache` and verified by size and SHA-256), and fails when
+the lock's fingerprint is not the checkout's. Before the first release, with
+no lock, the build generates the stubs from the catalog. After installing
+them it audits `libhost.a`: a reference the catalog does not own fails the
+build, so adding one is a reviewed edit that names its library and evidence.
 
 Swift is compiled with `-disable-autolink-frameworks` and
 `-disable-force-load-symbols`, so the frameworks linked are exactly the
@@ -437,7 +548,7 @@ catalog's. Roc then links each `X.framework/X.tbd` it finds. The resulting
 binaries load only `AppKit`, `Foundation`, `CoreGraphics`, `libSystem`,
 `libobjc` and the Swift runtime and overlays in `/usr/lib/swift`.
 
-Unlike roc-gui, the catalog's evidence is per library, not per symbol. Swift
-symbols are assigned by the mangled module or extension owner (Swift's
-`docs/ABI/Mangling.rst`), and ObjC classes by Apple's documented framework.
-Tightening that to per-symbol evidence is follow-up work.
+A Swift symbol's evidence is the declaration it mangles (Swift's
+`docs/ABI/Mangling.rst`), named by the open-source demangler, in the module
+the library ships; an ObjC class's is its page in Apple's documentation of
+its framework.

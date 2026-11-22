@@ -25,6 +25,9 @@ import src/Release
 ##     blueprint run release -- test DIR                  # build and run the archived examples against DIR's bundle
 ##     blueprint run release -- test DIR --binaries BIN   # run the archived examples' cases on prebuilt apps in BIN
 ##     blueprint run release -- notes VERSION DIR OUT     # the release notes, as Markdown, to OUT
+##     blueprint run release -- bump VERSION [LATEST URL] # roc bump --expect against the latest final release
+##     blueprint run release -- cross-run DIR CROSS       # test DIR's cases on every CROSS/cross-<system>/ app
+##     blueprint run release -- versions                  # the compilers and the Swift toolchain
 ##
 ## `tool` writes `macos.roc`, the app author's tool: it stages the tool's
 ## package (`cli/`) with a generated `Bundle.roc` naming the release (its
@@ -48,6 +51,12 @@ import src/Release
 ## apps cross-compiled on another system from the same archive and bundle,
 ## and against `BIN/<example>.app` where `macos.roc build` made one there.
 ##
+## `bump` checks that VERSION goes far enough past LATEST, the latest final
+## release, whose platform bundle is at URL: `roc bump --old URL --expect
+## VERSION platform/main.roc` when they share a breaking boundary. A first
+## release, or one past the boundary, needs no comparison. For the dry-run
+## version it reports the bump the change needs and fails nothing.
+##
 ## `notes` renders `docs/releases/VERSION.adoc` (for the dry-run version, the
 ## highest version there) with the real URLs, then adds the compilers, the
 ## Swift toolchain and the SHA-256 of every file in DIR.
@@ -64,7 +73,11 @@ main! = |raw_args| {
 		["test", dir] => test!(root, absolute(root, dir), Err(NoBinaries))
 		["test", dir, "--binaries", bin] => test!(root, absolute(root, dir), Ok(absolute(root, bin)))
 		["notes", version, dir, out] => notes!(version, absolute(root, dir), absolute(root, out))
-		_ => Err("usage: release tool VERSION DIR [--base-url URL] | archive VERSION DIR | test DIR [--binaries BIN] | notes VERSION DIR OUT")
+		["bump", version] => bump!(version, "", "")
+		["bump", version, latest, url] => bump!(version, latest, url)
+		["cross-run", dir, cross] => cross_run!(root, absolute(root, dir), absolute(root, cross))
+		["versions"] => versions!()
+		_ => Err("usage: release tool VERSION DIR [--base-url URL] | archive VERSION DIR | test DIR [--binaries BIN] | notes VERSION DIR OUT | bump VERSION [LATEST URL] | cross-run DIR CROSS | versions")
 	}
 	match result {
 		Ok({}) => Ok({})
@@ -182,6 +195,10 @@ archive! = |root, version, dir| {
 		released = Bundle.released_main(source, url) ? |_| "${path} does not name ../../platform/main.roc"
 		write!("${top}/${path}", released)?
 	}
+	# Each example's assets/, byte for byte: images are not text.
+	for path in tracked!(["examples"])?.keep_if(|path| path.contains("/assets/")) {
+		copy!(path, "${top}/${path}")?
+	}
 	for path in tracked!(["tests/examples", "tests/fixtures"])? {
 		write!("${top}/${path}", read!(path)?)?
 	}
@@ -206,10 +223,15 @@ readme = |version, url, count|
 			"    ${url}",
 			"",
 			"Build one with a Roc compiler on any system; the app runs on Apple silicon",
-			"macOS 11 or later. On a system other than an Apple silicon Mac, pass the",
-			"target:",
+			"macOS 11 or later. With macos.roc, the tool this release publishes, saved",
+			"beside this directory, build and start an example from its own directory:",
 			"",
-			"    cd examples/counter",
+			"    cd examples/todos",
+			"    roc ../../../macos.roc run",
+			"",
+			"`roc ../../../macos.roc build` builds `todos.app` on any system. Without",
+			"the tool, name the target, since the app is for Apple silicon macOS:",
+			"",
 			"    roc build main.roc --target=arm64mac",
 			"",
 			"`tests/examples/<example>/<case>.script` holds the steps of a recorded run",
@@ -220,6 +242,7 @@ readme = |version, url, count|
 			"",
 			"The window's size is written `--- <size>`, and this directory's path",
 			"`<repo>`, where the output printed the path.",
+			"",
 		],
 		"\n",
 	)
@@ -257,14 +280,16 @@ test! = |root, dir, binaries| {
 		# The example's program, and the one inside `<example>.app` when
 		# `macos.roc build` made one there (the cross-compiling jobs do).
 		in_app = "${apps}/${example}.app/Contents/MacOS/${example}"
-		bundled = if (Path.exists!(Path.utf8(in_app)) ?? Bool.False) [{ exe: in_app, label: "${example}.app" }] else []
+		# A bare program is run away from its assets, so ROC_ASSETS names
+		# them; a bundled one finds its own in Contents/Resources.
+		bundled = if (Path.exists!(Path.utf8(in_app)) ?? Bool.False) [{ exe: in_app, label: "${example}.app", assets: "" }] else []
 		cases = names_in!("${top}/tests/examples/${example}")?.keep_oks(Recorded.case_name)
 		if cases.is_empty() {
 			$failed = $failed.append("${example} has no recorded case")
 		}
-		for { exe, label } in [{ exe: "${apps}/${example}", label: example }].concat(bundled) {
+		for { exe, label, assets } in [{ exe: "${apps}/${example}", label: example, assets: "${top}/examples/${example}/assets" }].concat(bundled) {
 			for name in cases {
-				match run_case!(top, exe, "tests/examples/${example}/${name}") {
+				match run_case!(top, { exe, assets }, "tests/examples/${example}/${name}") {
 					Ok({}) => {
 						note!("release: PASS ${label}/${name}")
 						$passed = $passed + 1
@@ -364,16 +389,15 @@ served! = |server|
 ## One recorded case, run from the archive's top directory as `blueprint run
 ## examples` runs it from the checkout: exit 0, and print exactly the
 ## recorded output with that directory written `<repo>`.
-run_case! : Str, Str, Str => Try({}, Str)
-run_case! = |top, exe, base| {
+run_case! : Str, { exe : Str, assets : Str }, Str => Try({}, Str)
+run_case! = |top, { exe, assets }, base| {
 	if !(Path.exists!(Path.utf8(exe)) ?? Bool.False) {
 		return Err("${exe} does not exist")
 	}
 	steps = read!("${top}/${base}.script")?.trim()
 	expected = read!("${top}/${base}.expected")?
-	output = Cmd.new(OsStr.from_str(exe))
-		.cwd(Path.utf8(top))
-		.env("ROC_SCRIPT", OsStr.from_str(steps))
+	program = Cmd.new(OsStr.from_str(exe)).cwd(Path.utf8(top)).env("ROC_SCRIPT", OsStr.from_str(steps))
+	output = (if (assets.is_empty()) program else program.env("ROC_ASSETS", OsStr.from_str(assets)))
 		.stdin(Null)
 		.stderr(MergeWithStdout)
 		.timeout(Duration.seconds(60))
@@ -438,7 +462,8 @@ notes! = |version, dir, out| {
 				"",
 				"## Files",
 				"",
-				"The bundle's SBOM documents sit beside it, bound to its SHA-256: SPDX 3",
+				"The bundle, the examples archive, the tool's package and `macos.roc` each",
+				"have SBOM documents beside them, bound to their SHA-256: SPDX 3",
 				"(`.spdx.json`), SPDX 2.3 (`.spdx-2.3.json`), CycloneDX (`.cdx.json`) and",
 				"the evidence manifest (`.sbom-manifest.json`). Every file has a",
 				"build-provenance attestation, also published as `<file>.intoto.jsonl`:",
@@ -452,6 +477,71 @@ notes! = |version, dir, out| {
 		)
 	write!(out, body)?
 	note!("release: notes for ${notes_version} written to ${out}")
+	Ok({})
+}
+
+## `roc bump` against the latest final release, as `Release.bump_plan` decides.
+bump! : Str, Str, Str => Try({}, Str)
+bump! = |version, latest, url| {
+	if !Release.version_ok(version) {
+		return Err("${version} is not a release version")
+	}
+	if !latest.is_empty() and !Release.version_ok(latest) {
+		return Err("${latest} is not a release version")
+	}
+	compare = Cmd.new("roc").args(["bump", "--old", url, "platform/main.roc"].map(OsStr.from_str))
+	if version == Release.dry_run {
+		if latest.is_empty() {
+			note!("release: no final release yet, so there is no API to compare with")
+			return Ok({})
+		}
+		# A dry run chooses no version: report what the change needs.
+		match step!(compare, "roc bump --old ${url} platform/main.roc") {
+			Ok({}) => {}
+			Err(problem) => warn!("release: the dry run could not compare the API with ${latest}: ${problem}")
+		}
+		return Ok({})
+	}
+	match Release.bump_plan(version, latest) {
+		Ok(FirstRelease) => {
+			note!("release: ${version} is the first release; there is no API to compare with")
+			Ok({})
+		}
+		Ok(NewBoundary) => {
+			note!("release: ${version} starts a new breaking boundary after ${latest}, which permits every API change")
+			Ok({})
+		}
+		Ok(Compare) => step!(compare.args(["--expect", Release.number_part(version)].map(OsStr.from_str)), "roc bump --old ${url} --expect ${Release.number_part(version)} platform/main.roc")
+		Err(NotAfter) => Err("${version} does not come after ${latest}, the latest release")
+	}
+}
+
+## The systems the release cross-compiles the examples on.
+cross_systems : List(Str)
+cross_systems = ["x86_64-linux", "aarch64-linux", "x86_64-windows"]
+
+## Every recorded case against each system's cross-compiled apps, which the
+## artifact download leaves without their executable bits.
+cross_run! : Str, Str, Str => Try({}, Str)
+cross_run! = |root, dir, cross| {
+	for system in cross_systems {
+		bin = "${cross}/cross-${system}"
+		note!("== apps cross-compiled on ${system}")
+		for name in names_in!(bin)? {
+			path = if (name.ends_with(".app")) "${bin}/${name}/Contents/MacOS/${name.drop_suffix(".app")}" else "${bin}/${name}"
+			step!(Cmd.new("chmod").args(["+x", OsStr.from_str(path)]), "chmod +x ${path}")?
+		}
+		test!(root, dir, Ok(bin))?
+	}
+	Ok({})
+}
+
+## What builds and tests a release, as its log and notes record it.
+versions! : () => Try({}, Str)
+versions! = || {
+	for (program, args) in [("roc", ["version"]), ("roc-stable", ["version"]), ("swiftc", ["--version"]), ("xcodebuild", ["-version"])] {
+		note!(capture!(program, args)?.trim())
+	}
 	Ok({})
 }
 
@@ -475,6 +565,14 @@ write! = |path, text| {
 	parent = Str.join_with(path.split_on("/").drop_last(1), "/")
 	Path.create_all!(Path.utf8(parent)) ? |error| "could not create ${parent}: ${Str.inspect(error)}"
 	Path.write_utf8!(Path.utf8(path), text).map_err(|error| "could not write ${path}: ${Str.inspect(error)}")
+}
+
+## Copy a file byte for byte, creating its directory.
+copy! : Str, Str => Try({}, Str)
+copy! = |source, target| {
+	parent = Str.join_with(target.split_on("/").drop_last(1), "/")
+	Path.create_all!(Path.utf8(parent)) ? |error| "could not create ${parent}: ${Str.inspect(error)}"
+	Path.copy!(Path.utf8(source), Path.utf8(target)).map_err(|error| "could not copy ${source} to ${target}: ${Str.inspect(error)}")
 }
 
 ## Remove a directory and everything in it, then create it empty.

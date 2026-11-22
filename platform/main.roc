@@ -15,7 +15,7 @@ platform ""
 	requires {
 		[Store : st] for main : Engine.Program(st)
 	}
-	exposes [Engine, Ui, Layout]
+	exposes [Engine, Layout, Ui]
 	packages { parser: "https://github.com/lukewilliamboswell/roc-parser/releases/download/6.0.0-rc.5/822J9njyNR1vgyX1KG4ck496dBx3AnLfvn2zHXn15Ksw.tar.zst" }
 	provides {
 		"roc_engine_drop": drop_for_host,
@@ -25,7 +25,6 @@ platform ""
 		"roc_engine_keys": keys_for_host,
 		"roc_engine_version": version_for_host,
 	}
-	hosted {}
 	targets: {
 		inputs_dir: "targets/",
 		arm64mac: { inputs: ["libhost.a", app] },

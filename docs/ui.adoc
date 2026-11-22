@@ -51,7 +51,7 @@ record as a signal:
 Ui.text_s(total, over.map(|o| if (o) { color: Red, weight: Bold } else {}))
 ----
 
-`text_s`, `vstack_s`, `hstack_s`, `box_s` and `image_s` exist; a control's
+`text_s`, `vstack_s`, `hstack_s`, `box_s`, `image_s` and `asset_image_s` exist; a control's
 props already hold signals and handlers, so controls have no `_s` form, and
 neither do `scroll` and `list`, whose sizes the window takes over once open.
 
@@ -81,6 +81,7 @@ Handlers are fields too: `Ui.button("Save", { on_press: h })`.
 | `segmented` | `Signal(ctx, Str), ChoiceProps(ctx) -> Elem(ctx)` | `NSSegmentedControl` showing the selection
 | `tabs` | `Signal(ctx, Str), TabsProps(ctx) -> Elem(ctx)` | a centred segmented control above an `Engine.switch` of pages
 | `image`, `image_s` | `Str, ImageProps -> Elem(ctx)` | `NSImageView` of an SF Symbol (`"star.fill"`)
+| `asset_image`, `asset_image_s` | `Signal(ctx, Str), AssetImageProps -> Elem(ctx)` | an image from the app's `assets/` (`"logo.png"`), drawn to its frame; see xref:apps.adoc#assets[Assets and the icon]
 | `progress` | `Signal(ctx, I64), ProgressProps -> Elem(ctx)` | determinate `NSProgressIndicator` bar
 | `busy` | `Signal(ctx, Bool), BusyProps -> Elem(ctx)` | indeterminate bar, animating while true
 | `shortcut` | `List(Engine.Chord), ShortcutProps(ctx) -> Elem(ctx)` | none: a document key handler
@@ -88,6 +89,7 @@ Handlers are fields too: `Ui.button("Save", { on_press: h })`.
 | `plain_key` | `Str -> Engine.Chord` | a key with no modifiers, such as `"Escape"`
 | `file_button` | `Signal(ctx, Str), FileButtonProps(ctx) -> Elem(ctx)` | `NSButton` opening an `NSOpenPanel`
 | `drop_zone` | `DropZoneProps(ctx), Elem(ctx) -> Elem(ctx)` | a dashed drop target around one child, accent while files are over it
+| `hover` | `HoverProps(ctx), Elem(ctx) -> Elem(ctx)` | none: its child's own view, which hears the pointer enter and leave
 | `divider` | `() -> Elem(ctx)` | `NSBox` separator
 | `spacer` | `() -> Elem(ctx)` | empty space that grows; spacers in one stack share it equally
 |===
@@ -122,11 +124,13 @@ table gives other defaults. Sizes are points.
 | `ChoiceProps(ctx)` | `choices : List(Str)` and `on_change : Handler(ctx)` (required), `enabled`, `size`, `width`, `squeeze`
 | `TabsProps(ctx)` | `choices : List(Str)`, `on_change : Handler(ctx)` and `page : Str -> Elem(ctx)` (required), `spacing : U32 ?? 16`, `size`
 | `ImageProps` | `color : Color ?? Label`, `style : TextStyle ?? Body` (the symbol is sized as that text), `scale : SymbolScale ?? Medium`, frame
+| `AssetImageProps` | `label : Str ?? ""` (names it to VoiceOver; empty is decorative), `scaling : ImageScaling ?? Fit`, frame (its natural size is the image's; bind one side and the other keeps the aspect ratio)
 | `ProgressProps` | `max : I64 ?? 100`, `size`, `width : Length ?? FillAtLeast(160)`
 | `BusyProps` | `size`, `width : Length ?? FillAtLeast(160)`
 | `ShortcutProps(ctx)` | `on_key : HandlerOf(ctx, Engine.Key)` (required)
 | `FileButtonProps(ctx)` | `on_files : Engine.FilesHandler(ctx)` (required), `bezel`, `icon`, `title_display`, `size`, `width`, `squeeze`
 | `DropZoneProps(ctx)` | `on_drop : Engine.FilesHandler(ctx)` (required), `padding : Insets ?? All(16)`, `radius : U32 ?? 10`, `width : Length ?? Fill`, `height`
+| `HoverProps(ctx)` | `on_hover : HandlerOf(ctx, Bool)` (required); `hover` has no frame of its own, its child's is used
 |===
 
 [#ui-looks]
@@ -158,6 +162,7 @@ The shared types, all inside `Ui` (`Ui.Length`, `Ui.Color`, …):
 | `TitleDisplay` | `Visible` or `Hidden`; a hidden title still names the control to VoiceOver, so an icon-only button keeps one: `Ui.button("Remove", { on_press, icon: Symbol("trash"), title_display: Hidden, bezel: Borderless })`
 | `Border` | `NoBorder`, `Line({ color, width })`, `Dashed({ color, width })`
 | `SymbolScale` | `Small`, `Medium`, `Large`
+| `ImageScaling` | how an asset image fits a frame of another shape: `Fit` (all of it, letterboxed), `Fill` (covers the frame, cropped), `Stretch` (distorted to the frame), `Original` (its own size, centred and clipped)
 |===
 
 Semantic colours follow light and dark mode, increased contrast and the
@@ -214,7 +219,30 @@ the props' defaults, so it fails to type-check where the props are expected.
 | `shortcut` (`on_key`) | `keydown` | the `Engine.Key`; compare its `heard` with a chord to tell several apart
 | `file_button` (`on_files`) | `change` | the chosen files, as `Engine.Received`
 | `drop_zone` (`on_drop`) | `drop` | the dropped files, as `Engine.Received`
+| `hover` (`on_hover`) | `hover` | `True` when the pointer enters its child, `False` when it leaves it or the window
 |===
+
+`Ui.hover` wraps any element without adding a view, so wrapping a grid's
+every cell costs no more views than the cells:
+
+[source,roc]
+----
+Ui.hover(
+    { on_hover: Engine.handle(|inside| [cells.pointed.set(if inside "Red" else "")]) },
+    Ui.box({ fill: Red, width: Fixed(26), height: Fixed(26) }, Ui.spacer()),
+)
+----
+
+Hover follows the pointer as a browser's `mouseenter` and `mouseleave` do. A
+hover inside another hears its own enter and leave while the outer one stays
+entered. Moving within one element sends nothing; crossing from one to
+another sends the leave, then the enter, and the window is laid out once
+after both. The host hit-tests each mouse move once, from one tracking area
+for the whole window, so the cost of a move follows the depth of the tree,
+not the number of hover targets. A drag (a move with a button down) and a
+layout change under a still pointer are not hover moves; the next move
+catches up. A `list`'s rows must be `row`s: hover inside a row, not around
+one.
 
 A control's state comes from its signals: a text field shows its subject, a
 checkbox its `checked` signal. Write the new value in the handler, as
@@ -309,6 +337,6 @@ Run it: it also reports the single-field record builder
 (`{ a: Engine.cell(…) }.Engine.Cells`) that builds but fails at run time with
 current compilers. Give a store at least two cells.
 
-`ROC_SCRIPT` drives a built app's real controls and prints the view tree:
-`ROC_SCRIPT="click:+;dump;quit" ./main`. See
-xref:contributing.adoc#driving-an-app[Driving an app] for the steps.
+`roc macos.roc test` runs an app's recorded cases, which drive its real
+controls and compare the view trees they print. See
+xref:apps.adoc#test-an-app[Test an app] for the cases and their steps.
