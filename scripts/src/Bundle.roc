@@ -46,6 +46,20 @@ Bundle := [].{
 		["main.roc"].concat(rest).concat(target_files.sort_with(Bundle.compare)).concat(Bundle.notices)
 	}
 
+	## The release version the consumer test makes the `macos.roc` tool under.
+	test_version : Str
+	test_version = "0.0.1-dryrun"
+
+	## An author's first steps, which the consumer test takes with the tool:
+	## each command's arguments and the directory it runs in, relative to the
+	## test's (empty for the test's own).
+	first_steps : List({ args : List(Str), cwd : Str })
+	first_steps = [
+		{ args: ["init", "counter"], cwd: "" },
+		{ args: ["build"], cwd: "counter" },
+		{ args: ["test"], cwd: "counter" },
+	]
+
 	## An example's `main.roc` with its checkout platform path replaced by
 	## the bundle's URL, as an app author's header names it.
 	released_main : Str, Str -> Try(Str, [NoPlatformPath])

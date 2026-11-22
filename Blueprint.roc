@@ -7,7 +7,7 @@
 #     blueprint run examples               # every example's recorded scripted runs
 #     blueprint run examples -- --update   # record what they print now, as a reviewable diff
 #     blueprint run bundle                 # the platform bundle, in build/platform/<hash>.tar.zst
-#     blueprint run bundle -- --test       # and an example built and run against it
+#     blueprint run bundle -- --test       # and a counter made with macos.roc against it
 #     blueprint run release -- test DIR    # every archived example against DIR's bundle
 #     blueprint tasks                      # list every task
 #     blueprint update                     # refresh Blueprint.lock
@@ -55,8 +55,8 @@ config = [
 	),
 	Shell("default", [Use("dev")]),
 	# The per-pull-request gate: compiler pins, formatting, the scripts'
-	# tests, the build, `roc test`, every example's recorded runs and the
-	# bundle with its consumer test.
+	# tests, the macos.roc tool's tests, the build, `roc test`, every
+	# example's recorded runs and the bundle with its consumer test.
 	# `check -- STAGE...` runs only the named stages, in order.
 	Task("check", [Use("dev"), Run(["scripts/check_all.roc", "--"])]),
 	# scripts/build.sh defaults to the RC1 compiler's install path; the task
@@ -68,12 +68,15 @@ config = [
 	# native inputs, then `roc bundle`s the platform modules, libhost.a, the
 	# generated linker stubs and the notices into build/platform/.
 	# `-- --output-dir DIR`, `-- --prebuilt` (skip the build) and `-- --test`
-	# (serve it on localhost and build and run examples/counter against it).
+	# (serve it on localhost and init, build and test a counter against it
+	# with the macos.roc tool).
 	Task("bundle", [Use("dev"), Run(["scripts/bundle.roc", "--"])]),
 	# The release steps after the bundle (scripts/release.roc), which
-	# .github/workflows/release.yml runs: `-- archive VERSION DIR` writes the
-	# examples archive, `-- test DIR [--binaries BIN]` builds and runs every
-	# archived example against DIR's bundle served on localhost, and
+	# .github/workflows/release.yml runs: `-- tool VERSION DIR [--base-url URL]`
+	# makes the macos.roc tool, `-- archive VERSION DIR` writes the examples
+	# archive, `-- test DIR [--binaries BIN]` builds and runs every
+	# archived example against DIR's bundle served on localhost (and inits,
+	# builds and tests a counter with DIR's macos.roc), and
 	# `-- notes VERSION DIR OUT` renders the release notes.
 	Task("release", [Use("dev"), Run(["scripts/release.roc", "--"])]),
 	# The tooling compiler, as a log records it.
