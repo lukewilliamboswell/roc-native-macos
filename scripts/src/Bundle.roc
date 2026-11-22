@@ -60,6 +60,18 @@ Bundle := [].{
 		{ args: ["test"], cwd: "counter" },
 	]
 
+	## The example with assets the consumer test builds and tests through
+	## the tool, the files its bundle must then hold in
+	## `Contents/Resources/`, and the case run on the bundled program.
+	assets_example : Str
+	assets_example = "about"
+
+	assets_expected : List(Str)
+	assets_expected = ["AppIcon.icns", "assets/icon.png", "assets/mark.pdf"]
+
+	assets_case : Str
+	assets_case = "switch"
+
 	## An example's `main.roc` with its checkout platform path replaced by
 	## the bundle's URL, as an app author's header names it.
 	released_main : Str, Str -> Try(Str, [NoPlatformPath])

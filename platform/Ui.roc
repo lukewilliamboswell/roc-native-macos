@@ -42,6 +42,7 @@ import Core
 ## | `dropdown` | `ui-dropdown` | `NSPopUpButton` |
 ## | `segmented`, `tabs` | `ui-segmented` | `NSSegmentedControl` (`tabs` adds an `Engine.switch`) |
 ## | `image`, `image_s` | `ui-image` | `NSImageView` of an SF Symbol |
+## | `asset_image`, `asset_image_s` | `ui-asset-image` | a view drawing an image from the app's `assets/` |
 ## | `progress`, `busy` | `ui-progress` | `NSProgressIndicator` (bar) |
 ## | `shortcut` | `ui-shortcut` | none: a document key handler |
 ## | `file_button` | `ui-file-button` | `NSButton` opening an `NSOpenPanel` |
@@ -606,6 +607,44 @@ Ui := [].{
 			[],
 		)
 
+	## How an image fits a frame of another shape: `Fit` shows all of it,
+	## `Fill` covers the frame and crops what overflows, `Stretch` distorts
+	## it to the frame, and `Original` draws it at its own size, centred and
+	## clipped.
+	ImageScaling : [Fit, Fill, Stretch, Original]
+
+	## How an image from the app's assets is drawn. Its natural size is the
+	## image's own, in points; bound one side and the other follows the
+	## image's aspect ratio, bound both and `scaling` fits it. `label` names
+	## it to VoiceOver; without one it is decorative and VoiceOver skips it.
+	AssetImageProps := {
+		label : Str ?? "",
+		scaling : ImageScaling ?? Fit,
+		width : Length ?? Auto,
+		height : Length ?? Auto,
+		squeeze : Squeeze ?? Standard,
+	}
+
+	## An image from the app's `assets/` directory, by its path there:
+	## `Ui.asset_image("logo.png", { width: Fixed(64), label: "Logo" })`.
+	## PNG, JPEG, PDF or any other file AppKit reads as an image. A name that
+	## is not in `assets/` stops the app with an error naming it.
+	asset_image : Signal(ctx, Str), AssetImageProps -> Elem(ctx)
+	asset_image = |name, props| asset_image_s(name, Engine.const(props))
+
+	## An image from the app's assets whose look follows a signal.
+	asset_image_s : Signal(ctx, Str), Signal(ctx, AssetImageProps) -> Elem(ctx)
+	asset_image_s = |name, props|
+		Engine.element(
+			"ui-asset-image",
+			[
+				Engine.attr_s("asset", name),
+				look("label", props, |p| p.label),
+				look("scaling", props, |p| image_scaling_word(p.scaling)),
+			].concat(frame_attrs(props.map(|p| { width: p.width, height: p.height, squeeze: p.squeeze }))),
+			[],
+		)
+
 	## A progress bar's range and size.
 	ProgressProps := {
 		max : I64 ?? 100,
@@ -1005,6 +1044,22 @@ symbol_scale_word = |scale|
 		Medium => "medium"
 		Large => "large"
 	}
+
+image_scaling_word : Ui.ImageScaling -> Str
+image_scaling_word = |scaling|
+	match scaling {
+		Fit => "fit"
+		Fill => "fill"
+		Stretch => "stretch"
+		Original => "original"
+	}
+
+## Image scalings in their grammar.
+expect {
+	cases : List(Ui.ImageScaling)
+	cases = [Fit, Fill, Stretch, Original]
+	Str.join_with(cases.map(image_scaling_word), " ") == "fit fill stretch original"
+}
 
 ## Every `Length` reaches the host in its grammar.
 expect {

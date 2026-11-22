@@ -89,6 +89,7 @@ describes.
 | [`contacts`](examples/contacts/main.roc)<br><img src="docs/images/contacts.png" width="200" alt="contacts"> | 10,000 generated rows in a sidebar `Ui.list` (`NSTableView`), a search field filtering through the `table_view` query, a detail pane for the selected row |
 | [`stopwatch`](examples/stopwatch/main.roc)<br><img src="docs/images/stopwatch.png" width="200" alt="stopwatch"> | Store cells, an interval effect owned by `watch_latest` (Stop cancels it), a default button, and an `each` list of laps with splits, the fastest and slowest coloured |
 | [`http-fetch`](examples/http-fetch/main.roc)<br><img src="docs/images/http-fetch.png" width="200" alt="http-fetch"> | `Engine.http` under `watch_latest`: Fetch, Cancel (a pure cancel), a second Fetch superseding the first, an optional 2 s timeout, transfer progress (`with_progress`), and a status badge whose colour follows the answer (`box_s`) |
+| [`about`](examples/about/main.roc)<br><img src="docs/images/about.png" width="200" alt="about"> | Images from the app's `assets/` (`Ui.asset_image`): a PNG that is also the app's icon, and a PDF drawn as vectors |
 | [`file-inspector`](examples/file-inspector/main.roc)<br><img src="docs/images/file-inspector.png" width="200" alt="file-inspector"> | `Ui.file_button` and a `Ui.drop_zone` delivering `File` handles, sizes in KB and MB; for an inspected file its SHA-256 (`sha256`), its first 200 bytes as text or "binary" (`slice`, `read_bytes`), its URL (`object_url`) and "Save Copy…" (`File.save`); Clear releases the handles |
 
 ## Contributing

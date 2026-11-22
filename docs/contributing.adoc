@@ -22,7 +22,7 @@ provides the rest of the environment.
 scripts/build.sh                # glue, Swift host, linker stubs, every example
 scripts/build.sh counter        # one example, after the platform is built
 scripts/build.sh --platform     # only the platform's native inputs
-./examples/counter/counter      # or stopwatch, todos, http-fetch, file-inspector, gallery, contacts
+./examples/counter/counter      # or stopwatch, todos, http-fetch, file-inspector, gallery, contacts, about
 open examples/counter/counter.app
 ----
 
