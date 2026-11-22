@@ -423,6 +423,14 @@ Host costs, not engine costs:: For 10k rows the engine's turns are
 milliseconds; the host was seconds until it stopped removing children one
 O(n) scan at a time (removals now compact once per batch) and stopped
 creating AppKit views for list rows nobody had scrolled to.
+Turns copy the storage on the event's path:: Every site is an erased
+closure (the state crosses to the host in a `Box`), and an erased call
+reads its captures borrowed, so each turn copies the child list of every
+block on the event's path. With 10,000 sites in one block that is a
+2.4 MB copy per call and most of a 2.4 ms hover turn
+(`patches/roc-compiler`, "Erased closures borrow their captures").
+Mount was quadratic, also the compiler's doing, until engine patches 0001
+and 0002 (xref:contributing.adoc#engine-patches[Engine patches]).
 A bundle is fetched only over https, or http to localhost:: RC1 rejects a
 local `.tar.zst` path as a platform ("that package does not have a platform
 header") and any `http` URL that is not localhost. A server listening on
