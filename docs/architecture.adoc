@@ -34,7 +34,8 @@ section 12 (protocol facts): that CBOR item needs the cbor package and
 `Ui.roc`:: The native vocabulary apps use. Each builder is a plain
 `Engine.element` with a native element name (`ui-vstack`, `ui-button`,
 `ui-text-field`, `ui-checkbox`, `ui-slider`, …). A control's state crosses as
-plain attributes (`value`, `checked`, `disabled`), because the engine only
+plain attributes (`value`, `checked`, `enabled`), and its look as one
+attribute per prop (xref:architecture.adoc#looks[Looks]); the engine only
 allows its `value`/`checked` _props_ on HTML inputs.
 
 Swift host (`host/`):: Decodes the subset of the command stream the
@@ -63,34 +64,90 @@ error, not a silent skip.
 |===
 | Builder | Element | AppKit view
 
-| `vstack`, `hstack` | `ui-vstack`, `ui-hstack` | `NSStackView`
+| `vstack`, `hstack` (and `_s`) | `ui-vstack`, `ui-hstack` | `NSStackView`
 | `form` | `ui-form` | vertical `NSStackView`; Return submits
+| `box`, `box_s` | `ui-box` | `Surface`: an `NSView` drawing a rounded fill and border around one child
 | `scroll` | `ui-scroll` | `NSScrollView` around a vertical `NSStackView`
 | `list`, `row` | `ui-list`, `ui-row` | view-based `NSTableView`; each `ui-row` is a table row
-| `title`, `label`, `label_s`, `text`, `text_s`, `readout_s` | `ui-title`, `ui-label`, `ui-readout` | `NSTextField` label
-| `button`, `button_s`, `action_button`, `submit_button` | `ui-button` | `NSButton`
+| `text`, `text_s` | `ui-text` | `Label`, an `NSTextField` label
+| `button`, `submit_button` | `ui-button` | `NSButton`
 | `text_field`, `text_area` | `ui-text-field`, `ui-text-area` | `NSTextField`; `NSTextView` in an `NSScrollView`
 | `checkbox`, `slider` | `ui-checkbox`, `ui-slider` | `NSButton` (checkbox), `NSSlider`
 | `dropdown` | `ui-dropdown` | `NSPopUpButton`
 | `segmented`, `tabs` | `ui-segmented` | `NSSegmentedControl`; `tabs` adds an `Engine.switch` of pages
-| `image` | `ui-image` | `NSImageView` of an SF Symbol
+| `image`, `image_s` | `ui-image` | `NSImageView` of an SF Symbol
 | `progress`, `busy` | `ui-progress` | `NSProgressIndicator` bar, determinate or indeterminate
 | `shortcut` | `ui-shortcut` | hidden; an `Engine.on_document_key` handler
 | `file_button` | `ui-file-button` | `NSButton` opening an `NSOpenPanel`
-| `drop_zone` | `ui-drop-zone` | an `NSView` registered for dragged file URLs
+| `drop_zone` | `ui-drop-zone` | a `Surface` with a dashed outline, registered for dragged file URLs
 | `divider`, `spacer` | `ui-divider`, `ui-spacer` | `NSBox` separator, flexible `NSView`
 |===
 
-Props cross as plain attributes the host reads: `spacing`, `padding` and
-`align` on stacks; `height` and `min-height` on scrolls, lists and text
-areas; `font` (`body`, `title`, `headline`, `caption`, `mono`) and `color`
-(`primary`, `secondary`, `tertiary`, `accent`, `red`, `orange`, `green`,
-`blue`) on text. A `dropdown`'s `choices` cross as one attribute, joined by
+A control's state crosses as attributes (`value`, `checked`, `title`,
+`enabled`), because the engine only allows its `value`/`checked` _props_ on
+HTML inputs. A `dropdown`'s `choices` cross as one attribute, joined by
 newlines.
 
-Window sizing:: Vertical stacks that hold a scroll area or a list use `.fill`
-distribution; the others keep `.gravityAreas`. The scroll area hugs least, so
-it takes the slack when the user resizes the window.
+[#looks]
+=== Looks
+
+Every prop is one attribute, and `Ui.roc` sends every one, defaults
+included, so a default lives only in Roc. A static props record goes through
+`Engine.const`, and the engine sends a constant signal as a plain static
+attribute; an `_s` builder's attributes follow its props signal, and the
+engine writes one only when its text changes. The words come from one pure
+function per type in `Ui.roc`, each with `expect`s. The host parses each
+value into its AppKit setting; a word outside the grammar is a fatal error.
+
+[cols="1,2,3",options="header"]
+|===
+| Attribute | Grammar | AppKit
+
+| `width`, `height` (every element) | `auto`, `fill`, `fill-at-least:N`, `fixed:N`, `at-least:N`, `at-most:N`, `between:MIN:MAX` | host-owned constraints (`==`, `>=`, `<=`, required); `fill` sets content hugging to 1 on that side, and across a stack pins the side to the stack's, inside its padding
+| `squeeze` (every element) | `standard`, `yield`, `resist` | horizontal compression resistance: the view's own, 250 or 999
+| `spacing` | `N` | `NSStackView.spacing`
+| `padding` | `TOP LEADING BOTTOM TRAILING` | `NSStackView.edgeInsets`; a surface's child insets
+| `align` (vertical stack, form) | `leading`, `center`, `trailing`, `fill` | `NSStackView.alignment` `.leading`, `.centerX`, `.trailing`; `fill` pins every child's width
+| `align` (horizontal stack, row) | `top`, `center`, `bottom`, `first-baseline`, `fill` | `.top`, `.centerY`, `.bottom`, `.firstBaseline`; `fill` pins every child's height
+| `distribution` | `gravity`, `fill`, `fill-equally`, `fill-proportionally`, `equal-spacing`, `equal-centering` | `NSStackView.distribution`; `gravity` is `.gravityAreas` unless the stack must fill (below)
+| `text-style` | `large-title`, `title1` … `title3`, `headline`, `subheadline`, `body`, `callout`, `footnote`, `caption1`, `caption2` | `NSFont.preferredFont(forTextStyle:)`; on a symbol, `NSImage.SymbolConfiguration(textStyle:scale:)`
+| `font-size` | `standard`, `N` | the style's point size, or `N`
+| `weight` | `standard`, `light`, `regular`, `medium`, `semibold`, `bold`, `heavy` | `standard` keeps the style's font; otherwise `NSFont.systemFont(ofSize:weight:)`
+| `design` | `proportional`, `monospaced-digits`, `monospaced` | `monospacedDigitSystemFont(ofSize:weight:)`, `monospacedSystemFont(ofSize:weight:)`
+| `overflow` | `clip`, `truncate-head`, `truncate-middle`, `truncate-tail`, `wrap`, `wrap:N` | `lineBreakMode` and `maximumNumberOfLines`; a wrapping `Label` has no intrinsic width and sets `preferredMaxLayoutWidth` to the width it is given
+| `text-align` | `natural`, `leading`, `center`, `trailing`, `justified` | `NSTextField.alignment`
+| `color`, `fill` | `label`, `secondary-label`, … `clear`, or `adaptive:RRGGBB:RRGGBB` | `NSColor.labelColor`, `.secondaryLabelColor`, `.controlAccentColor`, `.systemRed`, …; `adaptive` is `NSColor(name:dynamicProvider:)` choosing between two sRGB colours by `bestMatch(from: [.aqua, .darkAqua])`
+| `border` | `none`, `line:W:COLOUR`, `dashed:W:COLOUR` | stroked by the surface
+| `radius` | `N` | the surface's corner radius
+| `bezel` (button) | `push`, `flexible-push`, `toolbar`, `accessory-bar`, `badge`, `circular`, `small-square`, `borderless` | `NSButton.bezelStyle`; `borderless` is `isBordered = false`
+| `bezel` (text field) | `square`, `rounded` | `NSTextField.bezelStyle`
+| `role` | `normal`, `default`, `cancel`, `destructive` | `keyEquivalent` Return or Escape; `hasDestructiveAction`
+| `icon` | `none`, `symbol:NAME` | `NSButton.image`, an SF Symbol
+| `title-display` | `visible`, `hidden` | `imagePosition` (`.imageOnly` hides the title, which still names the control to VoiceOver); reapplied after a title, bezel or size change, since attributes arrive in any order
+| `size` | `mini`, `small`, `regular`, `large` | `NSControl.controlSize`, with the font `NSFont.systemFontSize(for:)`
+| `enabled` | `true`, `false` | `NSControl.isEnabled`
+| `scale` (symbol) | `small`, `medium`, `large` | `NSImage.SymbolScale`
+| `opening-height` (scroll, list) | `N` | a height preference (priority 300) until the window has been sized for it, then 49
+|===
+
+A surface (`Surface`, for `ui-box` and `ui-drop-zone`) draws its fill and
+border in `draw(_:)` with `NSColor`s, where AppKit has set the view's
+appearance, so a semantic or adaptive colour follows light and dark mode
+without the host doing anything. A layer's `CGColor` would not.
+
+Stack distribution:: A stack whose `distribution` is `gravity` uses `.fill`
+when it has a child that fills along it (a spacer, or a `fill` width in a
+horizontal stack and height in a vertical one), or, if vertical, holds a
+scroll area or list; otherwise `.gravityAreas`. The child that fills hugs
+least, so it takes the slack. Spacers in one stack are constrained equal, so
+two of them centre what lies between.
+
+Window sizing:: The window fits its content, measured after two layout
+passes (the first gives wrapping labels their widths). Once it holds a scroll
+area or list it grows only when its content needs more room.
+
+`ROC_APPEARANCE=dark` (or `light`) draws the app in that appearance whatever
+the system's, to check both looks.
 
 [#lists]
 == Lists

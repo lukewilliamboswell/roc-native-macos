@@ -1,1 +1,1 @@
-type:Buy milk;enter;type:Walk the dog;enter;toggle:Buy milk;click:Done;dump;click:Open;dump;quit
+type:Buy milk;enter;type:Walk the dog;enter;toggle:Buy milk;choose:Done;dump;choose:Open;dump;quit

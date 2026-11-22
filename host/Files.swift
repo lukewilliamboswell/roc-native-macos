@@ -384,37 +384,26 @@ extension Host {
     }
 }
 
-/// A drop target for files: dropped file URLs become a `drop` event.
-final class DropZoneView: NSView {
+/// A drop target for files around one child (`ui-drop-zone`): a dashed
+/// outline, in the accent colour while files are dragged over it. Dropped
+/// file URLs become a `drop` event.
+final class DropZoneView: Surface {
     weak var host: Host?
-    let label = NSTextField(labelWithString: "")
-    private var targeted = false { didSet { needsDisplay = true } }
+    private var targeted = false {
+        didSet {
+            border = targeted ? .solid(.controlAccentColor, 2) : .dashed(.separatorColor, 1.5)
+            fill = targeted ? NSColor.controlAccentColor.withAlphaComponent(0.08) : .clear
+        }
+    }
 
-    init() {
-        super.init(frame: .zero)
+    override init() {
+        super.init()
         registerForDraggedTypes([.fileURL])
-        label.alignment = .center
-        label.textColor = .secondaryLabelColor
-        label.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(label)
-        NSLayoutConstraint.activate([
-            label.centerXAnchor.constraint(equalTo: centerXAnchor),
-            label.centerYAnchor.constraint(equalTo: centerYAnchor),
-            label.leadingAnchor.constraint(greaterThanOrEqualTo: leadingAnchor, constant: 12),
-            widthAnchor.constraint(greaterThanOrEqualToConstant: 280),
-            heightAnchor.constraint(equalToConstant: 64),
-        ])
+        border = .dashed(.separatorColor, 1.5)
+        fill = .clear
     }
 
     required init?(coder: NSCoder) { fatalError("not used") }
-
-    override func draw(_ dirtyRect: NSRect) {
-        let path = NSBezierPath(roundedRect: bounds.insetBy(dx: 1, dy: 1), xRadius: 8, yRadius: 8)
-        path.lineWidth = targeted ? 2 : 1
-        path.setLineDash([5, 3], count: 2, phase: 0)
-        (targeted ? NSColor.controlAccentColor : NSColor.separatorColor).setStroke()
-        path.stroke()
-    }
 
     /// The paths of the file URLs being dragged.
     private func filePaths(_ info: NSDraggingInfo) -> [String] {

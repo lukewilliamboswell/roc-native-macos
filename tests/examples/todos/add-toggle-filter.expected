@@ -1,42 +1,42 @@
---- 360x394
+--- 480x392
 ui-vstack [1 views]
-  ui-vstack [5 views]
-    ui-title "To-do"
+  ui-vstack [4 views]
+    ui-hstack [3 views]
+      ui-text "To-do" {text-style=large-title weight=bold}
+      ui-spacer
+      ui-text "1 item left" {color=secondary-label design=monospaced-digits text-style=subheadline}
     ui-form [1 views]
       ui-hstack [2 views]
         ui-text-field ""
         ui-button "Add"
-    ui-vstack [3 views]
-      ui-hstack [3 views]
-        ui-button "All"
-        ui-button "Open"
-        ui-button "Done"
-      ui-divider
-      ui-scroll [1 views, 226pt high]
-        ui-hstack [3 views]
-          ui-checkbox "Buy milk" [x]
-          ui-spacer
-          ui-button "Remove"
-    ui-label "1 item left"
+    ui-vstack [2 views]
+      ui-segmented All Open [Done]
+      ui-box {border=line:1:separator}
+        ui-scroll [1 views, 220pt high]
+          ui-hstack [4 views]
+            ui-checkbox "Buy milk" [x]
+            ui-text "Buy milk" {color=secondary-label}
+            ui-spacer
+            ui-button "Remove"
     ui-shortcut
---- 360x394
+--- 480x392
 ui-vstack [1 views]
-  ui-vstack [5 views]
-    ui-title "To-do"
+  ui-vstack [4 views]
+    ui-hstack [3 views]
+      ui-text "To-do" {text-style=large-title weight=bold}
+      ui-spacer
+      ui-text "1 item left" {color=secondary-label design=monospaced-digits text-style=subheadline}
     ui-form [1 views]
       ui-hstack [2 views]
         ui-text-field ""
         ui-button "Add"
-    ui-vstack [3 views]
-      ui-hstack [3 views]
-        ui-button "All"
-        ui-button "Open"
-        ui-button "Done"
-      ui-divider
-      ui-scroll [1 views, 226pt high]
-        ui-hstack [3 views]
-          ui-checkbox "Walk the dog" [ ]
-          ui-spacer
-          ui-button "Remove"
-    ui-label "1 item left"
+    ui-vstack [2 views]
+      ui-segmented All [Open] Done
+      ui-box {border=line:1:separator}
+        ui-scroll [1 views, 220pt high]
+          ui-hstack [4 views]
+            ui-checkbox "Walk the dog" [ ]
+            ui-text "Walk the dog"
+            ui-spacer
+            ui-button "Remove"
     ui-shortcut

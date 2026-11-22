@@ -28,53 +28,104 @@ cells = store.cells()
 view : () -> Elem(Engine.StoreRoot(_))
 view = || {
 	contacts = cells.contacts.signal()
+	shown = contacts.map2(cells.selected.signal(), picked)
 	Ui.vstack(
-		{ spacing: 10, align: Fill },
+		{ spacing: 12, align: Fill, width: AtLeast(700) },
 		[
-			Ui.title("Contacts"),
 			Ui.hstack(
-				{},
+				{ spacing: 8 },
 				[
-					Ui.text_field("Search names and cities", cells.search.signal(), Engine.handle(|typed| [cells.search.set(typed)])),
-					Ui.text_s({ font: Caption, color: Secondary }, contacts.map2(cells.search.signal(), matching)),
+					Ui.image("magnifyingglass", { color: SecondaryLabel }),
+					Ui.text_field(cells.search.signal(), { placeholder: "Search names and cities", on_input: Engine.handle(|typed| [cells.search.set(typed)]), bezel: Rounded, width: Fill }),
+					Ui.text(contacts.map2(cells.search.signal(), matching), { style: Caption1, color: SecondaryLabel, design: MonospacedDigits }),
 				],
 			),
-			Ui.list(
-				{ height: 360 },
-				Engine.table_view(
-					cells.contacts,
-					{ query: cells.search.signal(), plan, window: Engine.const(Engine.every_row) },
-					|key, contact| row(key, contact),
-				),
-			),
 			Ui.hstack(
-				{},
+				{ spacing: 16, align: Fill, width: Fill, height: Fill },
 				[
-					Ui.image("person.crop.circle.fill", Accent),
-					Ui.text_s({ font: Headline }, contacts.map2(cells.selected.signal(), detail)),
+					## The sidebar: a list of every match, 10,000 rows at most.
+					Ui.list(
+						{ width: Fixed(300), opening_height: 400 },
+						Engine.table_view(
+							cells.contacts,
+							{ query: cells.search.signal(), plan, window: Engine.const(Engine.every_row) },
+							|key, contact| row(key, contact),
+						),
+					),
+
+					## The detail pane for the selected contact.
+					Ui.box(
+						{ padding: All(24), border: Line({ color: Separator, width: 1 }), width: Fill, height: Fill },
+						Engine.when(
+							shown.map(|s| s == Nobody),
+							|| Ui.vstack(
+								{ spacing: 6, align: Center, width: Fill },
+								[
+									Ui.image("person.crop.circle", { style: LargeTitle, scale: Large, color: TertiaryLabel }),
+									Ui.text("Select a contact", { style: Headline, color: SecondaryLabel }),
+								],
+							),
+							|| Ui.vstack(
+								{ spacing: 10, align: Leading, width: Fill },
+								[
+									Ui.image("person.crop.circle.fill", { style: LargeTitle, scale: Large, color: Accent }),
+									Ui.text(shown.map(|s| field(s, |c| c.name)), { style: Title1, weight: Semibold }),
+									Ui.divider(),
+									line("envelope", shown.map(|s| field(s, |c| c.email))),
+									line("mappin.and.ellipse", shown.map(|s| field(s, |c| c.city))),
+								],
+							),
+						),
+					),
 				],
 			),
 		],
 	)
 }
 
+## One detail line: a symbol and its text.
+line : Str, Signal(ctx, Str) -> Elem(ctx)
+line = |symbol, value| Ui.hstack({ spacing: 8 }, [Ui.image(symbol, { color: SecondaryLabel }), Ui.text(value, { color: SecondaryLabel })])
+
 ## One row: selecting it selects this contact.
 row : Signal(r, U64), State(r, Contact) -> Elem(r)
 	where [r.store : () -> Engine.Reach(r, _)]
 row = |key, contact|
 	Ui.row(
-		Engine.handle_by(key, |id, _| [cells.selected.set(Picked(id))]),
+		{ on_select: Engine.handle_by(key, |id, _| [cells.selected.set(Picked(id))]), spacing: 10, padding: Axes({ horizontal: 4, vertical: 3 }) },
 		[
-			Ui.image("person.crop.circle", Secondary),
+			Ui.image("person.crop.circle.fill", { style: Title2, color: SecondaryLabel }),
 			Ui.vstack(
-				{ spacing: 2 },
+				{ spacing: 1 },
 				[
-					Ui.text_s({}, contact.signal().map(|c| c.name)),
-					Ui.text_s({ font: Caption, color: Secondary }, contact.signal().map(|c| "${c.email} · ${c.city}")),
+					Ui.text(contact.signal().map(|c| c.name), { style: Headline }),
+					Ui.text(contact.signal().map(|c| "${c.email} · ${c.city}"), { style: Caption1, color: SecondaryLabel, squeeze: Yield }),
 				],
 			),
 		],
 	)
+
+## The contact the selection names, while it is in the table.
+Shown : [Nobody, Shown(Contact)]
+
+picked : Table(U64, Contact), [Nobody, Picked(U64)] -> Shown
+picked = |table, selected|
+	match selected {
+		Nobody => Nobody
+		Picked(id) =>
+			match table.get(id) {
+				Ok(contact) => Shown(contact)
+				Err(_) => Nobody
+			}
+	}
+
+## One field of the shown contact, or nothing.
+field : Shown, (Contact -> Str) -> Str
+field = |shown, read|
+	match shown {
+		Shown(contact) => read(contact)
+		Nobody => ""
+	}
 
 ## The rows whose name or city contains the search text, ignoring ASCII
 ## case, in id order.
@@ -90,17 +141,6 @@ matching = |table, query| {
 	count = table.fold(0.U64, |n, _, contact| if (contact.search.contains(needle)) n + 1 else n)
 	"${count.to_str()} of ${table.len().to_str()}"
 }
-
-detail : Table(U64, Contact), [Nobody, Picked(U64)] -> Str
-detail = |table, selected|
-	match selected {
-		Nobody => "Select a contact"
-		Picked(id) =>
-			match table.get(id) {
-				Ok(contact) => "${contact.name} <${contact.email}>, ${contact.city}"
-				Err(_) => "Select a contact"
-			}
-	}
 
 ## ASCII lower case.
 lower : Str -> Str
@@ -144,3 +184,4 @@ expect lower("Ada LOVELACE") == "ada lovelace"
 expect contact_of(28).name == "Alan A. Turing"
 
 expect matching(generated(30), "ada") == "2 of 30"
+expect field(picked(generated(30), Picked(28)), |c| c.name) == "Alan A. Turing"

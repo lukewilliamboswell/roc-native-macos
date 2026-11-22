@@ -480,9 +480,10 @@ The README is the front door for app authors: the pitch, a screenshot, a
 quick start with a complete example, a short tour, the examples and the
 licence. `docs/index.adoc` is a `:doctype: book` that includes one chapter
 per file: `ui.adoc` (the `Ui` reference, for app authors),
-`architecture.adoc`, `contributing.adoc` and this page. `docs/styling.md`
-stays Markdown: it is a design proposal, not a chapter, and is replaced by
-the implementation. *Adopt later*: build the manual with roc-docs in CI.
+`architecture.adoc`, `contributing.adoc` and this page. The styling design
+proposal (`docs/styling.md`) was folded into `ui.adoc` and
+`architecture.adoc` when it was implemented. *Adopt later*: build the
+manual with roc-docs in CI.
 
 == Not applicable
 
