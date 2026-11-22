@@ -137,6 +137,21 @@ Repo := [].{
 
 	## A recorded case's file names: `tests/examples/<example>/<case>.script`
 	## holds the `ROC_SCRIPT` steps and `<case>.expected` what the run prints.
+	## Whether a case printed what was recorded. Text must match exactly,
+	## except measurements, which depend on the system's fonts: a dump's
+	## `--- WxH` window line and any `NNNpt` value may each differ by up to
+	## `Repo.tolerance_pt` points.
+	matches : Str, Str -> Bool
+	matches = |expected, printed| {
+		want = expected.split_on("\n")
+		got = printed.split_on("\n")
+		want.len() == got.len() and List.map2(want, got, |w, g| { w, g }).all(|{ w, g }| w == g or same_but_measures(w, g))
+	}
+
+	## How far a measurement may move between systems, in points.
+	tolerance_pt : I64
+	tolerance_pt = 4
+
 	## A case's printed output with the repository's absolute path written
 	## `<repo>`, so a recorded case does not depend on where it was checked
 	## out (a file's URL, for example).
@@ -209,3 +224,61 @@ expect Repo.portable("--- 360x145\nui-label \"1\"\n", "/home/ci/repo") == "--- 3
 
 ## Output that printed the path loses its window size, which depended on it.
 expect Repo.portable("--- 570x351\nURL: file:///home/ci/repo/a.txt\n", "/home/ci/repo") == "--- <size>\nURL: file://<repo>/a.txt\n"
+
+## Two lines that differ only in their measurements, within the tolerance.
+same_but_measures : Str, Str -> Bool
+same_but_measures = |want, got| {
+	w = measure_tokens(want)
+	g = measure_tokens(got)
+	w.len() == g.len()
+		and List.map2(w, g, |a, b| { a, b }).all(
+			|{ a, b }|
+				match (a, b) {
+					(Word(x), Word(y)) => x == y
+					(Number(x), Number(y)) => (x - y).abs() <= Repo.tolerance_pt
+					_ => Bool.False
+				},
+		)
+}
+
+## A line split into words, with each measurement (the numbers of a `--- WxH`
+## window line, and an `NNNpt` value) as a number.
+measure_tokens : Str -> List([Word(Str), Number(I64)])
+measure_tokens = |line| {
+	if line.starts_with("--- ") {
+		match line.drop_prefix("--- ").split_on("x") {
+			[w, h] =>
+				match (I64.from_str(w), I64.from_str(h)) {
+					(Ok(a), Ok(b)) => return [Word("---"), Number(a), Number(b)]
+					_ => {}
+				}
+			_ => {}
+		}
+	}
+	line.split_on(" ").map(
+		|word|
+			match I64.from_str(word.drop_suffix("pt")) {
+				Ok(n) if word.ends_with("pt") => Number(n)
+				_ => Word(word)
+			},
+	)
+}
+
+## A window one point wider on another system still matches.
+expect Repo.matches("--- 406x493\nui-title \"Contacts\"\n", "--- 405x493\nui-title \"Contacts\"\n")
+
+## A scroll area's height may move a little too.
+expect Repo.matches("ui-scroll [1 views, 226pt high]", "ui-scroll [1 views, 228pt high]")
+
+## A bigger change in size, or any change in text, still fails.
+expect {
+	actual =
+		\\size: ${Str.inspect(Repo.matches("--- 406x493", "--- 360x493"))}
+		\\text: ${Str.inspect(Repo.matches("ui-label \"1 item left\"", "ui-label \"2 items left\""))}
+		\\count: ${Str.inspect(Repo.matches("ui-list [371 rows]", "ui-list [372 rows]"))}
+	expected =
+		\\size: False
+		\\text: False
+		\\count: False
+	actual == expected
+}
