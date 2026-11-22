@@ -19,45 +19,77 @@ Each builder returns an ordinary `Engine.element` with a native element name
 (`ui-vstack`, `ui-button`, …), which the host turns into one AppKit view.
 Nothing here is HTML: there is no document, no CSS and no browser.
 
+== How a builder reads
+
+Every builder takes its subject first (a text, a value, a selection) and a
+*props record* of defaulted fields beside it. Containers take their props
+first and their children last, so a long child list reads at the end. Pass
+`{}` for every default, or name only the fields that differ:
+
+[source,roc]
+----
+Ui.vstack(
+    { spacing: 12, align: Fill },
+    [
+        Ui.text("To-do", { style: LargeTitle, weight: Bold }),
+        Ui.text_field(draft, { placeholder: "What needs doing?", on_input: typed, width: Fill }),
+        Ui.button("Save", { on_press: saved, role: Default }),
+    ],
+)
+----
+
+*State is a signal; looks are values.* A field that holds what a control
+shows (its text, `value`, `checked`, `enabled`, a selection) is a `Signal`. A
+text literal already is one, and interpolating a signal makes one that
+follows it: `Ui.text("${count} left", {})`. A field that says how something
+looks (spacing, text style, colour, size) is a plain value. When a look must
+follow state, the `_s` form of a look-only builder takes the whole props
+record as a signal:
+
+[source,roc]
+----
+Ui.text_s(total, over.map(|o| if (o) { color: Red, weight: Bold } else {}))
+----
+
+`text_s`, `vstack_s`, `hstack_s`, `box_s` and `image_s` exist; a control's
+props already hold signals and handlers, so controls have no `_s` form, and
+neither do `scroll` and `list`, whose sizes the window takes over once open.
+
+Handlers are fields too: `Ui.button("Save", { on_press: h })`.
+
 == Builders
 
 [cols="2,3,2",options="header"]
 |===
 | Builder | Signature | AppKit view
 
-| `vstack` | `VStackProps, List(Elem(ctx)) -> Elem(ctx)` | vertical `NSStackView`
-| `hstack` | `HStackProps, List(Elem(ctx)) -> Elem(ctx)` | horizontal `NSStackView`
-| `form` | `Handler(ctx), List(Elem(ctx)) -> Elem(ctx)` | vertical `NSStackView`; Return in a text field, or its `submit_button`, submits
+| `vstack`, `vstack_s` | `VStackProps, List(Elem(ctx)) -> Elem(ctx)` | vertical `NSStackView`
+| `hstack`, `hstack_s` | `HStackProps, List(Elem(ctx)) -> Elem(ctx)` | horizontal `NSStackView`
+| `form` | `FormProps(ctx), List(Elem(ctx)) -> Elem(ctx)` | vertical `NSStackView`; Return in a text field, or its `submit_button`, runs `on_submit`
+| `box`, `box_s` | `BoxProps, Elem(ctx) -> Elem(ctx)` | a surface: a rounded fill and border around one child
 | `scroll` | `ScrollProps, Elem(ctx) -> Elem(ctx)` | `NSScrollView` around a vertical `NSStackView`
 | `list` | `ListProps, Elem(ctx) -> Elem(ctx)` | view-based `NSTableView`
-| `row` | `Handler(ctx), List(Elem(ctx)) -> Elem(ctx)` | one table row of a `list`, its children leading to trailing
-| `title` | `Str -> Elem(ctx)` | `NSTextField` label, large and bold
-| `label` | `Str -> Elem(ctx)` | `NSTextField` label
-| `label_s` | `Signal(ctx, Str) -> Elem(ctx)` | label following a value
-| `text` | `TextProps, Str -> Elem(ctx)` | label in a font and colour
-| `text_s` | `TextProps, Signal(ctx, Str) -> Elem(ctx)` | styled label following a value
-| `readout_s` | `Signal(ctx, Str) -> Elem(ctx)` | large monospaced label, for numbers that change
-| `button` | `Str, HandlerOf(ctx, Engine.Click) -> Elem(ctx)` | push `NSButton`
-| `button_s` | `Signal(ctx, Str), HandlerOf(ctx, Engine.Click) -> Elem(ctx)` | push button whose title follows a value
-| `action_button` | `Signal(ctx, Str), Signal(ctx, Bool), HandlerOf(ctx, Engine.Click) -> Elem(ctx)` | push button enabled while the second signal is true
-| `submit_button` | `Str -> Elem(ctx)` | the window's default button; submits its `form`
-| `text_field` | `Str, Signal(ctx, Str), Handler(ctx) -> Elem(ctx)` | editable `NSTextField`; the `Str` is its placeholder
-| `text_area` | `TextAreaProps, Signal(ctx, Str), Handler(ctx) -> Elem(ctx)` | `NSTextView` in an `NSScrollView`
-| `checkbox` | `Signal(ctx, Str), Signal(ctx, Bool), HandlerOf(ctx, Bool) -> Elem(ctx)` | checkbox `NSButton`
-| `slider` | `{ min : I64, max : I64 }, Signal(ctx, I64), Handler(ctx) -> Elem(ctx)` | `NSSlider`
-| `dropdown` | `List(Str), Signal(ctx, Str), Handler(ctx) -> Elem(ctx)` | `NSPopUpButton`
-| `segmented` | `List(Str), Signal(ctx, Str), Handler(ctx) -> Elem(ctx)` | `NSSegmentedControl`
-| `tabs` | `List(Str), Signal(ctx, Str), Handler(ctx), (Str -> Elem(ctx)) -> Elem(ctx)` | a segmented control above an `Engine.switch` of pages
-| `image` | `Str, Color -> Elem(ctx)` | `NSImageView` of an SF Symbol (`"star.fill"`)
-| `progress` | `{ max : I64 }, Signal(ctx, I64) -> Elem(ctx)` | determinate `NSProgressIndicator` bar
-| `busy` | `Signal(ctx, Bool) -> Elem(ctx)` | indeterminate bar, animating while true
-| `shortcut` | `List(Engine.Chord), HandlerOf(ctx, Engine.Key) -> Elem(ctx)` | none: a document key handler
+| `row` | `RowProps(ctx), List(Elem(ctx)) -> Elem(ctx)` | one table row of a `list`, its children leading to trailing
+| `text`, `text_s` | `Signal(ctx, Str), TextProps -> Elem(ctx)` | `NSTextField` label
+| `button` | `Signal(ctx, Str), ButtonProps(ctx) -> Elem(ctx)` | `NSButton`
+| `submit_button` | `Signal(ctx, Str), SubmitProps(ctx) -> Elem(ctx)` | the window's default button; submits its `form`
+| `text_field` | `Signal(ctx, Str), TextFieldProps(ctx) -> Elem(ctx)` | editable `NSTextField` showing the value
+| `text_area` | `Signal(ctx, Str), TextAreaProps(ctx) -> Elem(ctx)` | `NSTextView` in an `NSScrollView`
+| `checkbox` | `Signal(ctx, Str), CheckboxProps(ctx) -> Elem(ctx)` | checkbox `NSButton`, titled by the subject
+| `slider` | `Signal(ctx, I64), SliderProps(ctx) -> Elem(ctx)` | `NSSlider`
+| `dropdown` | `Signal(ctx, Str), ChoiceProps(ctx) -> Elem(ctx)` | `NSPopUpButton` showing the selection
+| `segmented` | `Signal(ctx, Str), ChoiceProps(ctx) -> Elem(ctx)` | `NSSegmentedControl` showing the selection
+| `tabs` | `Signal(ctx, Str), TabsProps(ctx) -> Elem(ctx)` | a centred segmented control above an `Engine.switch` of pages
+| `image`, `image_s` | `Str, ImageProps -> Elem(ctx)` | `NSImageView` of an SF Symbol (`"star.fill"`)
+| `progress` | `Signal(ctx, I64), ProgressProps -> Elem(ctx)` | determinate `NSProgressIndicator` bar
+| `busy` | `Signal(ctx, Bool), BusyProps -> Elem(ctx)` | indeterminate bar, animating while true
+| `shortcut` | `List(Engine.Chord), ShortcutProps(ctx) -> Elem(ctx)` | none: a document key handler
 | `command` | `Str -> Engine.Chord` | the chord of Command and a key
 | `plain_key` | `Str -> Engine.Chord` | a key with no modifiers, such as `"Escape"`
-| `file_button` | `Str, Engine.FilesHandler(ctx) -> Elem(ctx)` | `NSButton` opening an `NSOpenPanel`
-| `drop_zone` | `Str, Engine.FilesHandler(ctx) -> Elem(ctx)` | bordered `NSView` taking files dragged from the Finder
+| `file_button` | `Signal(ctx, Str), FileButtonProps(ctx) -> Elem(ctx)` | `NSButton` opening an `NSOpenPanel`
+| `drop_zone` | `DropZoneProps(ctx), Elem(ctx) -> Elem(ctx)` | a dashed drop target around one child, accent while files are over it
 | `divider` | `() -> Elem(ctx)` | `NSBox` separator
-| `spacer` | `() -> Elem(ctx)` | flexible empty `NSView` that grows to fill its stack
+| `spacer` | `() -> Elem(ctx)` | empty space that grows; spacers in one stack share it equally
 |===
 
 `tabs` builds only the shown page. Switching disposes the old page, with any
@@ -65,29 +97,105 @@ state inside it.
 
 == Props
 
-Layout and text style are props records of defaulted fields, given first,
-beside the children. Pass `{}` for the defaults, or name only the fields you
-change: `Ui.vstack({ spacing: 12, align: Fill }, kids)`,
-`Ui.text({ font: Caption, color: Secondary }, "Saved")`,
-`Ui.scroll({ height: 200 }, rows)`. Sizes are points.
+Every element's props end with its frame: `width : Length ?? Auto`,
+`height : Length ?? Auto` and `squeeze : Squeeze ?? Standard`, unless the
+table gives other defaults. Sizes are points.
 
 [cols="1,3",options="header"]
 |===
 | Props | Fields and defaults
 
-| `VStackProps` | `spacing : U32 ?? 8`, `padding : U32 ?? 0`, `align : [Leading, Center, Trailing, Fill] ?? Leading`. `Fill` stretches each child to the stack's width.
-| `HStackProps` | `spacing : U32 ?? 8`, `padding : U32 ?? 0`, `align : [Top, Center, Bottom] ?? Center`
-| `ScrollProps` | `height : U32 ?? 240` (the window opens with it), `min_height : U32 ?? 80` (the least the user can shrink it to), `spacing : U32 ?? 8`, `padding : U32 ?? 0`
-| `ListProps` | `height : U32 ?? 320`, `min_height : U32 ?? 120`
-| `TextAreaProps` | `height : U32 ?? 96`
-| `TextProps` | `font : Font ?? Body`, `color : Color ?? Primary`
+| `VStackProps` | `spacing : U32 ?? 8`, `padding : Insets ?? Zero`, `align : HorizontalAlign ?? Leading`, `distribution : Distribution ?? Gravity`, frame
+| `HStackProps` | `spacing : U32 ?? 8`, `padding : Insets ?? Zero`, `align : VerticalAlign ?? Center`, `distribution : Distribution ?? Gravity`, frame
+| `FormProps(ctx)` | `on_submit : Handler(ctx)` (required), `spacing : U32 ?? 8`, `padding : Insets ?? Zero`, `align : HorizontalAlign ?? Leading`, frame
+| `BoxProps` | `fill : Color ?? ControlBackground`, `border : Border ?? NoBorder`, `radius : U32 ?? 8`, `padding : Insets ?? All(12)`, frame
+| `ScrollProps` | `opening_height : U32 ?? 240`, `height : Length ?? AtLeast(80)`, `width : Length ?? Fill`, `spacing : U32 ?? 8`, `padding : Insets ?? Zero`
+| `ListProps` | `opening_height : U32 ?? 320`, `height : Length ?? AtLeast(120)`, `width : Length ?? FillAtLeast(240)`
+| `RowProps(ctx)` | `on_select : Handler(ctx)` (required), `spacing : U32 ?? 8`, `padding : Insets ?? Zero`, `align : VerticalAlign ?? Center`
+| `TextProps` | `style : TextStyle ?? Body`, `size : FontSize ?? Standard`, `weight : Weight ?? Standard`, `design : Design ?? Proportional`, `color : Color ?? Label`, `overflow : TextOverflow ?? TruncateTail`, `align : TextAlign ?? Natural`, frame
+| `ButtonProps(ctx)` | `on_press : HandlerOf(ctx, Engine.Click)` (required), `enabled : Signal(ctx, Bool) ?? Engine.const(Bool.True)`, `bezel : Bezel ?? Push`, `role : ButtonRole ?? Normal`, `icon : Icon ?? NoIcon`, `title_display : TitleDisplay ?? Visible`, `size : ControlSize ?? Regular`, frame
+| `SubmitProps(ctx)` | as `ButtonProps` without `on_press` and `role` (it is always the default button)
+| `TextFieldProps(ctx)` | `on_input : Handler(ctx)` (required), `placeholder : Str ?? ""`, `enabled`, `bezel : [Square, Rounded] ?? Square`, `size : ControlSize ?? Regular`, `width : Length ?? AtLeast(220)`, `height`, `squeeze`
+| `TextAreaProps(ctx)` | `on_input : Handler(ctx)` (required), `design : Design ?? Proportional`, `width : Length ?? FillAtLeast(220)`, `height : Length ?? AtLeast(96)`
+| `CheckboxProps(ctx)` | `checked : Signal(ctx, Bool)` and `on_change : HandlerOf(ctx, Bool)` (required), `enabled`, `title_display : TitleDisplay ?? Visible`, `size`, `width`, `squeeze`
+| `SliderProps(ctx)` | `range : { min : I64, max : I64 }` and `on_input : Handler(ctx)` (required), `enabled`, `size`, `width : Length ?? AtLeast(220)`, `squeeze`
+| `ChoiceProps(ctx)` | `choices : List(Str)` and `on_change : Handler(ctx)` (required), `enabled`, `size`, `width`, `squeeze`
+| `TabsProps(ctx)` | `choices : List(Str)`, `on_change : Handler(ctx)` and `page : Str -> Elem(ctx)` (required), `spacing : U32 ?? 16`, `size`
+| `ImageProps` | `color : Color ?? Label`, `style : TextStyle ?? Body` (the symbol is sized as that text), `scale : SymbolScale ?? Medium`, frame
+| `ProgressProps` | `max : I64 ?? 100`, `size`, `width : Length ?? FillAtLeast(160)`
+| `BusyProps` | `size`, `width : Length ?? FillAtLeast(160)`
+| `ShortcutProps(ctx)` | `on_key : HandlerOf(ctx, Engine.Key)` (required)
+| `FileButtonProps(ctx)` | `on_files : Engine.FilesHandler(ctx)` (required), `bezel`, `icon`, `title_display`, `size`, `width`, `squeeze`
+| `DropZoneProps(ctx)` | `on_drop : Engine.FilesHandler(ctx)` (required), `padding : Insets ?? All(16)`, `radius : U32 ?? 10`, `width : Length ?? Fill`, `height`
 |===
 
-`Font` is `[Body, Title, Headline, Caption, Mono]`, AppKit's system fonts.
-`Color` is `[Primary, Secondary, Tertiary, Accent, Red, Orange, Green, Blue]`,
-AppKit's semantic colours, which follow light and dark mode. Styling is
-deliberately minimal for now; xref:contributing.adoc#styling[a fuller styling
-API is proposed].
+== Looks
+
+The shared types, all inside `Ui` (`Ui.Length`, `Ui.Color`, …):
+
+[cols="1,3",options="header"]
+|===
+| Type | Values
+
+| `Length` | `Auto` (natural size), `Fill` (the room its stack offers on that side), `FillAtLeast(n)` (fill, never under `n`), `Fixed(n)`, `AtLeast(n)`, `AtMost(n)`, `Between({ min, max })`
+| `Squeeze` | `Standard`, `Yield` (truncates or shrinks before its neighbours), `Resist` (after them)
+| `Insets` | `Zero`, `All(n)`, `Axes({ horizontal, vertical })`, `Each({ top, leading, bottom, trailing })` (each defaults to 0: `Each({ top: 8 })`)
+| `HorizontalAlign` | `Leading`, `Center`, `Trailing`, `Fill` (stretch each child to the stack's width)
+| `VerticalAlign` | `Top`, `Center`, `Bottom`, `FirstBaseline`, `Fill`
+| `Distribution` | `Gravity` (AppKit's default), `Fill`, `FillEqually`, `FillProportionally`, `EqualSpacing`, `EqualCentering`
+| `TextStyle` | `LargeTitle`, `Title1`, `Title2`, `Title3`, `Headline`, `Subheadline`, `Body`, `Callout`, `Footnote`, `Caption1`, `Caption2`: AppKit's text styles
+| `FontSize` | `Standard` (the style's size) or `Fixed(n)` points, for a display such as a stopwatch
+| `Weight` | `Standard` (the style's own), `Light`, `Regular`, `Medium`, `Semibold`, `Bold`, `Heavy`
+| `Design` | `Proportional`, `MonospacedDigits` (changing numbers keep still), `Monospaced`
+| `TextOverflow` | `Clip`, `TruncateHead`, `TruncateMiddle`, `TruncateTail`, `Wrap`, `WrapUpTo(lines)`
+| `TextAlign` | `Natural`, `Leading`, `Center`, `Trailing`, `Justified`
+| `Color` | AppKit's semantic colours: `Label`, `SecondaryLabel`, `TertiaryLabel`, `QuaternaryLabel`, `Accent`, `Link`, `PlaceholderText`, `Separator`, `WindowBackground`, `ControlBackground`, `UnderPageBackground`, `TextBackground`, `SelectedContentBackground`, `Red`, `Orange`, `Yellow`, `Green`, `Mint`, `Teal`, `Cyan`, `Blue`, `Indigo`, `Purple`, `Pink`, `Brown`, `Gray`, `Clear`; and `Adaptive({ light, dark })`, two `0xRRGGBB` values
+| `ControlSize` | `Mini`, `Small`, `Regular`, `Large`
+| `Bezel` | `Push`, `FlexiblePush`, `Toolbar`, `AccessoryBar`, `Badge`, `Circular`, `SmallSquare`, `Borderless`
+| `ButtonRole` | `Normal`, `Default` (answers Return, drawn in the accent colour), `Cancel` (answers Escape), `Destructive`
+| `Icon` | `NoIcon` or `Symbol(name)`: an SF Symbol beside a title
+| `TitleDisplay` | `Visible` or `Hidden`; a hidden title still names the control to VoiceOver, so an icon-only button keeps one: `Ui.button("Remove", { on_press, icon: Symbol("trash"), title_display: Hidden, bezel: Borderless })`
+| `Border` | `NoBorder`, `Line({ color, width })`, `Dashed({ color, width })`
+| `SymbolScale` | `Small`, `Medium`, `Large`
+|===
+
+Semantic colours follow light and dark mode, increased contrast and the
+user's accent colour with no code in the app. `Adaptive` is the escape hatch
+for a colour of the app's own: it names one for light windows and one for
+dark ones, so it is never wrong in either.
+
+A wrapping text (`overflow: Wrap` or `WrapUpTo(n)`) has no width of its own:
+give it one (`width: Fill`, or a bound) and it wraps to it.
+
+Deliberately not styleable: font families and arbitrary sizes beyond
+`Fixed`, the colours of controls themselves (bezels, focus rings, selection),
+shadows, gradients, opacity, animation, absolute positions and per-side
+borders. AppKit draws controls to match the system. There is no cascade: a
+text inside a box does not inherit anything from the box, so one call site
+says everything about its element.
+
+== Themes
+
+A look is a value, and sharing one is ordinary Roc: keep props values in a
+record and pass them, or update one with `{ ..theme.card, padding: All(16) }`.
+
+[source,roc]
+----
+Theme : { page : Ui.VStackProps, quiet : Ui.TextProps, panel : Ui.BoxProps }
+
+theme : Theme
+theme = {
+    page: { spacing: 14, align: Fill, width: AtLeast(440) },
+    quiet: { style: Subheadline, color: SecondaryLabel },
+    panel: { border: Line({ color: Separator, width: 1 }) },
+}
+
+Ui.box({ ..theme.panel, padding: All(28) }, Ui.text("Nothing to do", theme.quiet))
+----
+
+*Annotate a shared props value* (`theme : Theme`, or `card : Ui.BoxProps`).
+An unannotated record literal is its own closed record and does not take
+the props' defaults, so it fails to type-check where the props are expected.
 
 == Events
 
@@ -95,30 +203,31 @@ API is proposed].
 |===
 | Builder | Event | When, and what the handler receives
 
-| `button`, `button_s`, `action_button` | `click` | an `Engine.Click`
-| `text_field`, `text_area` | `input` | the whole text, on every edit
-| `slider` | `input` | the new whole value, as text, while it is dragged
-| `checkbox` | `change` | its new state
-| `dropdown`, `segmented`, `tabs` | `change` | the chosen title
-| `row` | `select` | the user selects the row
-| `form` | `submit` | Return in one of its text fields, or a click on its `submit_button`
-| `shortcut` | `keydown` | the `Engine.Key`; compare its `heard` with a chord to tell several apart
-| `file_button` | `change` | the chosen files, as `Engine.Received`
-| `drop_zone` | `drop` | the dropped files, as `Engine.Received`
+| `button` (`on_press`) | `click` | an `Engine.Click`
+| `text_field`, `text_area` (`on_input`) | `input` | the whole text, on every edit
+| `slider` (`on_input`) | `input` | the new whole value, as text, while it is dragged
+| `checkbox` (`on_change`) | `change` | its new state
+| `dropdown`, `segmented`, `tabs` (`on_change`) | `change` | the chosen title
+| `row` (`on_select`) | `select` | the user selects the row
+| `form` (`on_submit`) | `submit` | Return in one of its text fields, or a click on its `submit_button`
+| `shortcut` (`on_key`) | `keydown` | the `Engine.Key`; compare its `heard` with a chord to tell several apart
+| `file_button` (`on_files`) | `change` | the chosen files, as `Engine.Received`
+| `drop_zone` (`on_drop`) | `drop` | the dropped files, as `Engine.Received`
 |===
 
-A control's state comes from its signals: a text field shows its `value`
-signal, a checkbox its `checked` signal. Write the new value in the handler,
-as `text_field("URL", cells.url.signal(), Engine.handle(|typed| [cells.url.set(typed)]))`
+A control's state comes from its signals: a text field shows its subject, a
+checkbox its `checked` signal. Write the new value in the handler, as
+`Ui.text_field(cells.url.signal(), { on_input: Engine.handle(|typed| [cells.url.set(typed)]) })`
 does.
 
 == The window
 
-Without a scroll area or a list, the window fits its content exactly. Once
-one appears, the window opens tall enough for the scroll area's `height`, and
-from then on grows only when the content around it needs more room. The user
-can resize the window; the scroll area takes the slack, down to its
-`min_height`.
+Without a scroll area or a list, the window fits its content exactly; give
+the top stack a `width: AtLeast(n)` for a comfortable minimum. Once a scroll
+area or list appears, the window opens tall enough for its
+`opening_height`, and from then on grows only when the content around it
+needs more room. The user can resize the window; the scroll area takes the
+slack, within its `height`.
 
 == Lists
 
@@ -135,7 +244,7 @@ element in it gets its views.
 
 == Keys
 
-`Ui.shortcut([Ui.command("n")], Engine.handle(|_key| ...))` hears Command-N
+`Ui.shortcut([Ui.command("n")], { on_key: Engine.handle(|_key| ...) })` hears Command-N
 when no control's own key handler did, and prevents its default. Key names
 follow the DOM (`Enter`, `Escape`, `ArrowUp`, …). A control's own key
 handler, through `Engine` keymaps, hears keys while it or a view inside it

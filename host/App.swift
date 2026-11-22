@@ -14,6 +14,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             backing: .buffered,
             defer: false)
         window.title = ProcessInfo.processInfo.processName
+        // `ROC_APPEARANCE=dark` (or `light`) draws the app in that appearance
+        // whatever the system's, to check both looks.
+        switch ProcessInfo.processInfo.environment["ROC_APPEARANCE"] {
+        case "dark": NSApp.appearance = NSAppearance(named: .darkAqua)
+        case "light": NSApp.appearance = NSAppearance(named: .aqua)
+        default: break
+        }
         let host = Host(window: window)
         self.host = host
         host.start()

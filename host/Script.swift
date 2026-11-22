@@ -83,6 +83,9 @@ extension Host {
                 let prevented = deliverKey(down: true, key: name, code: code, flags: flags, target: nil, inText: false)
                 _ = deliverKey(down: false, key: name, code: code, flags: flags, target: nil, inText: false)
                 say("key \(arg)\(prevented ? " (heard)" : "")")
+            case "window":
+                // The window number, for `screencapture -l<number>`.
+                say("window \(window.windowNumber)")
             case "wait":
                 delay = (Double(arg) ?? 0) / 1000
             case "dump":
@@ -132,6 +135,9 @@ extension Host {
         case let b as NSButton:
             let extra = n.name == "ui-checkbox" ? " \(b.state == .on ? "[x]" : "[ ]")" : (b.isEnabled ? "" : " (disabled)")
             say("\(pad)\(name) \"\(b.title)\"\(extra)")
+        case let f as NSTextField where n.name == "ui-text":
+            let usual = ["text-style": "body", "font-size": "standard", "weight": "standard", "design": "proportional", "color": "label"]
+            say("\(pad)\(name) \"\(f.stringValue)\"\(look(n, usual))")
         case let f as NSTextField:
             say("\(pad)\(name) \"\(f.stringValue)\"")
         case let s as NSSlider:
@@ -143,11 +149,21 @@ extension Host {
             say("\(pad)\(name) \(n.attrs["symbol"] ?? "")\(image.image == nil ? " (missing)" : "")")
         case let bar as NSProgressIndicator:
             say("\(pad)\(name) " + (bar.isIndeterminate ? (n.attrs["value"] == "1" ? "busy" : "idle") : "\(Int(bar.doubleValue))/\(Int(bar.maxValue))"))
-        case let z as DropZoneView:
-            say("\(pad)\(n.name!) \"\(z.label.stringValue)\"")
+        case is Surface:
+            say("\(pad)\(name)\(look(n, ["fill": "control-background", "border": "none"]))")
+            for c in n.children where c.name != nil { dump(c, depth + 1) }
         default:
             if n.name != nil { say("\(pad)\(name)") }
         }
+    }
+
+    /// The look attributes among `usual`'s keys whose value is not the usual
+    /// one, as ` {name=value …}`, so a dump shows what the app styled.
+    func look(_ n: Node, _ usual: [String: String]) -> String {
+        let changed = usual.keys.sorted().compactMap { key in
+            n.attrs[key].flatMap { $0 == usual[key] ? nil : "\(key)=\($0)" }
+        }
+        return changed.isEmpty ? "" : " {\(changed.joined(separator: " "))}"
     }
 }
 

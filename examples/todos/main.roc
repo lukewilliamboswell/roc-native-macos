@@ -61,23 +61,48 @@ decode = |text|
 			},
 	)
 
+## The looks the list shares, in one place.
+Theme : {
+	page : Ui.VStackProps,
+	quiet : Ui.TextProps,
+	panel : Ui.BoxProps,
+}
+
+theme : Theme
+theme = {
+	page: { spacing: 14, align: Fill, width: AtLeast(440) },
+	quiet: { style: Subheadline, color: SecondaryLabel, design: MonospacedDigits },
+	panel: { padding: Axes({ horizontal: 4, vertical: 6 }), border: Line({ color: Separator, width: 1 }), height: Fill },
+}
+
+## Which to-dos the list shows.
+Filter : [All, Open, Done]
+
 view : () -> Elem(Engine.StoreRoot(_))
 view = || {
 	todos = cells.todos.signal()
 	Ui.vstack(
-		{ spacing: 10, align: Fill },
+		theme.page,
 		[
-			Ui.title("To-do"),
+			Ui.hstack(
+				{ align: FirstBaseline },
+				[
+					Ui.text("To-do", { style: LargeTitle, weight: Bold }),
+					Ui.spacer(),
+					Ui.text(todos.map(remaining), theme.quiet),
+				],
+			),
+
 			## Every change to the table after mount is saved.
 			Engine.watch_changes(todos.map(encode), |text| [Engine.command(StorageSet("todos", text))], Engine.ignore({})),
 			Ui.form(
-				Engine.handle_by(adding(), |at, _| added(at)),
+				{ on_submit: Engine.handle_by(adding(), |at, _| added(at)), align: Fill },
 				[
 					Ui.hstack(
 						{},
 						[
-							Ui.text_field("What needs doing?", cells.draft.signal(), Engine.handle(|typed| [cells.draft.set(typed)])),
-							Ui.submit_button("Add"),
+							Ui.text_field(cells.draft.signal(), { placeholder: "What needs doing?", on_input: Engine.handle(|typed| [cells.draft.set(typed)]), bezel: Rounded, size: Large, width: Fill }),
+							Ui.submit_button("Add", { icon: Symbol("plus"), size: Large }),
 						],
 					),
 				],
@@ -85,49 +110,88 @@ view = || {
 			Engine.state(
 				All,
 				|showing| Ui.vstack(
-					{ align: Fill },
+					{ spacing: 10, align: Fill, height: Fill },
 					[
-						Ui.hstack(
-							{},
-							[
-								Ui.button("All", showing.update(|_| All)),
-								Ui.button("Open", showing.update(|_| Open)),
-								Ui.button("Done", showing.update(|_| Done)),
-							],
+						Ui.segmented(
+							showing.signal().map(filter_name),
+							{ choices: ["All", "Open", "Done"], on_change: showing.set_value(|held, name| filter_named(name) ?? held), width: Fill },
 						),
-						Ui.divider(),
-						Ui.scroll(
-							{ height: 200 },
-							Engine.table_view(
-								cells.todos,
-								{ query: showing.signal(), plan, window: Engine.const(Engine.every_row) },
-								|key, todo| row(key, todo),
+						Engine.when(
+							cells.todos.signal().map(|table| table.len() == 0),
+							|| empty(),
+							|| Ui.box(
+								theme.panel,
+								Ui.scroll(
+									{ opening_height: 220, spacing: 2 },
+									Engine.table_view(
+										cells.todos,
+										{ query: showing.signal(), plan, window: Engine.const(Engine.every_row) },
+										|key, todo| row(key, todo),
+									),
+								),
 							),
 						),
 					],
 				),
 			),
-			Engine.when(todos.map(|table| table.len() == 0), || Ui.label("Nothing to do."), || Engine.text("")),
-			Ui.text_s({ font: Caption, color: Secondary }, todos.map(remaining)),
 			# Command-N adds the draft too, from anywhere in the window.
-			Ui.shortcut([Ui.command("n")], Engine.handle_by(adding(), |at, _| added(at))),
+			Ui.shortcut([Ui.command("n")], { on_key: Engine.handle_by(adding(), |at, _| added(at)) }),
 		],
 	)
 }
 
+## What the list shows before there is anything in it.
+empty : () -> Elem(ctx)
+empty = ||
+	Ui.box(
+		{ ..theme.panel, padding: All(28) },
+		Ui.vstack(
+			{ spacing: 6, align: Center, width: Fill },
+			[
+				Ui.image("checkmark.circle", { style: LargeTitle, color: TertiaryLabel }),
+				Ui.text("Nothing to do", { style: Headline, color: SecondaryLabel }),
+				Ui.text("Add a to-do above, or press Command-N.", { style: Caption1, color: TertiaryLabel }),
+			],
+		),
+	)
+
 ## One row: the checkbox writes this to-do and no other; removing it is a
-## decision over the whole table.
+## decision over the whole table. A done to-do's title is greyed.
 row : Signal(r, U64), State(r, Todo) -> Elem(r)
 	where [r.store : () -> Engine.Reach(r, _)]
-row = |key, todo|
+row = |key, todo| {
+	held = todo.signal()
 	Ui.hstack(
-		{},
+		{ padding: Axes({ horizontal: 8, vertical: 3 }) },
 		[
-			Ui.checkbox(todo.signal().map(|t| t.title), todo.signal().map(|t| t.done), todo.set_value(|held, checked| { ..held, done: checked })),
+			Ui.checkbox(held.map(|t| t.title), { checked: held.map(|t| t.done), on_change: todo.set_value(|was, checked| { ..was, done: checked }), title_display: Hidden }),
+			Ui.text_s(held.map(|t| t.title), held.map(|t| if (t.done) { color: SecondaryLabel } else {})),
 			Ui.spacer(),
-			Ui.button("Remove", Engine.handle_by(key, |id, _| [cells.todos.update(|table| table.remove(id))])),
+			Ui.button(
+				"Remove",
+				{ on_press: Engine.handle_by(key, |id, _| [cells.todos.update(|table| table.remove(id))]), icon: Symbol("trash"), title_display: Hidden, bezel: Borderless },
+			),
 		],
 	)
+}
+
+filter_name : Filter -> Str
+filter_name = |filter|
+	match filter {
+		All => "All"
+		Open => "Open"
+		Done => "Done"
+	}
+
+## The filter a segment's title names.
+filter_named : Str -> Try(Filter, [NotAFilter])
+filter_named = |name|
+	match name {
+		"All" => Ok(All)
+		"Open" => Ok(Open)
+		"Done" => Ok(Done)
+		_ => Err(NotAFilter)
+	}
 
 Adding : { title : Str, next : U64 }
 

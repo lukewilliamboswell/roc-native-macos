@@ -1,6 +1,6 @@
 app [main] { pf: platform "../../platform/main.roc" }
 
-import pf.Engine exposing [Elem]
+import pf.Engine exposing [Elem, Signal]
 import pf.Ui
 
 ## A stopwatch: a store of three cells, an interval effect that runs only
@@ -23,30 +23,38 @@ cells = store.cells()
 view : () -> Elem(Engine.StoreRoot(_))
 view = || {
 	running = cells.running.signal()
+	laps = cells.laps.signal()
 	Ui.vstack(
-		{},
+		{ spacing: 18, align: Fill, width: AtLeast(380) },
 		[
-			Ui.title("Stopwatch"),
-			Ui.readout_s(cells.elapsed_ms.signal().map(clock)),
+			Ui.text(cells.elapsed_ms.signal().map(clock), { size: Fixed(56), weight: Light, design: MonospacedDigits, align: Center, width: Fill }),
 			Ui.hstack(
-				{},
+				{ spacing: 12, distribution: FillEqually, width: Fill },
 				[
-					Ui.button_s(running.map(|on| if (on) "Stop" else "Start"), Engine.handle_by(running, |on, _| toggled(on))),
-					Ui.action_button(Engine.const("Lap"), running, Engine.handle_by(cells.elapsed_ms.signal(), |at, _| [cells.laps.update(|laps| laps.append(at))])),
-					Ui.button("Reset", Engine.handle(|_| [cells.running.set(Bool.False), cells.elapsed_ms.set(0), cells.last_tick.set(0), cells.laps.set([])])),
+					Ui.button("Reset", { on_press: Engine.handle(|_| [cells.running.set(Bool.False), cells.elapsed_ms.set(0), cells.last_tick.set(0), cells.laps.set([])]), size: Large, width: AtLeast(84) }),
+					Ui.button("Lap", { on_press: Engine.handle_by(cells.elapsed_ms.signal(), |at, _| [cells.laps.update(|held| held.append(at))]), enabled: running, size: Large, width: AtLeast(84) }),
+
+					## The prominent button: Return starts and stops the watch.
+					Ui.button(running.map(|on| if (on) "Stop" else "Start"), { on_press: Engine.handle_by(running, |on, _| toggled(on)), role: Default, size: Large, width: AtLeast(84) }),
 				],
 			),
-			Ui.divider(),
-			Ui.label_s(cells.laps.signal().map(|laps| if (laps.is_empty()) "No laps yet" else "Laps")),
-			Ui.vstack(
-				{},
+			Ui.hstack(
+				{ align: FirstBaseline },
 				[
-					Engine.each(
-						cells.laps.signal().map(|laps| laps.map_with_index(|at, index| { number: index + 1, at })),
-						|lap| lap.number.to_str(),
-						|row| Ui.label_s(row.item().map(|lap| "Lap ${lap.number.to_str()}    ${clock(lap.at)}")),
-					),
+					Ui.text("Laps", { style: Headline }),
+					Ui.spacer(),
+					Ui.text(laps.map(|held| if (held.is_empty()) "" else "${held.len().to_str()} recorded"), { style: Caption1, color: SecondaryLabel }),
 				],
+			),
+			Ui.box(
+				{ padding: Axes({ horizontal: 12, vertical: 8 }), border: Line({ color: Separator, width: 1 }) },
+				Ui.vstack(
+					{ spacing: 6, align: Fill },
+					[
+						Engine.when(laps.map(|held| held.is_empty()), || Ui.text("Press Lap while the watch runs.", { color: TertiaryLabel }), || Engine.text("")),
+						Engine.each(laps.map(splits), |lap| lap.number.to_str(), |row| lap_row(row.item())),
+					],
+				),
 			),
 			# While the watch runs, an interval ticks every 47 ms; stopping it
 			# cancels the request (watch_latest supersedes it).
@@ -57,6 +65,60 @@ view = || {
 			),
 		],
 	)
+}
+
+## One lap: its number, its own time (green for the fastest, red for the
+## slowest) and the total when it was taken.
+lap_row : Signal(r, Lap) -> Elem(r)
+lap_row = |lap|
+	Ui.hstack(
+		{},
+		[
+			Ui.text(lap.map(|l| "Lap ${l.number.to_str()}"), { color: SecondaryLabel, width: Fixed(64) }),
+			Ui.text_s(
+				lap.map(|l| clock(l.split)),
+				lap.map(
+					|l| {
+						color = match l.mark {
+							Fastest => Green
+							Slowest => Red
+							Ordinary => Label
+						}
+						{ design: MonospacedDigits, color }
+					},
+				),
+			),
+			Ui.spacer(),
+			Ui.text(lap.map(|l| clock(l.at)), { design: MonospacedDigits, color: SecondaryLabel }),
+		],
+	)
+
+## A lap as the list shows it.
+Lap : { number : U64, at : I64, split : I64, mark : [Fastest, Slowest, Ordinary] }
+
+## The laps, newest first, each with its split from the one before; with
+## two or more, the fastest and slowest split are marked.
+splits : List(I64) -> List(Lap)
+splits = |times| {
+	timed = times.map_with_index(|at, index| { number: index + 1, at, split: at - (if (index == 0) 0 else times.get(index - 1) ?? 0) })
+	fastest = timed.map(|l| l.split).min() ?? 0
+	slowest = timed.map(|l| l.split).max() ?? 0
+	marked = timed.map(
+		|l| {
+			mark =
+				if timed.len() < 2 or fastest == slowest {
+					Ordinary
+				} else if l.split == fastest {
+					Fastest
+				} else if l.split == slowest {
+					Slowest
+				} else {
+					Ordinary
+				}
+			{ number: l.number, at: l.at, split: l.split, mark }
+		},
+	)
+	marked.sort_with(|a, b| if (a.number > b.number) Before else if (a.number < b.number) After else Same)
 }
 
 ## Starting forgets the last tick, so the first tick after it only sets it.
@@ -82,3 +144,14 @@ clock = |ms| {
 	pad = |n| if (n < 10) "0${n.to_str()}" else n.to_str()
 	"${minutes.to_str()}:${pad(seconds)}.${pad(centis)}"
 }
+
+expect clock(83_456) == "1:23.45"
+
+## Splits are the gaps between laps, newest first, with the extremes marked.
+expect {
+	actual = splits([1000, 2500, 3100]).map(|l| "${l.number.to_str()} ${l.split.to_str()} ${Str.inspect(l.mark)}")
+	actual == ["3 600 Fastest", "2 1500 Slowest", "1 1000 Ordinary"]
+}
+
+## One lap marks nothing.
+expect splits([1200]).map(|l| l.mark) == [Ordinary]

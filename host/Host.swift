@@ -55,7 +55,7 @@ final class Host: NSObject, NSTextFieldDelegate {
         stack.orientation = .vertical
         root.view = stack
         // The app's root element fills the window.
-        for (name, value) in [("spacing", "12"), ("padding", "20"), ("align", "fill")] { setAttr(root, name, value) }
+        for (name, value) in [("spacing", "12"), ("padding", "20 20 20 20"), ("align", "fill")] { setAttr(root, name, value) }
         stack.translatesAutoresizingMaskIntoConstraints = false
         let content = NSView()
         content.addSubview(stack)

@@ -49,6 +49,14 @@ struct Reader {
 
 /// One node the engine created (or one cloned from a row template, which
 /// has no engine id of its own).
+/// A view's own content hugging and compression resistance, before any
+/// `width`, `height` or `squeeze` attribute changed them.
+struct Natural {
+    let hugWidth: NSLayoutConstraint.Priority
+    let hugHeight: NSLayoutConstraint.Priority
+    let resist: NSLayoutConstraint.Priority
+}
+
 final class Node {
     enum Kind { case element(String), text, comment }
 
@@ -56,6 +64,8 @@ final class Node {
     var id: UInt32?
     var text = ""
     var attrs: [String: String] = [:]
+    /// How its view hugged and resisted when it was made (Views.swift).
+    var natural: Natural?
     weak var parent: Node?
     /// The children, in order. A detached child stays in `storage` until
     /// the children are next read, so removing many children of one parent
