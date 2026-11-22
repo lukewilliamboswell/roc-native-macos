@@ -13,8 +13,9 @@ this repository does, and the decision:
 
 The repository's shape decides what applies. It is a platform with one native
 target (`arm64mac`). Its host is Swift, and it generates its own glue and macOS
-linker stubs. It has no releases, so most of the release, nightly and SBOM
-machinery has nothing to act on yet. roc-gui, which also generates macOS linker
+linker stubs. Its release workflow was added after the first pass of this
+review, for 0.0.1; the nightly-compatibility machinery waits for a published
+release. roc-gui, which also generates macOS linker
 interfaces, and roc-signals, the source of the engine, were the reference
 adopters.
 
@@ -46,7 +47,7 @@ issues, delete this page.
 
 | `ci.yml`
 | Adopt now
-| One `macos-15` job runs `blueprint run check`, with the nightly resolved once.
+| One `macos-15` job runs `blueprint run check`, with the nightly resolved once and Xcode 26.3 selected (`.github/actions/setup-xcode`).
 
 | Committed host bindings and their CI check
 | Adopt later
@@ -72,9 +73,13 @@ issues, delete this page.
 | Adopt now
 | `blueprint run bundle` builds the bundle; `-- --test`, and the `bundle` stage of `check`, build and run an example against it served from localhost.
 
-| `release.yml`, examples archive, `nightly.yml`, SBOMs
+| `release.yml`, examples archive, SBOMs, attestations
+| Adopt now
+| `release.yml` builds on `macos-15`, cross-compiles from Linux and Windows, runs every recorded case against both, binds SBOM sidecars, attests and publishes through `actions/publish-release`. See <<releases>>.
+
+| `nightly.yml`
 | Adopt later
-| No release exists to build, test or report on.
+| Needs a published release, and the shared runner needs `tests/spec.json`.
 
 | Repository settings
 | Adopt later
@@ -272,8 +277,12 @@ and one job there is no aggregate job: `Check` is the required status check.
 `actionlint` passes. Blueprint 0.13.0's recorded `aarch64-darwin` digest
 matches the local binary the steps ran with.
 +
-The workflow has not run on GitHub yet. Two parts are untested there: AppKit
-apps on a hosted runner's GUI session, and the runner image's Swift version.
+Its first runs on GitHub failed in the build stage: the image's default Xcode
+(16.4, Swift 6.1) references four Swift runtime symbols that Swift 6.2
+inlines, and the stub audit refused them. They were catalogued, and both
+`ci.yml` and `release.yml` now select Xcode 26.3 (build `17C529`, Swift
+6.2.4) through `.github/actions/setup-xcode`, which fails on any other build,
+so the audit sees one compiler's symbols.
 `setup-roc` on `main` has no `download-method: asset-api`, so the verified
 download `actions.adoc` asks for is a follow-up. It is on a roc-lang/setup-roc
 branch (`30af91a`), which roc-automation's own workflows use.
@@ -329,6 +338,7 @@ permissions and a maintainer-dispatched publisher, none of which a spike
 without releases can exercise. Tightening the catalog to per-symbol evidence
 is already listed in xref:architecture.adoc#linker-inputs[Architecture].
 
+[#releases]
 == Releases, examples archive and nightly compatibility
 
 Guidance::
@@ -341,7 +351,7 @@ No releases. The examples already name the platform by relative path
 (`../../platform/main.roc`), and no example pins a compiler, so they can be
 archived unchanged.
 
-Action (adopt now, partly)::
+Action (adopt now)::
 `blueprint run bundle` (`scripts/bundle.roc`) is the repository's own bundle
 command, as `actions.adoc` "`release-package` platform" expects. It builds the
 platform's native inputs, stages the tracked `platform/*.roc` modules,
@@ -351,13 +361,37 @@ runs `roc bundle` into `build/platform/`, which then holds exactly one
 runs `examples/counter` against it with an empty package cache, as a first
 user would; `check` runs it as its `bundle` stage.
 +
-*Adopt later*: when the platform is first released, add a `release.yml`
-that builds the bundle with this task, with the host and the locked stubs. The workflow uses
-`release-package build --platform-bundle` to write the examples archive, tests
-those bytes on `macos-15` and publishes through `actions/publish-release`.
-Then add `nightly.yml` on the shared compatibility runner. Both need
-`tests/spec.json`, which needs the host to take its script from standard input
-or an argument rather than `ROC_SCRIPT` (see the follow-ups).
+`.github/workflows/release.yml` follows "A platform's release workflow":
+dispatched from `main` with a version, a dry run on pull requests, top-level
+`permissions: {}`, full-SHA actions and one nightly per run. Its jobs and
+what each checks are in xref:contributing.adoc#releasing[Releasing]. Where it
+differs from the guidance, and why:
++
+--
+* *Host and bundle on `macos-15`, not a Linux builder.* The host is Swift
+  linking AppKit. The build job runs the whole check gate and bundles the
+  `libhost.a` that gate tested (`--prebuilt`), because a rebuilt host gives a
+  different bundle.
+* *`scripts/release.roc` instead of `release-package`.* The utility's
+  `test-examples` and `test-archive` need `tests/spec.json`, which cannot
+  express `ROC_SCRIPT` (follow-up 4). `release -- archive` writes
+  `roc-native-macos-examples-<version>.zip` with the same shape (examples
+  naming the release URL, cases, fixtures, README) and `release -- test`
+  serves the bundle on localhost in place of that URL, as `test-archive`
+  does.
+* *The runner matrix cross-compiles.* `ubuntu-24.04`, `ubuntu-24.04-arm` and
+  `windows-2025` have no checkout, no Blueprint and no Apple toolchain: they
+  install the run's nightly, serve the candidate bundle and build every
+  archived example with `--target=arm64mac` in an inline bash step
+  (Blueprint does not run on Windows). A `macos-15` job runs those binaries'
+  recorded cases. This is the platform's claim that apps build from any
+  system, tested on every release.
+* *No `roc bump` check yet.* There is no previous release to compare with.
+  Add it with the second release.
+--
++
+*Adopt later*: `nightly.yml` on the shared compatibility runner, once a
+release exists and the examples move to `tests/spec.json`.
 
 == SBOM and third-party notices
 
@@ -370,9 +404,18 @@ release artifact, generated and validated in the read-only build, through
 This repository::
 No artifacts, no SBOM, and no third-party notice.
 
-Action::
-*Adopt now*: `THIRD_PARTY_LICENSES.md`. *Adopt later*: an SBOM for each
-release artifact, alongside the first release.
+Action (adopt now)::
+`THIRD_PARTY_LICENSES.md`, and SBOM sidecars for the bundle:
+`sbom/composition.json` declares the platform, the roc-signals engine copies
+and the basic-webserver URL module as contained; roc-parser as a dependency
+fetched at build time; the macOS system libraries as runtime dependencies;
+and Xcode's Swift as a build dependency. It records two incomplete scopes:
+Swift standard library code inlined into `libhost.a`, and the nightly that
+ran `roc bundle`. `actions/sbom-sidecars` checks it against `Blueprint.roc`
+and `Blueprint.lock`, lists every archive member, and binds SPDX 3, SPDX 2.3,
+CycloneDX and an evidence manifest to the bundle's bytes. It was run locally
+with the action's controller against a real bundle. The examples archive has
+no SBOM yet.
 
 == Security policy and workflow trust
 
@@ -385,8 +428,12 @@ This repository::
 No `SECURITY.md` and no workflows.
 
 Action::
-*Adopt now*: `SECURITY.md` gives the private reporting channel and says there
-are no releases. `ci.yml` has only `contents: read` jobs.
+*Adopt now*: `SECURITY.md` gives the private reporting channel and how to
+verify a release. `ci.yml` has only `contents: read` jobs. In `release.yml`
+every job that runs repository code is `contents: read`; `attest` holds
+`id-token`, `attestations` and `artifact-metadata` write and runs no
+repository code; `publish` holds `contents: write` in the `release`
+environment and checks out nothing.
 *Adopt later*: enabling private vulnerability reporting is a settings change.
 
 == Repository settings
@@ -397,9 +444,11 @@ protection, `release` and `github-pages` environments restricted to the
 default branch, and confirmation with roc-automation's `check-settings` task.
 
 Action (adopt later)::
-A maintainer applies these after `ci.yml` first passes: make `Check` the
-required check, protect tags, set the token to read-only and enable private
-vulnerability reporting. Then run
+A maintainer applies these after `ci.yml` first passes: make `Check` (and,
+for pull requests that touch a release input, `Release dry run`) required,
+protect tags, set the token to read-only, enable private vulnerability
+reporting and immutable releases, and create a `release` environment limited
+to `main`. Then run
 `blueprint run check-settings -- lukewilliamboswell/roc-native-macos` from
 roc-automation.
 
@@ -439,9 +488,6 @@ the implementation. *Adopt later*: build the manual with roc-docs in CI.
 
 * *Fuzzing, benchmarks and allocation checks* (`testing.adoc`): the
   repository has none. The engine's fuzz targets live in roc-signals.
-* *A cross-compiling builder and a runner matrix* (`platforms.adoc` "Cross-compile
-  once, run on every target"): the only target is `arm64mac`, built and run
-  on one runner. The README says that `x64mac` is unsupported.
 * *Kai* (`kai.adoc`): Blueprint is the environment.
 
 == Follow-ups
@@ -460,9 +506,9 @@ File each of these as an issue, then delete this page.
 . Make the macOS stubs a released, locked linker input with provenance
   (`actions/publish-build-inputs`), with per-symbol catalog evidence, a
   `PROVENANCE.md`, the generator in Roc, and a fingerprinted host job.
-. At the first release, add `release.yml` (bundle, examples archive, SBOM
-  sidecars, `actions/publish-release`) and `nightly.yml` (shared compatibility
-  runner and `actions/nightly-report`).
+. After the first release, add `nightly.yml` (shared compatibility runner and
+  `actions/nightly-report`), and a `roc bump --expect` check to `release.yml`.
+. An SBOM for the examples archive.
 . Move `roc-lang/setup-roc` to a revision with `download-method: asset-api`
   once one is on `main`.
 . Apply the repository settings and run `check-settings`.
