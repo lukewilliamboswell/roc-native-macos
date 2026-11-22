@@ -1,0 +1,7 @@
+# Built by scripts/build.sh
+platform/targets/arm64mac/libhost.a
+platform/targets/macos-sysroot/
+host/roc_swift_abi.h
+host/RocGlue.swift
+examples/*/*
+!examples/*/*.roc
