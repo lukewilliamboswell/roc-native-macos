@@ -1,0 +1,15 @@
+wait:900
+choose:Banana;wait:700
+choose:Cherry;wait:700
+toggle:Working;wait:1600
+toggle:Working;wait:500
+choose:Text;wait:500
+write:H;write:He;write:Hel;write:Hell;write:Hello;write:Hello,;write:Hello, n;write:Hello, na;write:Hello, nat;write:Hello, nati;write:Hello, nativ;write:Hello, native;write:Hello, native\nw;write:Hello, native\nwo;write:Hello, native\nwor;write:Hello, native\nworl;write:Hello, native\nworld;wait:900
+choose:Styles;wait:1800
+choose:Shortcuts;wait:600
+key:cmd+n;wait:300
+key:cmd+n;wait:300
+key:cmd+n;wait:700
+key:cmd+k;wait:800
+choose:Controls;wait:1000
+quit

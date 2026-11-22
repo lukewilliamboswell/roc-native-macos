@@ -1,0 +1,10 @@
+wait:900
+click:+;wait:450
+click:+;wait:450
+click:+;wait:450
+click:+;wait:450
+click:+;wait:800
+click:−;wait:450
+click:−;wait:900
+click:Reset;wait:1500
+quit
