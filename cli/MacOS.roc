@@ -5,25 +5,28 @@ import App
 import Bundle
 import Cases
 import Init
+import Meta
+import Package
 
-## The `macos.roc` tool: create, build, run and test a roc-native-macos app.
-## A project runs it with the small `macos.roc` app each release publishes,
-## from the app's directory:
+## The `macos.roc` tool: create, build, run, test and package a
+## roc-native-macos app. A project runs it with the small `macos.roc` app
+## each release publishes, from the app's directory:
 ##
 ## ```sh
 ## roc macos.roc init my-app   # create an app
 ## roc macos.roc run           # build it and start it
 ## roc macos.roc build         # build my-app.app, on any system
 ## roc macos.roc test          # run its recorded cases
+## roc macos.roc package       # dist/my-app-<version>.zip, to share
 ## ```
 MacOS :: [].{
 
 	## What the user asked for.
-	Command : [Help, CommandHelp(Str), Init(Str), Build(App.Options), Run(App.Options), Test({ update : Bool })]
+	Command : [Help, CommandHelp(Str), Init(Str), Build(Meta.Fields), Run(Meta.Fields), Test({ update : Bool }), Package(Package.Options)]
 
 	## The commands, in the order `help` lists them.
 	commands : List(Str)
-	commands = ["init", "build", "run", "test"]
+	commands = ["init", "build", "run", "test", "package"]
 
 	## Run the tool on the arguments `roc macos.roc` passed it. Every failure
 	## is explained in a sentence on standard error and ends the program with
@@ -38,6 +41,7 @@ MacOS :: [].{
 			Ok(Build(chosen)) => App.build!(chosen).map_ok(|_| {})
 			Ok(Run(chosen)) => App.run!(chosen)
 			Ok(Test({ update })) => Cases.run!(update)
+			Ok(Package(chosen)) => Package.run!(chosen)
 			Err(problem) => Err(problem)
 		}
 		match outcome {
@@ -59,37 +63,53 @@ MacOS :: [].{
 			[command, "--help"] | [command, "-h"] if MacOS.commands.contains(command) => Ok(CommandHelp(command))
 			["init"] => Ok(Init("."))
 			["init", dir] if !dir.starts_with("-") => Ok(Init(dir))
-			["build", .. as rest] => MacOS.options("build", rest, { id: "", name: "" }).map_ok(|chosen| Build(chosen))
-			["run", .. as rest] => MacOS.options("run", rest, { id: "", name: "" }).map_ok(|chosen| Run(chosen))
+			["build", .. as rest] => MacOS.options("build", rest, nothing).map_ok(|chosen| Build(chosen.fields))
+			["run", .. as rest] => MacOS.options("run", rest, nothing).map_ok(|chosen| Run(chosen.fields))
+			["package", .. as rest] => MacOS.options("package", rest, nothing).map_ok(|chosen| Package(chosen))
 			["test"] => Ok(Test({ update: Bool.False }))
 			["test", "--update"] => Ok(Test({ update: Bool.True }))
 			[command, .. as extra] if MacOS.commands.contains(command) => Err(UnexpectedArguments({ command, extra }))
 			[command, ..] => Err(UnknownCommand(command))
 		}
 
-	options : Str, List(Str), App.Options -> Try(App.Options, [UnexpectedArguments({ command : Str, extra : List(Str) })])
-	options = |command, args, found|
+	## The metadata flags, which `build`, `run` and `package` take, and
+	## `package`'s `--sign` and `--notarize`.
+	options : Str, List(Str), Package.Options -> Try(Package.Options, [UnexpectedArguments({ command : Str, extra : List(Str) })])
+	options = |command, args, found| {
+		packaging = command == "package"
 		match args {
 			[] => Ok(found)
-			["--id", id, .. as rest] if !id.starts_with("-") => MacOS.options(command, rest, { ..found, id })
-			["--name", name, .. as rest] if !name.starts_with("-") => MacOS.options(command, rest, { ..found, name })
+			["--sign", .. as rest] if packaging => MacOS.options(command, rest, { ..found, sign: Bool.True })
+			["--notarize", .. as rest] if packaging => MacOS.options(command, rest, { ..found, notarize: Bool.True })
+			[flag, value, .. as rest] if !value.starts_with("--") =>
+				match Meta.flag_field(flag) {
+					Ok(field) =>
+						match Meta.set(found.fields, field, value) {
+							Ok(fields) => MacOS.options(command, rest, { ..found, fields })
+							Err(_) => Err(UnexpectedArguments({ command, extra: args }))
+						}
+					Err(_) => Err(UnexpectedArguments({ command, extra: args }))
+				}
 			extra => Err(UnexpectedArguments({ command, extra }))
 		}
+	}
 
 	usage =
-		\\macos.roc creates, builds, runs and tests a roc-native-macos app. Run it
-		\\from the app's directory:
+		\\macos.roc creates, builds, runs, tests and packages a roc-native-macos app.
+		\\Run it from the app's directory:
 		\\
 		\\  roc macos.roc init [DIR]       Create an app in DIR, or in this directory.
 		\\  roc macos.roc build            Build the app, <name>.app, on any system.
 		\\  roc macos.roc run              Build it and start it, its output in this terminal.
 		\\  roc macos.roc test [--update]  Build it and run its recorded cases, tests/*.script.
+		\\  roc macos.roc package          Build it, sign it and zip it, as dist/<name>-<version>.zip.
 		\\
-		\\build and run take --id ID (the bundle identifier, by default com.example.<name>)
-		\\and --name TEXT (the name in the menu bar, by default <name>), where <name> is
-		\\the app's directory. Images and other files go in assets/ beside main.roc, and
-		\\assets/icon.png is the app's icon. `roc macos.roc COMMAND --help` describes
-		\\a command.
+		\\<name> is the app's directory. The app's metadata is in macos.json beside
+		\\main.roc: its name, bundle identifier (by default com.example.<name>),
+		\\version, build number, copyright, category and oldest macOS. build, run and
+		\\package take each as a flag too, such as --version 1.2.0, which overrides the
+		\\file. Images and other files go in assets/, and assets/icon.png is the app's
+		\\icon. `roc macos.roc COMMAND --help` describes a command.
 		\\
 		\\They need Roc as `roc`, on macOS, Linux or Windows; no Xcode is needed. The app
 		\\runs on Apple silicon Macs with macOS 11 or later, so run and test work only there.
@@ -105,32 +125,58 @@ MacOS :: [].{
 				\\Usage: roc macos.roc init [DIR]
 				\\
 				\\DIR defaults to the current directory. init writes main.roc, tests/*.script
-				\\and tests/*.expected, and .gitignore, and never overwrites a file. Keep
+				\\and tests/*.expected, macos.json (the app's name, identifier and version),
+				\\.gitignore, and .github/workflows/release.yml, which packages the app on
+				\\GitHub when you push a tag such as v1.0.0. It never overwrites a file. Keep
 				\\macos.roc in the directory you run init from; a new app gets a copy.
 			"build" =>
 				\\Build the app as <name>.app, where <name> is the app's directory.
 				\\
-				\\Usage: roc macos.roc build [--id ID] [--name TEXT]
+				\\Usage: roc macos.roc build [METADATA FLAGS]
 				\\
 				\\Run from the app's directory, containing main.roc. It works on macOS, Linux
 				\\and Windows alike: the platform carries everything the link needs, and the
 				\\app is built for Apple silicon (roc build --target=arm64mac). The build goes
 				\\to .macos/, and then replaces <name>.app.
-				\\--id sets the bundle identifier (by default com.example.<name>), which also
-				\\names the app's saved settings; --name sets its name in the menu bar.
 				\\The assets/ directory beside main.roc, if there is one, is copied into the
 				\\app, where Ui.asset_image finds its images. assets/icon.png (square, best
 				\\1024 by 1024 pixels) or assets/icon.icns becomes the app's icon.
 				\\A .app copied to a Mac from elsewhere may be quarantined; clear it with
 				\\xattr -dr com.apple.quarantine <name>.app before you open it.
+				\\
+				\\${metadata_help}
 			"run" =>
 				\\Build the app and start it, with its output in this terminal.
 				\\
-				\\Usage: roc macos.roc run [--id ID] [--name TEXT]
+				\\Usage: roc macos.roc run [METADATA FLAGS]
 				\\
 				\\Run from the app's directory, containing main.roc, on an Apple silicon Mac.
 				\\It builds <name>.app as build does, then runs the program inside it, so dbg
-				\\output and crash reports appear here. Quit the app to return.
+				\\output and crash reports appear here. Quit the app to return. It takes the
+				\\metadata flags build takes.
+			"package" =>
+				\\Build the app, sign it, and zip it as dist/<name>-<version>.zip, to share.
+				\\
+				\\Usage: roc macos.roc package [--sign] [--notarize] [METADATA FLAGS]
+				\\
+				\\Run from the app's directory, on any system. It builds <name>.app as build
+				\\does, seals it with an ad hoc signature (with codesign on a Mac, or rcodesign
+				\\anywhere, when either is on PATH), and zips it with the program's execute
+				\\bit set. Whoever downloads an ad hoc zip approves the app once, in System
+				\\Settings > Privacy & Security, before it opens.
+				\\
+				\\--sign signs it with your Developer ID Application certificate, with the
+				\\hardened runtime: on a Mac from the keychain, naming the identity in
+				\\MACOS_SIGN_IDENTITY; anywhere with rcodesign, from the .p12 file at
+				\\MACOS_SIGN_P12, whose password is MACOS_SIGN_P12_PASSWORD.
+				\\--notarize also signs it, sends it to Apple's notary service, staples the
+				\\ticket to the app and zips it again; then it opens with no warning. It uses
+				\\an App Store Connect API key: MACOS_NOTARY_ISSUER (the issuer ID),
+				\\MACOS_NOTARY_KEY_ID (the key ID) and MACOS_NOTARY_KEY (the .p8 file's path,
+				\\or its contents). MACOS_SIGN_TOOL=codesign or rcodesign picks the tool.
+				\\SOURCE_DATE_EPOCH, if set, is the time the zip's entries carry.
+				\\
+				\\${metadata_help}
 			"test" =>
 				\\Build the app and run its recorded cases.
 				\\
@@ -152,20 +198,57 @@ MacOS :: [].{
 	synopsis = |command|
 		match command {
 			"init" => "Use it as `roc macos.roc init [DIR]`."
-			"build" => "Use it as `roc macos.roc build [--id ID] [--name TEXT]`."
-			"run" => "Use it as `roc macos.roc run [--id ID] [--name TEXT]`."
+			"build" | "run" => "Use it as `roc macos.roc ${command} [METADATA FLAGS]`; `roc macos.roc ${command} --help` lists the flags."
+			"package" => "Use it as `roc macos.roc package [--sign] [--notarize] [METADATA FLAGS]`; `roc macos.roc package --help` lists the flags."
 			"test" => "Use it as `roc macos.roc test [--update]`."
 			_ => "`roc macos.roc help` describes it."
 		}
+
+	## Where a field's value came from, for a sentence.
+	source : Str, [File, Flag] -> Str
+	source = |field, from|
+		match from {
+			Flag => "--${field.replace_each("_", "-")}"
+			File => "${Meta.file}'s ${field}"
+		}
+
+	## Why a field's value is refused.
+	bad_field : Str, Str, [File, Flag] -> Str
+	bad_field = |field, value, from| {
+		given = "${MacOS.source(field, from)}, \"${value}\","
+		match field {
+			"id" => "${given} is not a bundle identifier: it needs two or more parts separated by dots, made of letters, digits and hyphens, such as com.example.counter."
+			"version" | "build" => "${given} is not a version: write one to three whole numbers separated by dots, such as 1.2.0, with no v or suffix."
+			"minimum_macos" => "${given} is not a macOS version this platform runs on: write ${Meta.oldest_macos} or later, such as 13.0."
+			"category" => "${given} is not an App Store category: write public.app-category. and the category's name, such as public.app-category.utilities."
+			_ => "${given} holds a control character, such as a tab or a line break, which an app's ${field} cannot."
+		}
+	}
 
 	## The sentence a failure is explained with, and the exit code. This is
 	## the one place the tool's failures are put into words.
 	explain : _ -> { text : Str, code : I32 }
 	explain = |problem|
 		match problem {
-			UnknownCommand(command) => { code: 2, text: "There is no command \"${command}\". The commands are init, build, run and test; `roc macos.roc help` describes them." }
+			UnknownCommand(command) => { code: 2, text: "There is no command \"${command}\". The commands are init, build, run, test and package; `roc macos.roc help` describes them." }
 			UnexpectedArguments({ command, extra }) => { code: 2, text: "${command} does not take ${Str.join_with(extra.map(|a| "\"${a}\""), " ")}. ${MacOS.synopsis(command)}" }
-			BadId(id) => { code: 2, text: "\"${id}\" is not a bundle identifier: it needs two or more parts separated by dots, made of letters, digits and hyphens, such as com.example.counter." }
+			BadField({ field, value, from }) => { code: if (from == Flag) 2 else 1, text: MacOS.bad_field(field, value, from) }
+			MetaMalformed({ line, expected }) => { code: 1, text: "${Meta.file} is not the JSON object the tool reads: on line ${line.to_str()} it expected ${expected}. It holds one object of text fields, such as { \"version\": \"1.2.0\" }." }
+			MetaNotText({ field, line }) => { code: 1, text: "${Meta.file}'s ${field}, on line ${line.to_str()}, is not text: write it in double quotes, as \"${field}\": \"...\"." }
+			MetaUnknownField(field) => { code: 1, text: "${Meta.file} has a field \"${field}\", which the tool does not know: the fields are ${Str.join_with(Meta.names, ", ")}." }
+			MetaDuplicate(field) => { code: 1, text: "${Meta.file} gives ${field} twice: keep one of them." }
+			BadSignTool(tool) => { code: 1, text: "MACOS_SIGN_TOOL is \"${tool}\", and the signing tools are codesign and rcodesign: set it to one of them, or unset it to use the one here." }
+			SignToolMissing(tool) => { code: 1, text: "MACOS_SIGN_TOOL names ${tool}, which is not ${if (tool == "codesign") "here: codesign is on Macs only" else "on PATH"}: install it, or unset MACOS_SIGN_TOOL." }
+			NoDeveloperId(why) => { code: 1, text: "Signing with a Developer ID needs your certificate: ${why}. `roc macos.roc package --help` describes it." }
+			NoP12File(path) => { code: 1, text: "MACOS_SIGN_P12 names ${path}, and there is no such file: it is the path of your Developer ID Application certificate, exported as a .p12 file." }
+			NoP12Password => { code: 1, text: "MACOS_SIGN_P12 names a certificate, but MACOS_SIGN_P12_PASSWORD is not set: set it to the password the .p12 file was exported with." }
+			NoNotaryKey(missing) => { code: 1, text: "Notarizing needs an App Store Connect API key, and ${Str.join_with(missing, ", ")} ${if (missing.len() == 1) "is" else "are"} not set. `roc macos.roc package --help` describes them." }
+			NoNotaryKeyFile(path) => { code: 1, text: "MACOS_NOTARY_KEY names ${path}, and there is no such file: set it to your API key's .p8 file, or to the file's contents." }
+			NotaryToolMissing => { code: 1, text: "Notarizing from the keychain uses xcrun notarytool, which is not on PATH: install Xcode's command line tools (xcode-select --install), or sign with MACOS_SIGN_P12 and rcodesign instead." }
+			BadSourceDateEpoch(text) => { code: 1, text: "SOURCE_DATE_EPOCH is \"${text}\", which is not a number of seconds since 1970: set it to one, such as the last commit's time (git log -1 --format=%ct), or unset it." }
+			StepFailed(shown) => { code: 1, text: "Packaging stopped: `${shown}` failed, with its report above." }
+			TooLargeToZip(bundle) => { code: 1, text: "${bundle} is too large for a zip without Zip64, 4 GB or 65,535 files, so package cannot zip it." }
+			LinkInBundle(path) => { code: 1, text: "${path} is a symbolic link, which package does not zip: copy the file it names into assets/ instead." }
 			RocMissing => { code: 1, text: "The Roc compiler is not on your PATH as `roc`, so the app cannot be built. Install Roc ${Bundle.roc_version} (or a later nightly) and put it on your PATH as `roc`." }
 			NoMainRoc => { code: 1, text: "There is no main.roc here, so there is no app to build. Run this from your app's directory, or create an app with `roc macos.roc init my-app`." }
 			BuildFailed => { code: 1, text: "The build failed: the compiler's report is above." }
@@ -190,18 +273,76 @@ MacOS :: [].{
 		}
 }
 
+## No flags given.
+nothing : Package.Options
+nothing = { fields: Meta.none, sign: Bool.False, notarize: Bool.False }
+
+## What `build --help` and `package --help` say about the metadata.
+metadata_help : Str
+metadata_help =
+	\\The app's metadata comes from macos.json beside main.roc, if there is one,
+	\\and from these flags, which override it. Each field is optional:
+	\\
+	\\  --name TEXT           its name in the menu bar and About (by default <name>)
+	\\  --id ID               its bundle identifier, which also names its saved
+	\\                        settings (by default com.example.<name>)
+	\\  --version 1.2.0       CFBundleShortVersionString (by default 0.1)
+	\\  --build 42            CFBundleVersion, the build number (by default the version)
+	\\  --copyright TEXT      NSHumanReadableCopyright, shown in About
+	\\  --category CATEGORY   LSApplicationCategoryType, such as public.app-category.utilities
+	\\  --minimum-macos 13.0  LSMinimumSystemVersion (by default 11.0, the oldest it runs on)
+	\\
+	\\In macos.json the fields are text: { "version": "1.2.0", "minimum_macos": "13.0" }.
+
 ## Each command line names its command, with the defaults filled in.
 expect {
 	actual = [[], ["help"], ["init"], ["init", "my-app"], ["build"], ["run", "--id", "org.me.app", "--name", "My App"], ["test"], ["test", "--update"]].map(MacOS.parse)
-	expected = [Ok(Help), Ok(Help), Ok(Init(".")), Ok(Init("my-app")), Ok(Build({ id: "", name: "" })), Ok(Run({ id: "org.me.app", name: "My App" })), Ok(Test({ update: Bool.False })), Ok(Test({ update: Bool.True }))]
+	expected = [Ok(Help), Ok(Help), Ok(Init(".")), Ok(Init("my-app")), Ok(Build(Meta.none)), Ok(Run({ ..Meta.none, id: "org.me.app", name: "My App" })), Ok(Test({ update: Bool.False })), Ok(Test({ update: Bool.True }))]
+	actual == expected
+}
+
+## package takes the metadata flags, --sign and --notarize, in any order.
+expect {
+	actual = [["package"], ["package", "--version", "1.2.0", "--sign"], ["package", "--notarize", "--minimum-macos", "13.0", "--build", "7"]].map(MacOS.parse)
+	expected = [
+		Ok(Package(nothing)),
+		Ok(Package({ ..nothing, fields: { ..Meta.none, version: "1.2.0" }, sign: Bool.True })),
+		Ok(Package({ ..nothing, fields: { ..Meta.none, minimum_macos: "13.0", build: "7" }, notarize: Bool.True })),
+	]
 	actual == expected
 }
 
 ## A misused command line is refused with what was wrong.
 expect {
-	actual = [["buld"], ["build", "--watch"], ["run", "--id"], ["init", "a", "b"], ["test", "--record"]].map(MacOS.parse)
-	expected = [Err(UnknownCommand("buld")), Err(UnexpectedArguments({ command: "build", extra: ["--watch"] })), Err(UnexpectedArguments({ command: "run", extra: ["--id"] })), Err(UnexpectedArguments({ command: "init", extra: ["a", "b"] })), Err(UnexpectedArguments({ command: "test", extra: ["--record"] }))]
+	actual = [["buld"], ["build", "--watch"], ["run", "--id"], ["init", "a", "b"], ["test", "--record"], ["build", "--sign"], ["package", "--version", "--sign"]].map(MacOS.parse)
+	expected = [
+		Err(UnknownCommand("buld")),
+		Err(UnexpectedArguments({ command: "build", extra: ["--watch"] })),
+		Err(UnexpectedArguments({ command: "run", extra: ["--id"] })),
+		Err(UnexpectedArguments({ command: "init", extra: ["a", "b"] })),
+		Err(UnexpectedArguments({ command: "test", extra: ["--record"] })),
+		Err(UnexpectedArguments({ command: "build", extra: ["--sign"] })),
+		Err(UnexpectedArguments({ command: "package", extra: ["--version", "--sign"] })),
+	]
 	actual == expected
+}
+
+## A bad field says which, where it came from, and what is wanted.
+expect {
+	actual = [
+		BadField({ field: "version", value: "v1.0", from: Flag }),
+		BadField({ field: "minimum_macos", value: "10.15", from: File }),
+		MetaUnknownField("nmae"),
+		MetaMalformed({ line: 3.U64, expected: "a comma or the closing }" }),
+	].map(MacOS.explain)
+	match actual {
+		[flag, file, unknown, malformed] =>
+			flag == { code: 2, text: "--version, \"v1.0\", is not a version: write one to three whole numbers separated by dots, such as 1.2.0, with no v or suffix." }
+				and file.text.starts_with("macos.json's minimum_macos, \"10.15\", is not a macOS version")
+				and unknown.text.ends_with("the fields are name, id, version, build, copyright, category, minimum_macos.")
+				and malformed.text.starts_with("macos.json is not the JSON object the tool reads: on line 3 it expected a comma or the closing }.")
+		_ => Bool.False
+	}
 }
 
 ## Help belongs to an exact known command, and needs no app.
@@ -219,7 +360,7 @@ expect MacOS.commands.all(|command| MacOS.command_usage(command).contains("Usage
 
 ## Every failure is a sentence, and a misused command line exits with 2.
 expect {
-	explained = [UnknownCommand("x"), UnexpectedArguments({ command: "test", extra: ["-v"] }), BadId("x"), NoMainRoc, NotAppleSilicon({ command: "run", system: "Linux", bundle: "counter.app" }), CasesFailed({ failed: ["reset"], total: 2 })].map(MacOS.explain)
+	explained = [UnknownCommand("x"), UnexpectedArguments({ command: "test", extra: ["-v"] }), BadField({ field: "id", value: "x", from: Flag }), NoMainRoc, NotAppleSilicon({ command: "run", system: "Linux", bundle: "counter.app" }), CasesFailed({ failed: ["reset"], total: 2 })].map(MacOS.explain)
 	run_elsewhere = explained.drop_first(4).first().map_ok(|e| e.text)
 	explained.map(|e| e.code) == [2, 2, 2, 1, 1, 1] and run_elsewhere == Ok("Built counter.app, but this is Linux, and the app runs only on an Apple silicon Mac: copy counter.app to one and open it there.")
 }
