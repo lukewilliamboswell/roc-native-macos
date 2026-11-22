@@ -38,7 +38,29 @@ struct Declarations {
     }
 }
 
-// MARK: - Session storage
+// MARK: - Local and session storage
+
+/// Local storage persists in `UserDefaults`. A scripted run (`ROC_SCRIPT`)
+/// keeps it in memory instead, so a recorded case never sees what an
+/// earlier run saved; `ROC_STORAGE_SUITE=<name>` gives a scripted run a
+/// named `UserDefaults` suite, to check persistence across runs.
+enum LocalStorage {
+    private static let environment = ProcessInfo.processInfo.environment
+    private static let defaults: UserDefaults? =
+        environment["ROC_STORAGE_SUITE"].flatMap { UserDefaults(suiteName: $0) }
+        ?? (environment["ROC_SCRIPT"] == nil ? UserDefaults.standard : nil)
+    private static var memory: [String: String] = [:]
+
+    static func get(_ key: String) -> String? { defaults.map { $0.string(forKey: key) } ?? memory[key] }
+
+    static func set(_ key: String, _ value: String) {
+        if let defaults { defaults.set(value, forKey: key) } else { memory[key] = value }
+    }
+
+    static func remove(_ key: String) {
+        if let defaults { defaults.removeObject(forKey: key) } else { memory.removeValue(forKey: key) }
+    }
+}
 
 /// Session storage lasts for the process: STORAGE ops 3 and 4 write here,
 /// FX 17 and boot section 11 read it back.
@@ -47,12 +69,12 @@ enum SessionStorage {
 }
 
 extension Host {
-    /// STORAGE `op key [value]`: 1/2 local set/remove (UserDefaults), 3/4
+    /// STORAGE `op key [value]`: 1/2 local set/remove (`LocalStorage`), 3/4
     /// session set/remove.
     func storage(_ op: UInt8, _ key: String, _ r: inout Reader) {
         switch op {
-        case 1: UserDefaults.standard.set(r.str(), forKey: key)
-        case 2: UserDefaults.standard.removeObject(forKey: key)
+        case 1: LocalStorage.set(key, r.str())
+        case 2: LocalStorage.remove(key)
         case 3: SessionStorage.values[key] = r.str()
         case 4: SessionStorage.values.removeValue(forKey: key)
         default: fatal("STORAGE op \(op) is not supported by this host")
@@ -83,7 +105,7 @@ func bootBytes(_ d: Declarations, now: Date = Date()) -> [UInt8] {
     var url: [UInt8] = []
     putStr(&url, "/")
     section(1, url)
-    section(2, pairs(d.localKeys) { UserDefaults.standard.string(forKey: $0) })
+    section(2, pairs(d.localKeys) { LocalStorage.get($0) })
     section(3, [1])  // online
     section(4, [1])  // visible
     section(6, d.mediaQueries.map { mediaMatches($0) ? 1 : 0 })

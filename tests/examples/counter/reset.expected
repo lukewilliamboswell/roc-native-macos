@@ -1,0 +1,9 @@
+---
+ui-vstack [1 views]
+  ui-vstack [3 views]
+    ui-title "Counter"
+    ui-readout "0"
+    ui-hstack [3 views]
+      ui-button "−"
+      ui-button "Reset"
+      ui-button "+"

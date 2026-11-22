@@ -1,0 +1,13 @@
+---
+ui-vstack [1 views]
+  ui-vstack [6 views]
+    ui-title "HTTP fetch"
+    ui-form [1 views]
+      ui-hstack [3 views]
+        ui-text-field "http://127.0.0.1:9/"
+        ui-button "Fetch"
+        ui-button "Cancel" (disabled)
+    ui-checkbox "Time out after 2 s" [ ]
+    ui-divider
+    ui-label "#1: network error: Could not connect to the server."
+    ui-label ""

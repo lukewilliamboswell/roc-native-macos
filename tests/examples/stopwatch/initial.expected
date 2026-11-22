@@ -1,0 +1,12 @@
+---
+ui-vstack [1 views]
+  ui-vstack [6 views]
+    ui-title "Stopwatch"
+    ui-readout "0:00.00"
+    ui-hstack [3 views]
+      ui-button "Start"
+      ui-button "Lap" (disabled)
+      ui-button "Reset"
+    ui-divider
+    ui-label "No laps yet"
+    ui-vstack [0 views]

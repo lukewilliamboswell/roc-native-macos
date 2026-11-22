@@ -267,7 +267,20 @@ format over the scripted driver, or a `ui-*` oracle, are the two options.
 - **`watch` vs `watch_latest`.** `watch` never cancels what it issued; a
   start/stop interval needs `watch_latest`.
 
+## Development
+
+The repository follows
+[roc-automation](https://github.com/lukewilliamboswell/roc-automation). With
+[Blueprint](https://github.com/lukewilliamboswell/roc-blueprint) 0.13.0 and a
+current Roc nightly (or RC1) installed as `roc`, run `blueprint run check`.
+It is the pull-request gate, the same one CI runs. See [AGENTS.md](AGENTS.md) for the
+repository's rules, and [docs/roc-automation-review.adoc](docs/roc-automation-review.adoc)
+for what is adopted so far. Report vulnerabilities as [SECURITY.md](SECURITY.md)
+describes.
+
 ## Licence
 
 [UPL 1.0](LICENSE). The engine modules come from roc-signals (UPL 1.0, the
 same copyright holder).
+
+Third-party notices are in [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md).

@@ -1,0 +1,21 @@
+(
+	(fetched ((
+		(name "roc-stable")
+		(obtained Both)
+		(served ("release-assets.githubusercontent.com"))
+		(sha256 "cad09543f51266a0f3d0cb5822d0884e62360defa5bb2d793a137f0d69bf92a8")
+		(size 77216295)
+		(system "aarch64-darwin")
+		(urls ("https://github.com/roc-lang/nightlies/releases/download/nightly-2026-11-14-a87808d/roc_nightly-macos_apple_silicon-2026-11-14-a87808d.tar.gz"))
+		(witness "https://api.github.com/repos/roc-lang/nightlies/releases/tags/nightly-2026-11-14-a87808d"))))
+	(format (
+		(major 2)
+		(minor 0)))
+	(hints ())
+	(intent (
+		(build_sources ())
+		(inputs ())
+		(overlays ())
+		(resolvers ())
+		(sources ())))
+	(sources ()))

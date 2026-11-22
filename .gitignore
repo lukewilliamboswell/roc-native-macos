@@ -7,4 +7,9 @@ host/RocGlue.swift
 examples/*/*
 examples/*/*.app/
 !examples/*/*.roc
+
+# Blueprint's generated environment and links
+.blueprint/
+
+# Local agent state and worktrees
 .claude/

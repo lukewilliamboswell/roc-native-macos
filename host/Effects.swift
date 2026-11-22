@@ -24,7 +24,7 @@ extension Host {
             timers[id] = timer
         case 2, 17: // local and session storage reads: answered one task later
             let key = r.str()
-            let value = kind == 2 ? UserDefaults.standard.string(forKey: key) : SessionStorage.values[key]
+            let value = kind == 2 ? LocalStorage.get(key) : SessionStorage.values[key]
             DispatchQueue.main.async {
                 self.send(EngineInstance.effectNode, id, value.map { [3] + Array($0.utf8) } ?? [4])
             }
