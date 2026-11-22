@@ -6,6 +6,7 @@ app [main!] {
 
 import cli.Cmd
 import cli.Duration
+import cli.Env
 import cli.Monotonic
 import cli.OsStr
 import cli.Path
@@ -213,7 +214,8 @@ run_case! = |{ example, base, .. }, update| {
 		Err(CmdErr(error)) => return Ok(Err("${exe} did not finish: ${Str.inspect(error)}"))
 		Err(Interrupted) => return Ok(Err("interrupted"))
 	}
-	printed = Str.from_utf8_lossy(output.stdout_bytes)
+	root = Env.cwd!().map_ok(|cwd| cwd.display()) ?? ""
+	printed = Repo.portable(Str.from_utf8_lossy(output.stdout_bytes), root)
 	expected_path = Path.utf8("${base}.expected")
 	match output.status {
 		Exited(0) => {}

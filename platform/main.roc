@@ -7,9 +7,10 @@
 ## routes AppKit events back as turns. `Ui.roc` is the small native
 ## vocabulary apps use, built only on `Engine`.
 ##
-## Only the page instance's entry points are provided: no workers, ports,
-## files or crypto keys, and no hosted functions. The declarations
-## (`roc_engine_keys`) cross without roc-signals' section 12.
+## Only the page instance's entry points are provided, including files-kind
+## events (`roc_engine_files`): no workers, ports or crypto keys, and no
+## hosted functions. The declarations (`roc_engine_keys`) cross without
+## roc-signals' section 12.
 platform ""
 	requires {
 		[Store : st] for main : Engine.Program(st)
@@ -19,6 +20,7 @@ platform ""
 	provides {
 		"roc_engine_drop": drop_for_host,
 		"roc_engine_event": event_for_host,
+		"roc_engine_files": files_for_host,
 		"roc_engine_init": init_for_host,
 		"roc_engine_keys": keys_for_host,
 		"roc_engine_version": version_for_host,
@@ -100,6 +102,15 @@ init_for_host = |boot| {
 event_for_host : Handle, List(U8), List(U8), U32, U32, List(U8) -> Step
 event_for_host = |boxed, buf, wbuf, node, handler, payload| {
 	(next, cmds, work) = (Core.driver(main).event)(release(boxed), buf, wbuf, node, handler, payload)
+	{ cmds, state: hold(next), work }
+}
+
+## Copied from roc-signals `platform/main.roc`: a files-kind event, the file
+## record and the handles the host minted for its files, which move into the
+## engine with the call.
+files_for_host : Handle, List(U8), List(U8), U32, U32, List(U8), List(Box(U64)) -> Step
+files_for_host = |boxed, buf, wbuf, node, handler, record, blobs| {
+	(next, cmds, work) = (Core.driver(main).files)(release(boxed), buf, wbuf, node, handler, record, blobs)
 	{ cmds, state: hold(next), work }
 }
 

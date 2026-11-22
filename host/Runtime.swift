@@ -21,6 +21,10 @@ let poisonAllocations = getenv("ROC_POISON") != nil
 
 @_cdecl("roc_dealloc")
 public func rocDealloc(_ ptr: UnsafeMutableRawPointer?, _ alignment: Int) {
+    guard let ptr else { return }
+    // A file handle's box lives in the handle table, not the heap: releasing
+    // it retires its slot (Files.swift).
+    if fileHandles.route(ptr) { return }
     free(ptr)
 }
 

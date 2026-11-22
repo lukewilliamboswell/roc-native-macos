@@ -11,11 +11,18 @@
 ##     as Roc does (a refcount word before the bytes, the capacity shifted
 ##     left one bit, since the low bit marks a seamless slice) and read one
 ##     back;
+##   - for each list of host-handle boxes an argument takes (`List(Box(U64))`),
+##     the box's layout (where its refcount sits, and the address Roc frees
+##     it at) and a constructor for the list, whose allocation carries the
+##     element-count word Roc keeps before the refcount of a list with
+##     refcounted elements. Both come from the compiler's layout facts, and
+##     the header checks them with static assertions;
 ##   - one typed Swift function per provided procedure, named after it,
 ##     whose comment states the ownership the call transfers.
 ##
 ## Only the shapes this platform uses are supported: byte lists, opaque
-## boxes, integers, records of those, and the unit type. Hosted functions are
+## boxes, lists of boxes of an integer (handles), integers, records of
+## those, and the unit type. Hosted functions are
 ## not supported. Any other shape fails the generation with its name. Layout
 ## assertions are emitted for 64-bit hosts; a 32-bit host is refused.
 app [make_glue] { pf: platform glue }
@@ -38,9 +45,19 @@ make_glue = |types_list| {
 	var $externs = ""
 	var $records = ""
 	var $named = []
+	var $handles = []
 	for entry in input.provides_entries {
 		match entry.exported {
 			ProvidedProcedure(func) => {
+				for arg in func.args {
+					match handle_list(table, entry.name, arg)? {
+						Ok(found) =>
+							if !$handles.any(|known| known.inner_name == found.inner_name) {
+								$handles = $handles.append(found)
+							}
+						Err(NotHandles) => {}
+					}
+				}
 				$wrappers = Str.concat($wrappers, procedure(table, entry.name, entry.ffi_symbol, func.args, func.ret)?)
 				$externs = Str.concat($externs, extern_decl(table, entry.name, entry.ffi_symbol, func.args, func.ret)?)
 				if is_record(table, func.ret) {
@@ -57,8 +74,8 @@ make_glue = |types_list| {
 			ProvidedData(_) => return Err("SwiftGlue: provided data (${entry.name}) is not supported")
 		}
 	}
-	header = Str.join_with([header_prelude, $records, runtime_decls, $externs, "#endif\n"], "")
-	swift = Str.concat(prelude, Str.concat("\n/// The platform's provided procedures.\nenum Roc {\n", Str.concat($wrappers, "}\n")))
+	header = Str.join_with([header_prelude, Str.join_with($handles.map(handle_asserts), ""), $records, runtime_decls, $externs, "#endif\n"], "")
+	swift = Str.join_with([prelude, Str.join_with($handles.map(handle_helpers), ""), "\n/// The platform's provided procedures.\nenum Roc {\n", $wrappers, "}\n"], "")
 	Ok([{ name: "roc_swift_abi.h", content: header }, { name: "RocGlue.swift", content: swift }])
 }
 
@@ -169,7 +186,8 @@ c_type = |table, name, type_id|
 		RocList(element) =>
 			match table.get(element) {
 				RocU8 => Ok("RocList")
-				_ => Err("SwiftGlue: ${name} uses a list of something other than U8")
+				RocBox(_) => handle_box(table, name, element).map_ok(|_| "RocList")
+				_ => Err("SwiftGlue: ${name} uses a list of something other than U8 or a box of an integer")
 			}
 		_ => Err("SwiftGlue: ${name} uses a type this glue does not support")
 	}
@@ -258,10 +276,197 @@ swift_type = |table, name, type_id|
 		RocList(element) =>
 			match table.get(element) {
 				RocU8 => Ok("RocList")
-				_ => Err("SwiftGlue: ${name} takes a list of something other than U8")
+				RocBox(_) => handle_box(table, name, element).map_ok(|_| "RocList")
+				_ => Err("SwiftGlue: ${name} takes a list of something other than U8 or a box of an integer")
 			}
 		_ => Err("SwiftGlue: ${name} uses a type this glue does not support")
 	}
+
+## A list of host-handle boxes (`List(Box(U64))`), as the compiler lays out
+## the list's element and the box's payload. Every number here is a
+## committed layout fact, not an assumption.
+Handles : {
+	inner_name : Str,
+	inner_c : Str,
+	inner_swift : Str,
+	element_size : U64,
+	element_alignment : U64,
+	elements_refcounted : Bool,
+	payload_size : U64,
+	payload_alignment : U64,
+}
+
+## The handle list an argument is, `Err(NotHandles)` when it is not a list
+## of boxes, or the generation error naming the entry point when it is one
+## this glue cannot construct.
+handle_list : TypeTable, Str, U64 -> Try(Try(Handles, [NotHandles]), Str)
+handle_list = |table, name, type_id|
+	match table.get(type_id) {
+		RocList(element) =>
+			match table.get(element) {
+				RocBox(_) => Ok(Ok(handle_box(table, name, element)?))
+				_ => Ok(Err(NotHandles))
+			}
+		_ => Ok(Err(NotHandles))
+	}
+
+## The layout facts of a `Box(int)` list element. Only a payload of a plain
+## integer is supported: the host mints such a box and never releases its
+## payload, so a payload holding a refcounted value would need a release
+## this glue does not generate.
+handle_box : TypeTable, Str, U64 -> Try(Handles, Str)
+handle_box = |table, name, element| {
+	inner = match table.get(element) {
+		RocBox(payload) => payload
+		_ => return Err("SwiftGlue: ${name} uses a list whose elements are not boxes")
+	}
+	(inner_name, inner_c, inner_swift) = match table.get(inner) {
+		RocU8 => ("U8", "uint8_t", "UInt8")
+		RocU16 => ("U16", "uint16_t", "UInt16")
+		RocU32 => ("U32", "uint32_t", "UInt32")
+		RocU64 => ("U64", "uint64_t", "UInt64")
+		RocI8 => ("I8", "int8_t", "Int8")
+		RocI16 => ("I16", "int16_t", "Int16")
+		RocI32 => ("I32", "int32_t", "Int32")
+		RocI64 => ("I64", "int64_t", "Int64")
+		_ => return Err("SwiftGlue: ${name} uses a list of boxes of something other than an integer")
+	}
+	payload = table.layout(inner)
+	if payload.contains_refcounted or table.is_refcounted(inner) {
+		return Err("SwiftGlue: ${name} uses a list of boxes whose payload is refcounted")
+	}
+	elem = table.layout(element)
+	Ok({
+		inner_name,
+		inner_c,
+		inner_swift,
+		element_size: elem.size(Pointer64),
+		element_alignment: elem.alignment(Pointer64),
+		elements_refcounted: table.is_refcounted(element),
+		payload_size: payload.size(Pointer64),
+		payload_alignment: payload.alignment(Pointer64),
+	})
+}
+
+## How many bytes Roc keeps before a list's elements: the refcount word,
+## and for refcounted elements the element-count word before it (so a
+## seamless slice can release the elements of its whole allocation), padded
+## to the element alignment (`allocateWithRefcount`,
+## src/builtins/utils.zig).
+list_header_bytes : Handles -> U64
+list_header_bytes = |h| {
+	required : U64
+	required = if h.elements_refcounted 16 else 8
+	required.max(h.element_alignment)
+}
+
+## How many bytes Roc keeps before a box's payload: the refcount word,
+## padded to the payload alignment (ZigGlue's `allocateBox` with no
+## refcounted payload).
+box_header_bytes : Handles -> U64
+box_header_bytes = |h| 8.U64.max(h.payload_alignment)
+
+## The alignment Roc frees a box's allocation with.
+box_alignment : Handles -> U64
+box_alignment = |h| 8.U64.max(h.payload_alignment)
+
+## One box's header and payload rounded up to its alignment: the stride of a
+## host table of them.
+box_stride : Handles -> U64
+box_stride = |h| {
+	raw = box_header_bytes(h) + h.payload_size
+	a = box_alignment(h)
+	((raw + a - 1) // a) * a
+}
+
+## The header's derived constants for one handle list, and assertions that
+## the C types the host uses have the compiler's committed layout.
+handle_asserts : Handles -> Str
+handle_asserts = |h| {
+	n = h.inner_name
+	upper = "ROC_BOX_${n}"
+	refcounted = if h.elements_refcounted "1" else "0"
+	\\/// `List(Box(${n}))`, a list of host-handle boxes. From the compiler's
+	\\/// committed layouts: an element is a box pointer (${h.element_size.to_str()} bytes, aligned
+	\\/// ${h.element_alignment.to_str()}; refcounted: ${refcounted}), and the payload, ${n}, is ${h.payload_size.to_str()} bytes aligned
+	\\/// ${h.payload_alignment.to_str()} and holds nothing refcounted.
+	\\#define ${upper}_LIST_HEADER_BYTES ${list_header_bytes(h).to_str()}
+	\\#define ${upper}_LIST_ELEMENTS_REFCOUNTED ${refcounted}
+	\\#define ${upper}_HEADER_BYTES ${box_header_bytes(h).to_str()}
+	\\#define ${upper}_ALIGNMENT ${box_alignment(h).to_str()}
+	\\#define ${upper}_STRIDE ${box_stride(h).to_str()}
+	\\_Static_assert(sizeof(RocBox) == ${h.element_size.to_str()}, "List(Box(${n})) element size");
+	\\_Static_assert(_Alignof(RocBox) == ${h.element_alignment.to_str()}, "List(Box(${n})) element alignment");
+	\\_Static_assert(sizeof(${h.inner_c}) == ${h.payload_size.to_str()}, "Box(${n}) payload size");
+	\\_Static_assert(_Alignof(${h.inner_c}) == ${h.payload_alignment.to_str()}, "Box(${n}) payload alignment");
+	\\_Static_assert(${upper}_HEADER_BYTES >= sizeof(intptr_t), "Box(${n}) header holds the refcount word");
+	\\_Static_assert(${upper}_LIST_HEADER_BYTES >= (${upper}_LIST_ELEMENTS_REFCOUNTED + 1) * sizeof(intptr_t), "List(Box(${n})) header holds its count and refcount words");
+	\\
+	\\
+}
+
+## The Swift helpers for one handle list: the box layout and the list
+## constructor, reading the header's constants.
+handle_helpers : Handles -> Str
+handle_helpers = |h| {
+	n = h.inner_name
+	t = h.inner_swift
+	upper = "ROC_BOX_${n}"
+	count_word = if h.elements_refcounted
+		\\        // Elements are refcounted, so Roc keeps the element count in
+		\\        // the word before the refcount.
+		\\        (data - 2 * MemoryLayout<Int>.size).storeBytes(of: boxes.count, as: Int.self)
+		\\
+	else
+		""
+	\\
+	\\/// `Box(${n})` as the compiler lays it out (`${upper}_*` in the header):
+	\\/// a refcount word (1: unique) ends at the payload, the allocation starts
+	\\/// `headerBytes` before it, and Roc frees the box with
+	\\/// `roc_dealloc(payload - headerBytes, alignment)` when its last reference
+	\\/// goes. A host that mints such boxes in a table of its own recognises
+	\\/// that address in `roc_dealloc` and must not free it.
+	\\enum RocBox${n} {
+	\\    static let headerBytes = Int(${upper}_HEADER_BYTES)
+	\\    static let alignment = Int(${upper}_ALIGNMENT)
+	\\    /// One box, header and payload, rounded up to its alignment.
+	\\    static let stride = Int(${upper}_STRIDE)
+	\\
+	\\    /// Write a unique box holding `value` into the `stride` bytes at
+	\\    /// `allocation` (aligned to `alignment`) and return the box.
+	\\    static func initialize(at allocation: UnsafeMutableRawPointer, _ value: ${t}) -> UnsafeMutableRawPointer {
+	\\        let payload = allocation + headerBytes
+	\\        (payload - MemoryLayout<Int>.size).storeBytes(of: 1, as: Int.self)
+	\\        payload.storeBytes(of: value, as: ${t}.self)
+	\\        return payload
+	\\    }
+	\\
+	\\    /// The address `roc_dealloc` receives when Roc frees `box`.
+	\\    static func allocation(of box: UnsafeMutableRawPointer) -> UnsafeMutableRawPointer { box - headerBytes }
+	\\
+	\\    /// The value `box` holds.
+	\\    static func value(of box: UnsafeMutableRawPointer) -> ${t} { box.load(as: ${t}.self) }
+	\\}
+	\\
+	\\extension RocList {
+	\\    /// A new `List(Box(${n}))` holding `boxes` in order, uniquely owned by
+	\\    /// whoever receives it; each box's reference moves into the list. The
+	\\    /// allocation comes from `roc_alloc`: `${upper}_LIST_HEADER_BYTES`
+	\\    /// header bytes ending in the refcount word (1, unique), then the box
+	\\    /// pointers; the capacity is stored shifted left one bit.
+	\\    static func ownedBoxes${n}(_ boxes: [UnsafeMutableRawPointer]) -> RocList {
+	\\        if boxes.isEmpty { return .empty }
+	\\        let header = Int(${upper}_LIST_HEADER_BYTES)
+	\\        let width = MemoryLayout<UnsafeMutableRawPointer>.stride
+	\\        let base = roc_alloc(header + boxes.count * width, max(MemoryLayout<Int>.size, MemoryLayout<UnsafeMutableRawPointer>.alignment))
+	\\        let data = base + header
+	\\        (data - MemoryLayout<Int>.size).storeBytes(of: 1, as: Int.self)
+	\\${count_word}        for (i, box) in boxes.enumerated() { (data + i * width).storeBytes(of: box, as: UnsafeMutableRawPointer.self) }
+	\\        return RocList(elements: data, length: boxes.count, capacity_or_alloc_ptr: boxes.count << 1)
+	\\    }
+	\\}
+	\\
+}
 
 ## The name the C glue gives an entry point's record type: `init_for_host`
 ## is `InitForHost`.

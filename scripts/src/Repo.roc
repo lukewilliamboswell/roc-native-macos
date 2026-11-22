@@ -137,6 +137,12 @@ Repo := [].{
 
 	## A recorded case's file names: `tests/examples/<example>/<case>.script`
 	## holds the `ROC_SCRIPT` steps and `<case>.expected` what the run prints.
+	## A case's printed output with the repository's absolute path written
+	## `<repo>`, so a recorded case does not depend on where it was checked
+	## out (a file's URL, for example).
+	portable : Str, Str -> Str
+	portable = |printed, root| if (root.is_empty()) printed else Str.join_with(printed.split_on(root), "<repo>")
+
 	case_name : Str -> Try(Str, [NotACase])
 	case_name = |file|
 		if file.ends_with(".script") {
@@ -184,3 +190,6 @@ expect (Repo.millis(12), Repo.millis(1204), Repo.millis(10000), Repo.millis(1002
 expect Repo.progress({ index: 3, total: 20, name: "counter/increment", outcome: "PASS", ms: 1204 }) == " [ 3/20] counter/increment ..................... PASS   1_204ms"
 
 expect (Repo.case_name("increment.script"), Repo.case_name("increment.expected")) == (Ok("increment"), Err(NotACase))
+
+## The checkout's absolute path becomes `<repo>` wherever it is printed.
+expect Repo.portable("URL: file:///home/ci/repo/tests/a.txt\n", "/home/ci/repo") == "URL: file://<repo>/tests/a.txt\n"

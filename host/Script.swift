@@ -7,6 +7,9 @@ import AppKit
 /// `ROC_SCRIPT="click:+;type:milk;enter;toggle:milk;wait:500;dump;quit"`
 /// drives the real controls (the same action methods AppKit calls), one step
 /// every 100 ms. `dump` prints the node tree as the views show it.
+/// `files:/a.txt,/b.png` delivers files as if picked on the first file
+/// button or drop zone (`drop:` as if dropped on the first drop zone),
+/// without opening a panel.
 extension Host {
     func run(script: String) {
         var steps = script.split(separator: ";").map(String.init)
@@ -31,6 +34,13 @@ extension Host {
                     b.state = b.state == .on ? .off : .on
                     toggled(b)
                 } else { fatal("script: no checkbox \(arg)") }
+            case "files", "drop":
+                // Files as if picked on the first file control (`files`) or
+                // dropped on the first drop zone (`drop`), without a panel.
+                let paths = arg.split(separator: ",").map(String.init)
+                let zone = verb == "drop"
+                guard let n = find({ $0.name == "ui-drop-zone" || (!zone && $0.name == "ui-file-button") }) else { fatal("script: no file control") }
+                deliverFiles(paths, type: n.name == "ui-drop-zone" ? "drop" : "change", at: n)
             case "wait":
                 delay = (Double(arg) ?? 0) / 1000
             case "dump":
@@ -66,6 +76,8 @@ extension Host {
             say("\(pad)\(n.name ?? "text") \"\(f.stringValue)\"")
         case let s as NSSlider:
             say("\(pad)\(n.name!) \(s.doubleValue)")
+        case let z as DropZoneView:
+            say("\(pad)\(n.name!) \"\(z.label.stringValue)\"")
         default:
             if n.name != nil { say("\(pad)\(n.name!)") }
         }

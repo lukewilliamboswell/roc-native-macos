@@ -30,6 +30,8 @@ extension Host {
             }
         case 5, 6, 7, 20, 22: // subscriptions this host never fires
             break
+        case 11, 13, 14: // file read, digest and URL (Files.swift)
+            fileEffect(id: id, kind: kind, &r)
         case 16, 18: // media and storage change subscriptions: never fire
             _ = r.str()
         default:
@@ -41,6 +43,7 @@ extension Host {
     /// reaches the engine afterwards.
     func cancelEffect(id: UInt32) {
         if let timer = timers.removeValue(forKey: id) { timer.invalidate(); return }
+        if cancelFileJob(id) { return }
         _ = cancelHttp(id: id)
     }
 
@@ -49,6 +52,7 @@ extension Host {
         for timer in timers.values { timer.invalidate() }
         timers.removeAll()
         cancelAllHttp()
+        for id in Array(files.jobs.keys) { cancelFileJob(id) }
     }
 
     func makeHttpTransport() -> HttpTransport {

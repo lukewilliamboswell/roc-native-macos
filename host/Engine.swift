@@ -45,6 +45,14 @@ final class EngineInstance {
         return take(Roc.eventForHost(current, cmds, work, node, handler, .ownedBytes(payload)))
     }
 
+    /// A files-kind turn: the file record and the handles minted for it
+    /// move into Roc with the state and both buffers.
+    func files(node: UInt32, handler: UInt32, record: [UInt8], handles: [UnsafeMutableRawPointer]) -> [UInt8] {
+        guard let current = state else { fatal("event before mount") }
+        state = nil
+        return take(Roc.filesForHost(current, cmds, work, node, handler, .ownedBytes(record), .ownedBoxesU64(handles)))
+    }
+
     private func take(_ step: InitForHost) -> [UInt8] {
         state = step.state
         cmds = step.cmds

@@ -1,0 +1,21 @@
+---
+ui-vstack [1 views]
+  ui-vstack [7 views]
+    ui-title "File inspector"
+    ui-hstack [2 views]
+      ui-file-button "Choose files…"
+      ui-button "Clear"
+    ui-drop-zone "Drop files here"
+    ui-label "1 file"
+    ui-vstack [1 views]
+      ui-hstack [3 views]
+        ui-label "hello.txt — 21 bytes — text/plain"
+        ui-spacer
+        ui-button "Inspect"
+    ui-divider
+    ui-vstack [5 views]
+      ui-label "Inspecting hello.txt"
+      ui-label "SHA-256: 86501f780e3b0baedf53a16cae80a0defcffb5ce1bb167c09ebf9c4f2e669c87"
+      ui-label "Starts: hello from a fixture"
+      ui-label "URL: file://<repo>/tests/fixtures/hello.txt"
+      ui-button "Save copy…"

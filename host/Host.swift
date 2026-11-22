@@ -30,6 +30,8 @@ final class Host: NSObject, NSTextFieldDelegate {
     /// HTTP requests in flight, main-thread state (host/Http.swift).
     var flights: [UInt32: HttpFlight] = [:]
     lazy var http: HttpTransport = makeHttpTransport()
+    /// File reads, digests and saves in flight (Files.swift).
+    let files = Files()
     var byView: [ObjectIdentifier: Node] = [:]
     /// Nodes whose view needs its children or text refreshed after a batch.
     var dirty: [Node] = []
@@ -104,6 +106,9 @@ final class Host: NSObject, NSTextFieldDelegate {
     // MARK: The batch
 
     func apply(_ batch: [UInt8]) {
+        // File handles Roc released during the call are dropped once the
+        // batch, whose commands may still name them, has been applied.
+        defer { releaseFiles() }
         guard !batch.isEmpty else { return }
         applying = true
         var r = Reader(batch)
@@ -219,6 +224,9 @@ final class Host: NSObject, NSTextFieldDelegate {
                 default: break
                 }
                 if [1, 3, 5].contains(op), let view = target?.view { window.makeFirstResponder(view) }
+            case 20: // SAVE token start len name
+                let token = r.u64(), start = r.u64(), len = r.u64(), name = r.str()
+                save(token: token, start: start, len: len, name: name)
             case 21: // PROP node prop value
                 let n = node(r.u32()), prop = r.u8(), value = r.str()
                 setAttr(n, prop == 2 ? "checked" : "value", value)
