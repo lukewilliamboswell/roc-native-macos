@@ -321,9 +321,12 @@ notes are `docs/releases/<version>.adoc` with `{platform-url}`,
 `{examples-url}` and `{launcher-url}` (`macos.roc`) filled in, followed by
 the compilers, the Xcode and Swift versions, and every file's SHA-256.
 
-The bundle's hash depends on `libhost.a`, which is not byte-reproducible, so
+The bundle's hash depends on every byte it holds, `libhost.a` included, so
 the URL is known only once the build job has run. It is printed at the top of
-that job's summary, in the notes, and in the dry run's summary.
+that job's summary, in the notes, and in the dry run's summary. The host is
+reproducible: the same commit, Xcode and catalog build the same `libhost.a`
+on any checkout path, so a rebuild of the tested commit names the same
+bundle.
 
 `release -- bump VERSION LATEST URL` runs `roc bump --old URL --expect
 VERSION platform/main.roc` against the latest final release's bundle, so a
@@ -500,10 +503,12 @@ absolute platform path. Current compilers (`src/unbundle/download.zig`)
 accept plain `http` for the hosts `localhost`, `127.0.0.1` and `[::1]`, and
 connect to `localhost` on the first loopback address it resolves to, which
 is `::1` on macOS; a dual-stack server on `::` serves both.
-The same inputs bundle to the same name, but a rebuilt host does not:: Two
-builds of `libhost.a` from the same sources are not byte-identical, so
-`scripts/build.sh --platform` gives the bundle a new content hash each time.
-Bundling the same built inputs again (`--prebuilt`) gives the same hash.
+The same inputs bundle to the same name:: `libhost.a` is byte-reproducible
+(each object compiled to a fixed relative path under `build/host`, since
+Swift hashes an object's output path into its `__swift_modhash`; every
+path relative; `libtool -static -D` over the sorted objects with
+`ZERO_AR_DATE=1`), so rebuilding the platform from the same commit names the
+same bundle.
 
 == Reporting
 

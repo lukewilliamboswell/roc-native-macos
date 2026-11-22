@@ -22,11 +22,20 @@ build_platform() {
 	# 2. The Swift host as a static library. Swift's framework autolinking and
 	#    FORCE_LOAD symbols are off: the frameworks the host links are exactly
 	#    the ones the catalog generates stubs for.
-	mkdir -p "$targets"
-	swiftc -O -parse-as-library -static -emit-library -module-name RocHost \
+	#
+	#    The same commit builds the same bytes on any checkout path: each
+	#    object goes to a fixed path relative to build/host (Swift hashes an
+	#    object's output path into its __swift_modhash, and -emit-library uses
+	#    random temporary names), every path is relative, and libtool -D
+	#    archives the objects in sorted order with zero dates and IDs.
+	objects="$here/build/host"
+	rm -rf "$objects"
+	mkdir -p "$objects" "$targets"
+	(cd "$here" && LC_ALL=C printf '../../%s\n' host/*.swift | LC_ALL=C sort) >"$here/build/host-sources"
+	(cd "$objects" && xargs swiftc -O -parse-as-library -c -module-name RocHost \
 		-Xfrontend -disable-force-load-symbols -Xfrontend -disable-autolink-frameworks \
-		-import-objc-header "$here/host/roc_swift_abi.h" \
-		"$here"/host/*.swift -o "$targets/libhost.a"
+		-import-objc-header ../../host/roc_swift_abi.h <"$here/build/host-sources")
+	(cd "$objects" && LC_ALL=C ls ./*.o | LC_ALL=C sort | ZERO_AR_DATE=1 xargs libtool -static -D -o "$targets/libhost.a")
 
 	# 3. The sysroot Roc's linker uses for this platform: TAPI stubs generated
 	#    from the reviewed catalog alone. No Apple SDK file is read or bundled.

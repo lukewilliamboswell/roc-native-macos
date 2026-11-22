@@ -120,8 +120,8 @@ jobs:
 
   # Build once. The check gate builds the Swift host and runs every example
   # against it; the bundle is then made from that same libhost.a (`--prebuilt`),
-  # because a rebuilt host is not byte-identical and would name a different
-  # bundle. Everything later in the run tests and publishes these files.
+  # so the bytes bundled are the bytes tested. Everything later in the run
+  # tests and publishes these files.
   build:
     name: Build and test the release on macOS
     needs: validate

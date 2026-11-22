@@ -64,14 +64,15 @@ config = [
 				"https://github.com/roc-lang/basic-cli/releases/download/0.28.1/7brgwR8YUqfeGrkdfF1V4GPPN7DnP7ftqub9KcrTEZtr.tar.zst",
 				"https://github.com/roc-lang/http/releases/download/1.0.0/6ZUwqYhCS8PU9Mo6MF7oV82ET2o7KYb57CLKDq4cq4sS.tar.zst",
 			]),
-			# `bash` runs scripts/build.sh, `swiftc` builds the host, `python3`
+			# `bash` runs scripts/build.sh, `swiftc` compiles the host and `libtool`
+			# archives it (with `xargs`, `sort` and `env`), `python3`
 			# generates the linker stubs (scripts/build_macos_stubs.py) and
 			# serves the bundle to its consumer tests (scripts/bundle.roc,
 			# scripts/release.roc), `shasum` checks the engine modules' digests
 			# and the release files', `git` lists the tracked files the checks
 			# read, `zip` and `unzip` write and read the examples archive, and
 			# `xcodebuild` names the Xcode a release's notes record.
-			Expect(["roc", "bash", "env", "swiftc", "python3", "shasum", "git", "zip", "unzip", "xcodebuild"]),
+			Expect(["roc", "bash", "env", "swiftc", "libtool", "xargs", "sort", "python3", "shasum", "git", "zip", "unzip", "xcodebuild"]),
 		],
 	),
 	# The manual (docs/index.adoc) as a website, static Markdown and a PDF,
