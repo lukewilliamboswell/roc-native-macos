@@ -8,8 +8,9 @@ rest need a reviewer.
 
 Run `blueprint run check` with a current Roc nightly installed as `roc`. It is
 the same gate CI runs on `macos-15`: compiler pins, engine digests,
-formatting, the scripts' tests, `scripts/build.sh`, `roc test`, and every
-example's recorded scripted runs (`tests/examples/`). A new example needs at
+formatting, the scripts' tests, `scripts/build.sh`, `roc test`, every
+example's recorded scripted runs (`tests/examples/`), and the platform bundle
+with an example built and run against it (`scripts/bundle.roc --test`). A new example needs at
 least one recorded case: add `tests/examples/<example>/<case>.script` and run
 `blueprint run examples -- --update`. Review the `.expected` diff before you
 commit it.
@@ -17,12 +18,12 @@ commit it.
 ## The engine is a verbatim copy
 
 `platform/{Core,Engine,Web,EntryRoutes,Url,ReadyIndex,Spelling,Layout,TableCore,View,Seq,MarkupAdvice,SignalCore}.roc`
-are byte-identical copies of roc-signals' `platform/` at the revision the
-README names. Never edit or reformat them here, and never run `roc fmt` on
+are byte-identical copies of roc-signals' `platform/` at the revision
+`docs/architecture.adoc` names ("Engine"). Never edit or reformat them here, and never run `roc fmt` on
 them. A change the engine needs is made in roc-signals first. To take a newer
 engine, copy all of these modules from one roc-signals commit, regenerate
 `tests/engine-modules.sha256` with `shasum -a 256 <the modules>`, and update the
-revision in the README in the same commit. The native vocabulary belongs in
+revision in `docs/architecture.adoc` in the same commit. The native vocabulary belongs in
 `platform/Ui.roc`, and the root in `platform/main.roc`.
 
 ## No Apple SDK material in linker inputs
@@ -73,10 +74,14 @@ on any shape it does not support.
 
 ## Change discipline
 
-- Keep `README.md` short. Put detail in `docs/`, and keep follow-up work in
-  issues, not in documents.
+- `README.md` is the landing page for app authors: keep it short, and keep
+  host internals and contributor material out of it. Put detail in the
+  `docs/` manual (`index.adoc` includes one chapter per file: `ui.adoc` for
+  app authors, `architecture.adoc` and `contributing.adoc` for contributors),
+  and keep follow-up work in issues, not in documents. When `platform/Ui.roc`
+  changes, update `docs/ui.adoc` in the same commit.
 - Unknown commands or effects in the host are fatal errors with a clear
   message, never silent skips.
 - Do not commit build outputs (`examples/<name>/<name>`, `platform/targets/`,
-  generated glue) or `.blueprint/`.
+  generated glue, `build/`) or `.blueprint/`.
 - Do not commit or push unless asked.

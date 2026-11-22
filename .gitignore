@@ -13,3 +13,6 @@ examples/*/*.app/
 
 # Local agent state and worktrees
 .claude/
+
+# scripts/bundle.roc: the bundle, its staging tree and its consumer test
+build/

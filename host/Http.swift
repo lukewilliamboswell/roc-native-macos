@@ -1,6 +1,6 @@
 // HTTP requests (`FX` kind 1), performed off the main thread by URLSession.
 //
-// The threading model (README, "Effects and threads"):
+// The threading model (docs/architecture.adoc, "Effects and threads"):
 //
 // - Roc runs only on the main thread. The FX operands are decoded there into
 //   `HttpRequest`, a plain Swift value; nothing Roc owns leaves the thread.

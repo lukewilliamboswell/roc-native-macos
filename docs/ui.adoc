@@ -1,0 +1,204 @@
+= The Ui reference
+
+This chapter is for app authors. It lists every builder in `platform/Ui.roc`,
+what each one draws in AppKit, the events it sends and how the window and
+the system around the app behave. The engine's own API (`Engine`: signals,
+stores, tables, `each`, `when`, `switch`, watches and asks) is roc-signals',
+unchanged; see
+https://github.com/lukewilliamboswell/roc-signals[roc-signals] for it.
+
+An app imports both modules:
+
+[source,roc]
+----
+import pf.Engine exposing [Elem, Signal]
+import pf.Ui
+----
+
+Each builder returns an ordinary `Engine.element` with a native element name
+(`ui-vstack`, `ui-button`, …), which the host turns into one AppKit view.
+Nothing here is HTML: there is no document, no CSS and no browser.
+
+== Builders
+
+[cols="2,3,2",options="header"]
+|===
+| Builder | Signature | AppKit view
+
+| `vstack` | `VStackProps, List(Elem(ctx)) -> Elem(ctx)` | vertical `NSStackView`
+| `hstack` | `HStackProps, List(Elem(ctx)) -> Elem(ctx)` | horizontal `NSStackView`
+| `form` | `Handler(ctx), List(Elem(ctx)) -> Elem(ctx)` | vertical `NSStackView`; Return in a text field, or its `submit_button`, submits
+| `scroll` | `ScrollProps, Elem(ctx) -> Elem(ctx)` | `NSScrollView` around a vertical `NSStackView`
+| `list` | `ListProps, Elem(ctx) -> Elem(ctx)` | view-based `NSTableView`
+| `row` | `Handler(ctx), List(Elem(ctx)) -> Elem(ctx)` | one table row of a `list`, its children leading to trailing
+| `title` | `Str -> Elem(ctx)` | `NSTextField` label, large and bold
+| `label` | `Str -> Elem(ctx)` | `NSTextField` label
+| `label_s` | `Signal(ctx, Str) -> Elem(ctx)` | label following a value
+| `text` | `TextProps, Str -> Elem(ctx)` | label in a font and colour
+| `text_s` | `TextProps, Signal(ctx, Str) -> Elem(ctx)` | styled label following a value
+| `readout_s` | `Signal(ctx, Str) -> Elem(ctx)` | large monospaced label, for numbers that change
+| `button` | `Str, HandlerOf(ctx, Engine.Click) -> Elem(ctx)` | push `NSButton`
+| `button_s` | `Signal(ctx, Str), HandlerOf(ctx, Engine.Click) -> Elem(ctx)` | push button whose title follows a value
+| `action_button` | `Signal(ctx, Str), Signal(ctx, Bool), HandlerOf(ctx, Engine.Click) -> Elem(ctx)` | push button enabled while the second signal is true
+| `submit_button` | `Str -> Elem(ctx)` | the window's default button; submits its `form`
+| `text_field` | `Str, Signal(ctx, Str), Handler(ctx) -> Elem(ctx)` | editable `NSTextField`; the `Str` is its placeholder
+| `text_area` | `TextAreaProps, Signal(ctx, Str), Handler(ctx) -> Elem(ctx)` | `NSTextView` in an `NSScrollView`
+| `checkbox` | `Signal(ctx, Str), Signal(ctx, Bool), HandlerOf(ctx, Bool) -> Elem(ctx)` | checkbox `NSButton`
+| `slider` | `{ min : I64, max : I64 }, Signal(ctx, I64), Handler(ctx) -> Elem(ctx)` | `NSSlider`
+| `dropdown` | `List(Str), Signal(ctx, Str), Handler(ctx) -> Elem(ctx)` | `NSPopUpButton`
+| `segmented` | `List(Str), Signal(ctx, Str), Handler(ctx) -> Elem(ctx)` | `NSSegmentedControl`
+| `tabs` | `List(Str), Signal(ctx, Str), Handler(ctx), (Str -> Elem(ctx)) -> Elem(ctx)` | a segmented control above an `Engine.switch` of pages
+| `image` | `Str, Color -> Elem(ctx)` | `NSImageView` of an SF Symbol (`"star.fill"`)
+| `progress` | `{ max : I64 }, Signal(ctx, I64) -> Elem(ctx)` | determinate `NSProgressIndicator` bar
+| `busy` | `Signal(ctx, Bool) -> Elem(ctx)` | indeterminate bar, animating while true
+| `shortcut` | `List(Engine.Chord), HandlerOf(ctx, Engine.Key) -> Elem(ctx)` | none: a document key handler
+| `command` | `Str -> Engine.Chord` | the chord of Command and a key
+| `plain_key` | `Str -> Engine.Chord` | a key with no modifiers, such as `"Escape"`
+| `file_button` | `Str, Engine.FilesHandler(ctx) -> Elem(ctx)` | `NSButton` opening an `NSOpenPanel`
+| `drop_zone` | `Str, Engine.FilesHandler(ctx) -> Elem(ctx)` | bordered `NSView` taking files dragged from the Finder
+| `divider` | `() -> Elem(ctx)` | `NSBox` separator
+| `spacer` | `() -> Elem(ctx)` | flexible empty `NSView` that grows to fill its stack
+|===
+
+`tabs` builds only the shown page. Switching disposes the old page, with any
+state inside it.
+
+== Props
+
+Layout and text style are props records of defaulted fields, given first,
+beside the children. Pass `{}` for the defaults, or name only the fields you
+change: `Ui.vstack({ spacing: 12, align: Fill }, kids)`,
+`Ui.text({ font: Caption, color: Secondary }, "Saved")`,
+`Ui.scroll({ height: 200 }, rows)`. Sizes are points.
+
+[cols="1,3",options="header"]
+|===
+| Props | Fields and defaults
+
+| `VStackProps` | `spacing : U32 ?? 8`, `padding : U32 ?? 0`, `align : [Leading, Center, Trailing, Fill] ?? Leading`. `Fill` stretches each child to the stack's width.
+| `HStackProps` | `spacing : U32 ?? 8`, `padding : U32 ?? 0`, `align : [Top, Center, Bottom] ?? Center`
+| `ScrollProps` | `height : U32 ?? 240` (the window opens with it), `min_height : U32 ?? 80` (the least the user can shrink it to), `spacing : U32 ?? 8`, `padding : U32 ?? 0`
+| `ListProps` | `height : U32 ?? 320`, `min_height : U32 ?? 120`
+| `TextAreaProps` | `height : U32 ?? 96`
+| `TextProps` | `font : Font ?? Body`, `color : Color ?? Primary`
+|===
+
+`Font` is `[Body, Title, Headline, Caption, Mono]`, AppKit's system fonts.
+`Color` is `[Primary, Secondary, Tertiary, Accent, Red, Orange, Green, Blue]`,
+AppKit's semantic colours, which follow light and dark mode. Styling is
+deliberately minimal for now; xref:contributing.adoc#styling[a fuller styling
+API is proposed].
+
+== Events
+
+[cols="1,1,2",options="header"]
+|===
+| Builder | Event | When, and what the handler receives
+
+| `button`, `button_s`, `action_button` | `click` | an `Engine.Click`
+| `text_field`, `text_area` | `input` | the whole text, on every edit
+| `slider` | `input` | the new whole value, as text, while it is dragged
+| `checkbox` | `change` | its new state
+| `dropdown`, `segmented`, `tabs` | `change` | the chosen title
+| `row` | `select` | the user selects the row
+| `form` | `submit` | Return in one of its text fields, or a click on its `submit_button`
+| `shortcut` | `keydown` | the `Engine.Key`; compare its `heard` with a chord to tell several apart
+| `file_button` | `change` | the chosen files, as `Engine.Received`
+| `drop_zone` | `drop` | the dropped files, as `Engine.Received`
+|===
+
+A control's state comes from its signals: a text field shows its `value`
+signal, a checkbox its `checked` signal. Write the new value in the handler,
+as `text_field("URL", cells.url.signal(), Engine.handle(|typed| [cells.url.set(typed)]))`
+does.
+
+== The window
+
+Without a scroll area or a list, the window fits its content exactly. Once
+one appears, the window opens tall enough for the scroll area's `height`, and
+from then on grows only when the content around it needs more room. The user
+can resize the window; the scroll area takes the slack, down to its
+`min_height`.
+
+== Lists
+
+`Ui.list({}, Engine.table_view(...))` puts the rows of a table view (or an
+`each`) of `Ui.row`s in an `NSTableView`. AppKit draws only the rows on
+screen, and a row's views are made when it is first scrolled into sight, so
+10,000 rows cost views for the visible ones. Each row the engine inserts,
+removes or moves is one incremental change to the table. The engine still
+builds every row that passes the query; see
+xref:architecture.adoc#lists[Lists] for the costs.
+
+`Ui.scroll` suits short lists and mixed content: it is a stack, and every
+element in it gets its views.
+
+== Keys
+
+`Ui.shortcut([Ui.command("n")], Engine.handle(|_key| ...))` hears Command-N
+when no control's own key handler did, and prevents its default. Key names
+follow the DOM (`Enter`, `Escape`, `ArrowUp`, …). A control's own key
+handler, through `Engine` keymaps, hears keys while it or a view inside it
+has focus. Menus and their key equivalents are not built yet.
+xref:architecture.adoc#keys[Keys] gives the matching rules.
+
+== Effects
+
+Effects are asks issued by a watch site (`Engine.watch`, `Engine.watch_latest`,
+`Engine.watch_changes`) and answered as a turn. Use `watch_latest` for
+anything that starts and stops, such as an interval: plain `watch` never
+cancels what it issued.
+
+HTTP:: `Engine.http({ url, timeout, cache, ... })` through `URLSession`, with
+timeouts, cancellation and transfer progress
+(`Engine.react(...).with_progress(...)`). Only absolute `http` and `https`
+URLs are fetched, a response body is limited to 16 MiB, and the body is
+decoded as UTF-8. xref:architecture.adoc#http[HTTP] has every bound and
+mapping.
+
+Timers:: `Engine.timer(ms)` and `Engine.interval(ms)`.
+
+Local storage:: `UserDefaults`. Declare the keys in
+`Engine.program_store({ storage_keys: ["todos"] }, ...)`, read them at boot
+with `Engine.boot_storage(boot, "todos")` and write them with
+`Engine.command(StorageSet("todos", text))`. A bare binary and its `.app`
+bundle keep separate domains (`todos` and the bundle identifier), so they do
+not share saved values. Session storage lasts for the life of the process.
+
+Files:: A file the user gives the app reaches it as a `File` handle, never as
+bytes. `file_button` (several files may be chosen) and `drop_zone` deliver
+`Received`, `{ files : List(File), refused : U64 }`. Folders and unreadable
+paths are left out, and no files means no event. The app may hold 64 files
+at once; more in one event are counted in `refused`. A handle is released
+when the last `File` holding it goes. On a file: `sha256` streams a digest;
+`read_bytes` and `read_utf8` read it, up to 256 MiB (`FileFailed(TooLarge)`
+past that); `slice` narrows it to a range; `object_url` gives a `file://` URL
+of the whole file (`FileFailed(Unavailable)` for a range); and `File.save`
+opens a save panel with a suggested name. The app learns nothing of a save's
+outcome. Uploads, fetched files and pasted files are not built.
+
+Not built:: workers, ports and crypto keys, and hosted functions.
+
+== The environment at launch
+
+The app's boot facts are real: the location is `/`; online and visible are
+true; `(prefers-color-scheme: dark)` and `light` follow the system setting,
+and any other media query is false; the time, a random seed, the user's
+preferred languages and the current time zone, with its transitions, are the
+system's.
+
+Quitting, or closing the window, cancels every effect in flight and ends the
+program; no turn runs after it. A Roc crash or a host error prints the
+message, shows it in an alert and exits with status 1. `dbg` prints to
+standard error.
+
+== Testing an app
+
+`roc test main.roc` runs an app's `expect` tests, as `examples/todos` has.
+Run it: it also reports the single-field record builder
+(`{ a: Engine.cell(…) }.Engine.Cells`) that builds but fails at run time with
+current compilers. Give a store at least two cells.
+
+`ROC_SCRIPT` drives a built app's real controls and prints the view tree:
+`ROC_SCRIPT="click:+;dump;quit" ./main`. See
+xref:contributing.adoc#driving-an-app[Driving an app] for the steps.

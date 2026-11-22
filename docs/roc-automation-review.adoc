@@ -64,6 +64,14 @@ issues, delete this page.
 | Adopt later
 | The stubs are generated inside the build. They are not yet a released, locked input.
 
+| Documentation: short README, AsciiDoc manual
+| Adopt now, partly
+| The README is the app author's landing page; `docs/index.adoc` and its chapters hold the rest. Not yet built with roc-docs.
+
+| Platform bundle and its consumer test
+| Adopt now
+| `blueprint run bundle` builds the bundle; `-- --test`, and the `bundle` stage of `check`, build and run an example against it served from localhost.
+
 | `release.yml`, examples archive, `nightly.yml`, SBOMs
 | Adopt later
 | No release exists to build, test or report on.
@@ -319,7 +327,7 @@ them through a committed lock that records digest, size and inventory. Add a
 fingerprinted host job. This needs a `link-inputs` release environment, attestation
 permissions and a maintainer-dispatched publisher, none of which a spike
 without releases can exercise. Tightening the catalog to per-symbol evidence
-is already listed in the README.
+is already listed in xref:architecture.adoc#linker-inputs[Architecture].
 
 == Releases, examples archive and nightly compatibility
 
@@ -333,9 +341,18 @@ No releases. The examples already name the platform by relative path
 (`../../platform/main.roc`), and no example pins a compiler, so they can be
 archived unchanged.
 
-Action (adopt later)::
-When the platform is first released, add a bundle task and a `release.yml`
-that builds the bundle with the host and the locked stubs. The workflow uses
+Action (adopt now, partly)::
+`blueprint run bundle` (`scripts/bundle.roc`) is the repository's own bundle
+command, as `actions.adoc` "`release-package` platform" expects. It builds the
+platform's native inputs, stages the tracked `platform/*.roc` modules,
+`libhost.a`, the generated `macos-sysroot` stubs and the licence notices, and
+runs `roc bundle` into `build/platform/`, which then holds exactly one
+`<hash>.tar.zst`. `--test` serves that directory on localhost and builds and
+runs `examples/counter` against it with an empty package cache, as a first
+user would; `check` runs it as its `bundle` stage.
++
+*Adopt later*: when the platform is first released, add a `release.yml`
+that builds the bundle with this task, with the host and the locked stubs. The workflow uses
 `release-package build --platform-bundle` to write the examples archive, tests
 those bytes on `macos-15` and publishes through `actions/publish-release`.
 Then add `nightly.yml` on the shared compatibility runner. Both need
@@ -407,13 +424,16 @@ Guidance::
 `docs/`, built with roc-docs.
 
 This repository::
-The README is the only documentation, and it holds design notes and findings.
+The README was the only documentation, and it held design notes and findings.
 
-Action (adopt later)::
-This page is the first file in `docs/`. The README gained only a short
-"Development" section, because concurrent branches edit it. Once they merge,
-move "How it fits together", "Glue", "Linker inputs" and "Findings" into
-`docs/*.adoc` and build them with roc-docs.
+Action (adopt now, partly)::
+The README is the front door for app authors: the pitch, a screenshot, a
+quick start with a complete example, a short tour, the examples and the
+licence. `docs/index.adoc` is a `:doctype: book` that includes one chapter
+per file: `ui.adoc` (the `Ui` reference, for app authors),
+`architecture.adoc`, `contributing.adoc` and this page. `docs/styling.md`
+stays Markdown: it is a design proposal, not a chapter, and is replaced by
+the implementation. *Adopt later*: build the manual with roc-docs in CI.
 
 == Not applicable
 
@@ -421,7 +441,7 @@ move "How it fits together", "Glue", "Linker inputs" and "Findings" into
   repository has none. The engine's fuzz targets live in roc-signals.
 * *A cross-compiling builder and a runner matrix* (`platforms.adoc` "Cross-compile
   once, run on every target"): the only target is `arm64mac`, built and run
-  on one runner. The README should say that `x64mac` is unsupported.
+  on one runner. The README says that `x64mac` is unsupported.
 * *Kai* (`kai.adoc`): Blueprint is the environment.
 
 == Follow-ups
@@ -447,4 +467,10 @@ File each of these as an issue, then delete this page.
   once one is on `main`.
 . Apply the repository settings and run `check-settings`.
 . Consider roc-policy for the pin rules.
-. Move the README's design notes into a roc-docs manual.
+. Build the `docs/` manual with roc-docs in CI.
+. Make `libhost.a` reproducible (normalise the archive, as roc-gui's
+  `normalize_host_archive.py` does), so a rebuilt host gives the same bundle.
+. The `file-inspector/inspect` case prints the window size, which depends on
+  the length of the checkout's path (the URL label holds it), so it fails in
+  a checkout whose path differs in length from the one it was recorded in.
+  Leave the URL out of the dump or the size out of the comparison.
