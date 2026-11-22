@@ -26,6 +26,9 @@ import src/Repo
 ## - `test`: `roc test` on the platform root and on every example.
 ## - `examples`: every example's recorded scripted runs; `examples --update`
 ##   records what they print now.
+## - `bundle`: the platform bundle from the inputs `build` made, and the
+##   counter example built against it as an app author would
+##   (`scripts/bundle.roc --prebuilt --test`).
 ##
 ## The package compiler is the `roc` on PATH: the latest nightly in CI.
 main! : List(OsStr) => Try({}, _)
@@ -65,10 +68,11 @@ run_stage! = |stage, update|
 		"pins" => pins!()
 		"engine" => engine!()
 		"fmt" => fmt!()
-		"scripts" => run!("roc-stable", ["test", "scripts/check_all.roc"])
+		"scripts" => Ok(run!("roc-stable", ["test", "scripts/check_all.roc"])?.concat(run!("roc-stable", ["test", "scripts/bundle.roc"])?))
 		"build" => build!()
 		"test" => test!()
 		"examples" => examples!(update)
+		"bundle" => run!("roc-stable", ["scripts/bundle.roc", "--", "--prebuilt", "--test"])
 		_ => Ok(["no such stage"])
 	}
 

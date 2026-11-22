@@ -6,6 +6,8 @@
 #     blueprint run test                   # roc test on the platform root and the examples
 #     blueprint run examples               # every example's recorded scripted runs
 #     blueprint run examples -- --update   # record what they print now, as a reviewable diff
+#     blueprint run bundle                 # the platform bundle, in build/platform/<hash>.tar.zst
+#     blueprint run bundle -- --test       # and an example built and run against it
 #     blueprint tasks                      # list every task
 #     blueprint update                     # refresh Blueprint.lock
 #
@@ -41,7 +43,8 @@ config = [
 				"https://github.com/roc-lang/http/releases/download/1.0.0/6ZUwqYhCS8PU9Mo6MF7oV82ET2o7KYb57CLKDq4cq4sS.tar.zst",
 			]),
 			# `bash` runs scripts/build.sh, `swiftc` builds the host, `python3`
-			# generates the linker stubs (scripts/build_macos_stubs.py), `shasum`
+			# generates the linker stubs (scripts/build_macos_stubs.py) and
+			# serves the bundle to its consumer test (scripts/bundle.roc), `shasum`
 			# checks the engine modules' digests and `git` lists the tracked files
 			# the checks read.
 			Expect(["roc", "bash", "env", "swiftc", "python3", "shasum", "git"]),
@@ -49,7 +52,8 @@ config = [
 	),
 	Shell("default", [Use("dev")]),
 	# The per-pull-request gate: compiler pins, formatting, the scripts'
-	# tests, the build, `roc test` and every example's recorded runs.
+	# tests, the build, `roc test`, every example's recorded runs and the
+	# bundle with its consumer test.
 	# `check -- STAGE...` runs only the named stages, in order.
 	Task("check", [Use("dev"), Run(["scripts/check_all.roc", "--"])]),
 	# scripts/build.sh defaults to the RC1 compiler's install path; the task
@@ -57,6 +61,12 @@ config = [
 	Task("build", [Use("dev"), Run(["env", "ROC=roc", "scripts/build.sh"])]),
 	Task("test", [Use("dev"), Run(["scripts/check_all.roc", "--", "test"])]),
 	Task("examples", [Use("dev"), Run(["scripts/check_all.roc", "--", "examples"])]),
+	# The platform bundle an app's header names: builds the platform's
+	# native inputs, then `roc bundle`s the platform modules, libhost.a, the
+	# generated linker stubs and the notices into build/platform/.
+	# `-- --output-dir DIR`, `-- --prebuilt` (skip the build) and `-- --test`
+	# (serve it on localhost and build and run examples/counter against it).
+	Task("bundle", [Use("dev"), Run(["scripts/bundle.roc", "--"])]),
 	# The tooling compiler, as a log records it.
 	Task("tooling-version", [Use("dev"), Run(["roc-stable", "version"])]),
 ]

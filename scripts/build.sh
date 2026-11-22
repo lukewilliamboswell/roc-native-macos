@@ -3,6 +3,7 @@
 #
 #   scripts/build.sh            # glue header, Swift host, sysroot, then every example
 #   scripts/build.sh counter    # just one example (after the platform is built)
+#   scripts/build.sh --platform # just the platform: glue header, Swift host, sysroot
 #
 # ROC defaults to the 0.1.0 RC1 compiler; override with ROC=/path/to/roc.
 set -euo pipefail
@@ -71,6 +72,8 @@ bundle_example() {
 if [[ $# -eq 0 ]]; then
 	build_platform
 	for dir in "$here"/examples/*/; do build_example "$(basename "$dir")"; done
+elif [[ $1 == --platform ]]; then
+	build_platform
 else
 	for name in "$@"; do build_example "$name"; done
 fi
