@@ -5333,24 +5333,32 @@ mount_attr = |block, env, attr, id, path, value_control, element_name, tx| {
 			next = shown_fact(emit_op(count_property(count_evals(tx, 1), index), 21, |commands| put_str(put_u32(commands, id).append(index), encoded)), id, 256, index, encoded)
 			(add_hole(block, { node: id, mask: eff_mask(value), attr: NoAttribute, reference: NotReference, property: index, read: |context| Present((value.read)(context)), last: Present(encoded), dirty: False }), next)
 		}
-		On(ev, handler) => {
-			tx0 = if ev.policies.bitwise_and(16) != 0 {
-				if tx.fx.document_nodes.len() >= 32 {
-					crash "contract: more than 32 live document key handlers at site ${show_path(path)}"
-				}
-				with_fx(tx, |fx| { ..fx, document_nodes: fx.document_nodes.append(id) })
-			} else tx
-			h = block.handlers.len().to_u32_wrap()
-			registered = if (ev.kind == 7 or ev.kind == 8) observe_node(tx0, id) else tx0
-			tx1 = emit_op(registered, 11, |c| put_u32(put_str(put_u32(put_u32(c, id), h), ev.event).append(ev.kind), ev.policies))
-			(add_handler(block, bind_block_echo(handler, block.holes)), set_route(tx1, id, path, h))
-		}
+		On(ev, handler) => mount_handler(block, ev, handler, id, path, tx)
 		Ref(value) => {
 			ref_path = path.append(block.holes.len().to_u32_wrap())
 			name = (value.read)(env)
 			(add_hole(block, { node: id, mask: eff_mask(value), attr: NoAttribute, reference: Reference(ref_path, value_control), property: 0, read: |context| Present((value.read)(context)), last: Present(name), dirty: False }), with_fx(count_evals(tx, 1), |fx| add_ref(fx, { name, node: id, path: ref_path, value_control })))
 		}
 	}
+}
+
+## An event listener: its command, its route and the block's handler.
+## This stays out of `mount_attr`, which runs once per attribute: with it
+## inline, the compiler's optimized builds (Roc 0.1.0 RC1) handed the turn
+## to `mount_attr` shared, so each attribute's command copied the whole
+## command buffer and mounting grew quadratically with the page.
+mount_handler : Block(ctx), EventDecl, RoutedHandler(ctx), U32, List(U32), Tx -> (Block(ctx), Tx)
+mount_handler = |block, ev, handler, id, path, tx| {
+	tx0 = if ev.policies.bitwise_and(16) != 0 {
+		if tx.fx.document_nodes.len() >= 32 {
+			crash "contract: more than 32 live document key handlers at site ${show_path(path)}"
+		}
+		with_fx(tx, |fx| { ..fx, document_nodes: fx.document_nodes.append(id) })
+	} else tx
+	h = block.handlers.len().to_u32_wrap()
+	registered = if (ev.kind == 7 or ev.kind == 8) observe_node(tx0, id) else tx0
+	tx1 = emit_op(registered, 11, |c| put_u32(put_str(put_u32(put_u32(c, id), h), ev.event).append(ev.kind), ev.policies))
+	(add_handler(block, bind_block_echo(handler, block.holes)), set_route(tx1, id, path, h))
 }
 
 add_node : Block(ctx), U32, Bool -> Block(ctx)

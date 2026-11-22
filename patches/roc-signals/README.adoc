@@ -17,7 +17,7 @@ stage.
 
 == The series
 
-No patches yet: the modules are roc-signals' as they are.
+. `0001-mount-handler-function.patch`: mount an event listener in a function of its own, so the turn reaches `mount_attr` unshared and mounting is linear in attributes (box grid at 4,900 cells: 1,479 ms to 25 ms). Upstream: not yet sent.
 
 == Making a patch
 
