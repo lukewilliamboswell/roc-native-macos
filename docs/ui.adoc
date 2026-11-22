@@ -309,6 +309,6 @@ Run it: it also reports the single-field record builder
 (`{ a: Engine.cell(…) }.Engine.Cells`) that builds but fails at run time with
 current compilers. Give a store at least two cells.
 
-`ROC_SCRIPT` drives a built app's real controls and prints the view tree:
-`ROC_SCRIPT="click:+;dump;quit" ./main`. See
-xref:contributing.adoc#driving-an-app[Driving an app] for the steps.
+`roc macos.roc test` runs an app's recorded cases, which drive its real
+controls and compare the view trees they print. See
+xref:apps.adoc#test-an-app[Test an app] for the cases and their steps.

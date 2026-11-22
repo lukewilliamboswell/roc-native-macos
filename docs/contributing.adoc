@@ -1,7 +1,9 @@
 = Contributing
 
-This chapter is for people changing the platform: building it, bundling it,
-driving its examples and passing the check gate. The repository's rules are
+This chapter is for people changing the platform from a checkout: building
+it, running and driving its examples, passing the check gate, bundling it and
+releasing it. App authors need none of it; they work from a release, as
+xref:apps.adoc#get-started[Build an app] describes. The repository's rules are
 in `AGENTS.md`; xref:architecture.adoc#how-it-fits-together[Architecture]
 explains the design.
 
@@ -54,6 +56,21 @@ bundle beside it (`Contents/MacOS/<name>` and an `Info.plist` with
 bundle identifier, so it no longer warns that it cannot index window tabs.
 The two keep separate `UserDefaults` domains (`todos` versus
 `dev.roc.native.todos`), so they do not share saved values.
+
+[#run-the-examples]
+=== Run the examples
+
+The examples under `examples/` are apps that name the platform by its path in
+the checkout, `pf: platform "../../platform/main.roc"`, so they always build
+against the working tree and may use what no release has yet. A release's
+examples archive is a copy of them whose headers name that release's bundle
+(`release -- archive`, see xref:contributing.adoc#releasing[Releasing]);
+committed examples are never rewritten. `scripts/build.sh` builds every
+example as `examples/<name>/<name>` and `examples/<name>/<name>.app`, and
+xref:contributing.adoc#driving-an-app[Driving an app] runs them unattended.
+A new example needs at least one recorded case (see
+xref:contributing.adoc#recorded-cases[Recorded cases]) and a row in the
+README's examples table.
 
 === Blueprint tasks
 
@@ -179,7 +196,12 @@ roc macos.roc init counter && cd counter && roc macos.roc run
 == Driving an app
 
 `ROC_SCRIPT` drives the real controls through the same action methods AppKit
-calls. Steps run every 100 ms; `dump` prints the live view tree:
+calls, and `dump` prints the live view tree. The steps and the other `ROC_*`
+variables are app-author material, listed in
+xref:apps.adoc#steps[Steps] and
+xref:apps.adoc#environment-variables[Environment variables]; when the host's
+steps or variables change, update that chapter. Against
+the examples built in a checkout:
 
 [source,sh]
 ----
@@ -189,55 +211,20 @@ ROC_SAVE_DIR=/tmp ROC_SCRIPT="files:$PWD/README.md;click:Inspect;wait:300;dump;c
   ./examples/file-inspector/file-inspector
 ----
 
-[cols="1,3",options="header"]
-|===
-| Step | Does
-
-| `click:<title>` | clicks the button with that title
-| `type:<text>` | types into the first text field
-| `write:<text>` | writes into the first text area; `\n` is a line break
-| `enter` | submits the text field's form
-| `toggle:<title>` | toggles the checkbox with that title
-| `choose:<title>` | chooses a dropdown item or a segment
-| `select:<text>` | selects the list row holding that text
-| `key:cmd+shift+n` | presses a key, delivered as if nothing had focus
-| `files:<path>,<path>…` | gives files as if picked on the first file button or drop zone, with no panel
-| `drop:<path>,…` | gives files as if dropped on the first drop zone
-| `wait:<ms>` | waits
-| `dump` | prints the window size, then the view tree; a list shows its visible rows, and a text, box or drop zone the look attributes that differ from the usual (`{color=secondary-label text-style=caption1}`)
-| `window` | prints `window <number>`, for `screencapture -l<number>`
-| `quit` | quits, through the same teardown as quitting
-|===
-
-[cols="1,3",options="header"]
-|===
-| Variable | Effect
-
-| `ROC_TRACE=1` | logs effect requests, cancellations, minted and released file handles, the teardown (`DROP`), and each turn's engine and host time
-| `ROC_POISON=1` | fills every new allocation with `Z`, to expose reads of uninitialised memory
-| `ROC_SAVE_DIR` | where a scripted save writes; without it a scripted save is skipped
-| `ROC_MAX_FILE_BYTES` | lowers the host's file ceiling, to check `TooLarge`
-| `ROC_STORAGE_SUITE=<name>` | a `UserDefaults` suite for local storage; otherwise a scripted run's local storage is in memory
-| `ROC_APPEARANCE=dark` (or `light`) | draws the app in that appearance whatever the system's, to check both looks
-|===
-
-A scripted run never takes keyboard focus, never opens a panel and never
-shows the crash alert.
-
+[#recorded-cases]
 === Recorded cases
 
 Every example has at least one recorded case:
 `tests/examples/<example>/<case>.script` holds the steps and
 `<case>.expected` what the run prints (the `dump` trees, with the checkout's
 path written `<repo>`). `blueprint run examples` runs each case against the
-built app with a 60-second deadline; it must exit 0 and print exactly the
-recorded output. A new example needs a case: add the `.script`, run
+built app with a 60-second deadline; it must exit 0 and print the recorded
+output. A new example needs a case: add the `.script`, run
 `blueprint run examples -- --update`, and review the `.expected` diff before
-committing it. The stopwatch cases avoid wall-clock readouts.
-
-roc-signals' `.scm` spec runner is not ported. Its oracle (`Dom.roc`) models a
-browser DOM, so it would check the engine but never the AppKit host. A spec
-format over the scripted driver, or a `ui-*` oracle, are the two options.
+committing it. The stopwatch cases avoid wall-clock readouts. The
+examples' cases and an app's (`macos.roc test`) follow the same matching
+rules, `cli/Recorded.roc`, except that an example's checkout path is written
+`<repo>` rather than `<app>`.
 
 == The check gate
 
@@ -423,6 +410,5 @@ Bundling the same built inputs again (`--prebuilt`) gives the same hash.
 
 == Reporting
 
-Report vulnerabilities as `SECURITY.md` describes. What the repository adopts
-from roc-automation so far, and what is left, is in
-xref:roc-automation-review.adoc#summary[the roc-automation review].
+Report bugs, and propose follow-up work, in the repository's issues; report
+vulnerabilities as `SECURITY.md` describes.

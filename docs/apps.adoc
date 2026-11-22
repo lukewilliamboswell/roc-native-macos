@@ -1,0 +1,259 @@
+= Build an app
+
+This chapter is for app authors. It takes you from nothing to a running app
+with `macos.roc`, the tool each release publishes, and covers writing,
+testing and sharing the app. Everything here works from a downloaded release:
+you never need a checkout of this repository, Xcode, Swift or an Apple SDK.
+xref:ui.adoc#builders[The Ui reference] lists every builder.
+
+[#get-started]
+== Get started
+
+You need Roc as `roc` on your PATH: a current
+https://github.com/roc-lang/nightlies/releases[nightly] or 0.1.0 RC1, on
+macOS, Linux or Windows. The platform carries the prebuilt Swift host and its
+linker inputs. The app runs on Apple silicon Macs with macOS 11 or later;
+Intel Macs are not supported.
+
+Download `macos.roc`, the tool for creating, building, running and testing an
+app, and create one:
+
+[source,sh]
+----
+curl -LO https://github.com/lukewilliamboswell/roc-native-macos/releases/latest/download/macos.roc
+roc macos.roc init counter
+cd counter
+roc macos.roc run
+----
+
+`init` writes a counter app, `main.roc`, whose header names the platform
+release, two recorded runs of it in `tests/`, a `.gitignore` and a copy of
+`macos.roc`. `run` builds `counter.app` and starts it, with its output
+(`dbg`, a crash report) in the terminal. Edit `main.roc` and run it again.
+
+An app is one `main.roc`, whose header names the platform by its release URL:
+
+[source,roc]
+----
+app [main] { pf: platform "https://github.com/lukewilliamboswell/roc-native-macos/releases/download/<version>/<hash>.tar.zst" }
+----
+
+Each release's notes give that URL, so an app can also be written and built
+without the tool (see xref:apps.adoc#share-an-app[Share an app]).
+
+[#the-tool]
+== The tool's commands
+
+Run `macos.roc` from the app's directory, the one holding `main.roc`:
+
+[cols="1,2",options="header"]
+|===
+| Command | What it does
+
+| `roc macos.roc init [DIR]` | create an app in `DIR`, or in this directory; it never overwrites a file
+| `roc macos.roc build` | build `<name>.app`, on any system
+| `roc macos.roc run` | build the app and start it, on an Apple silicon Mac
+| `roc macos.roc test` | build the app and run its recorded cases, on an Apple silicon Mac; `--update` records what they print now
+|===
+
+`build` and `run` take `--id ID`, the bundle identifier (by default
+`com.example.<name>`), and `--name TEXT`, the name in the menu bar, where
+`<name>` is the app's directory. The bundle identifier also names the app's
+saved settings (`UserDefaults`). `roc macos.roc COMMAND --help` describes a
+command, and every failure is explained in a sentence.
+
+`build` runs `roc build main.roc --target=arm64mac`, which writes the program
+to `.macos/<name>`, and puts it in a minimal `<name>.app`. `test` runs the
+same program.
+
+[#write-an-app]
+== Write an app
+
+Programs and state:: `Engine.program(|| view)` is an app with no store;
+local state comes from `Engine.state(initial, |s| ...)`, as in the counter.
+An app with shared state declares a store of cells and builds its view from
+their signals:
++
+[source,roc]
+----
+main : Engine.Program(_)
+main = Engine.program_store({}, |_boot| store, |_boot| view())
+
+store = Engine.store(
+	Stopwatch,
+	{
+		running: Engine.cell(Bool.False),
+		elapsed_ms: Engine.cell(0.I64),
+	}.Engine.Cells,
+)
+
+cells = store.cells()
+----
++
+A store needs at least two cells: a single-field record builder builds but
+fails at run time with current compilers (`roc test` reports it).
+
+The view:: Every builder in `Ui` is a native control: stacks, forms, scroll
+areas, lists backed by `NSTableView`, labels, buttons, text fields,
+checkboxes, sliders, pop-up menus, segmented controls and tabs, SF Symbols,
+progress bars, keyboard shortcuts, file pickers and drop zones, and `box`
+surfaces. Each takes its subject first and a props record of defaulted fields
+beside it (containers take their children last); name only what differs:
+`Ui.text("Saved", { style: Caption1, color: SecondaryLabel })`,
+`Ui.vstack({ spacing: 12, align: Fill }, kids)`. Looks are AppKit's own: text
+styles, semantic colours that follow dark mode, control sizes, bezels and SF
+Symbols. State is a signal and looks are values: a literal text is a constant
+and `"${count} left"` follows `count`; when a look must follow state too, the
+`_s` form takes the props as a signal,
+`Ui.text_s(total, over.map(|o| if (o) { color: Red } else {}))`. An app
+shares a look as a plain annotated value, `theme : Theme`, not a stylesheet.
+
+Events:: Handlers are props fields that return writes to state:
+`Ui.button("Reset", { on_press: Engine.handle(|_| [cells.elapsed_ms.set(0)]) })`.
+A text field's `on_input` receives the text, a checkbox's `on_change` its new
+state.
+
+Effects:: HTTP requests, timers and intervals, file reads and digests are
+asks that a watch site issues when a signal changes, and whose answers come
+back as writes. `Engine.watch_latest` cancels what it issued when the signal
+changes again:
++
+[source,roc]
+----
+Engine.watch_latest(
+	cells.request.signal(),
+	|r| if r.active [Engine.http({ url: r.url, timeout: Ms(2000), cache: NoStore })] else [],
+	Engine.react(answered),
+)
+----
+
+Files and storage:: Files reach the app as handles, never bytes:
+`Ui.file_button` and `Ui.drop_zone` deliver `File`s, which `sha256`,
+`read_utf8`, `read_bytes` and `File.save` act on. Local storage is
+`UserDefaults`: declare the keys in
+`Engine.program_store({ storage_keys: ["todos"] }, ...)`, read them at boot
+with `Engine.boot_storage` and write them with
+`Engine.command(StorageSet(key, text))`.
+
+xref:ui.adoc#builders[The Ui reference] lists every builder with its
+signature, what it draws and the events it sends. The engine itself
+(`Engine`: signals, stores, tables, watches) is documented in
+https://github.com/lukewilliamboswell/roc-signals[roc-signals].
+
+[#try-an-example]
+== Try an example
+
+Each release attaches `roc-native-macos-examples-<version>.zip`: every
+example, each with its header naming that release, and the recorded runs it
+was tested with. Download it from the
+https://github.com/lukewilliamboswell/roc-native-macos/releases[release],
+unzip it beside `macos.roc` and run an example from its directory:
+
+[source,sh]
+----
+unzip roc-native-macos-examples-<version>.zip
+cd roc-native-macos-examples-<version>/examples/todos
+roc ../../../macos.roc run
+----
+
+To start your own app from an example, copy its `main.roc` over the one
+`init` wrote. A copy from the archive already names the release; a copy of
+an example read on GitHub names the platform by a path in this repository
+(`../../platform/main.roc`), so keep `init`'s platform line instead.
+
+[#test-an-app]
+== Test an app
+
+`roc test main.roc` runs the app's `expect` tests. It also reports the
+single-field record builder (`{ a: Engine.cell(…) }.Engine.Cells`), which
+builds but fails at run time.
+
+`roc macos.roc test` runs the app's recorded cases. A case is two files in
+`tests/`:
+
+* `<case>.script`: the steps of a run, such as `click:+;click:+;dump;quit`.
+  The platform performs them on the app's real controls, through the same
+  action methods AppKit calls, without taking keyboard focus, opening a panel
+  or showing the crash alert.
+* `<case>.expected`: what that run prints, which is what each `dump` step
+  printed.
+
+A case passes when the app exits normally, within 60 seconds, having printed
+the recorded output. Measurements depend on the system's fonts, so a dump's
+window size and any `NNNpt` value may each differ by up to 4 points. Where the
+output holds the app's directory (a file's URL, say), the directory is
+written `<app>` and the window size `--- <size>`, so a case does not depend
+on where it ran. To add a case, write its `.script`, run
+`roc macos.roc test --update`, and review the `.expected` file it records
+before you commit it.
+
+[#steps]
+=== Steps
+
+Steps are separated by `;` and run every 100 ms.
+
+[cols="1,3",options="header"]
+|===
+| Step | Does
+
+| `click:<title>` | clicks the button with that title
+| `type:<text>` | types into the first text field
+| `write:<text>` | writes into the first text area; `\n` is a line break
+| `enter` | submits the text field's form
+| `toggle:<title>` | toggles the checkbox with that title
+| `choose:<title>` | chooses a dropdown item or a segment
+| `select:<text>` | selects the list row holding that text
+| `key:cmd+shift+n` | presses a key, delivered as if nothing had focus; the modifiers are `cmd`, `shift`, `ctrl` and `alt` (or `opt`)
+| `files:<path>,<path>…` | gives files as if picked on the first file button or drop zone, with no panel
+| `drop:<path>,…` | gives files as if dropped on the first drop zone
+| `wait:<ms>` | waits
+| `dump` | prints the window size (`--- 360x237`), then the view tree; a list shows its visible rows, and a text, box or drop zone the look attributes that differ from the usual (`{color=secondary-label text-style=caption1}`)
+| `window` | prints `window <number>`, for `screencapture -l<number>`
+| `quit` | quits, through the same teardown as quitting
+|===
+
+A case reads `files:` and `drop:` paths relative to the app's directory. An
+unknown step, or a `click:`, `toggle:`, `choose:` or `select:` that finds no
+such control, stops the app with an error naming the step, so the case
+fails.
+
+[#environment-variables]
+=== Environment variables
+
+The platform reads these when the app starts. Set them on the command line,
+as in `ROC_APPEARANCE=dark roc macos.roc run`.
+
+[cols="1,3",options="header"]
+|===
+| Variable | Effect
+
+| `ROC_SCRIPT` | runs these steps, as a recorded case does: `ROC_SCRIPT="click:+;dump;quit" .macos/counter`
+| `ROC_APPEARANCE=dark` (or `light`) | draws the app in that appearance whatever the system's, to check both looks
+| `ROC_TRACE=1` | logs effect requests, cancellations, minted and released file handles, the teardown (`DROP`), and each turn's engine and host time
+| `ROC_POISON=1` | fills every new allocation with `Z`, to expose reads of uninitialised memory
+| `ROC_SAVE_DIR` | where a scripted save writes; without it a scripted save is skipped
+| `ROC_MAX_FILE_BYTES` | lowers the file ceiling, to check `TooLarge`
+| `ROC_STORAGE_SUITE=<name>` | a `UserDefaults` suite for local storage; otherwise a scripted run's local storage is in memory
+|===
+
+[#share-an-app]
+== Share an app
+
+`roc macos.roc build` works the same on macOS, Linux and Windows: the
+platform carries everything the link needs, and Roc's linker signs the
+program ad hoc wherever it is built. Without the tool, name the target
+yourself, since the platform's one target is Apple silicon macOS:
+
+[source,sh]
+----
+roc build main.roc --target=arm64mac
+----
+
+A `.app` copied to a Mac from elsewhere (downloaded, or built on Linux or
+Windows) may be quarantined by Gatekeeper, which then refuses to open it.
+Clear that before you open it:
+
+[source,sh]
+----
+xattr -dr com.apple.quarantine counter.app
+----

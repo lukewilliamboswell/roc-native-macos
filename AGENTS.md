@@ -89,11 +89,15 @@ call a macOS program to build. Every failure is one sentence from
 ## Change discipline
 
 - `README.md` is the landing page for app authors: keep it short, and keep
-  host internals and contributor material out of it. Put detail in the
-  `docs/` manual (`index.adoc` includes one chapter per file: `ui.adoc` for
-  app authors, `architecture.adoc` and `contributing.adoc` for contributors),
-  and keep follow-up work in issues, not in documents. When `platform/Ui.roc`
-  changes, update `docs/ui.adoc` in the same commit.
+  host internals and contributor material out of it. An app author works
+  from a release with `macos.roc` and never builds the platform, so nothing
+  written for them may need a checkout. Put detail in the `docs/` manual
+  (`index.adoc` includes one chapter per file: `apps.adoc` and `ui.adoc` for
+  app authors, `architecture.adoc` and `contributing.adoc` for
+  contributors). `CONTRIBUTING.md` only points into the manual. Keep
+  follow-up work in issues, not in documents. When `platform/Ui.roc`
+  changes, update `docs/ui.adoc` in the same commit; when the host's scripted
+  steps or `ROC_*` variables change, update `docs/apps.adoc`.
 - Unknown commands or effects in the host are fatal errors with a clear
   message, never silent skips.
 - Do not commit build outputs (`examples/<name>/<name>`, `platform/targets/`,
