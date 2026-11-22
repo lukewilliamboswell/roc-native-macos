@@ -68,7 +68,7 @@ run_stage! = |stage, update|
 		"pins" => pins!()
 		"engine" => engine!()
 		"fmt" => fmt!()
-		"scripts" => Ok(run!("roc-stable", ["test", "scripts/check_all.roc"])?.concat(run!("roc-stable", ["test", "scripts/bundle.roc"])?))
+		"scripts" => Ok(run!("roc-stable", ["test", "scripts/check_all.roc"])?.concat(run!("roc-stable", ["test", "scripts/bundle.roc"])?).concat(run!("roc-stable", ["test", "scripts/release.roc"])?))
 		"build" => build!()
 		"test" => test!()
 		"examples" => examples!(update)
@@ -231,7 +231,7 @@ run_case! = |{ example, base, .. }, update| {
 		return Ok(Ok(Recorded))
 	}
 	expected = if (Path.exists!(expected_path)?) Path.read_utf8!(expected_path)? else ""
-	if printed == expected {
+	if Repo.matches(expected, printed) {
 		Ok(Ok(Passed))
 	} else {
 		Ok(Err("printed something other than ${base}.expected (run `blueprint run examples -- --update` to record an intended change):\n--- expected\n${expected}--- printed\n${printed}"))

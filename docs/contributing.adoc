@@ -8,7 +8,8 @@ explains the design.
 [#build-the-platform]
 == Build the platform
 
-You need Apple silicon macOS, Xcode's `swiftc`, `python3`, and a Roc compiler
+Building the platform itself (not an app: an app needs only Roc, on any
+system) needs Apple silicon macOS, Xcode's `swiftc`, `python3`, and a Roc compiler
 installed as `roc`: a current nightly, or 0.1.0 RC1. The repository follows
 https://github.com/lukewilliamboswell/roc-automation[roc-automation], and
 https://github.com/lukewilliamboswell/roc-blueprint[Blueprint] 0.13.0
@@ -39,6 +40,13 @@ Blueprint tasks pass `ROC=roc`. Building the platform is three steps:
 
 None of these outputs is committed.
 
+CI and releases build the host with Xcode 26.3 (Swift 6.2.4), selected by
+`.github/actions/setup-xcode`. The Swift version decides which Swift runtime
+symbols `libhost.a` references, and so what the stub audit accepts: Xcode
+16.4's Swift 6.1, the runner image's default, references four that Swift 6.2
+inlines. To move to another Xcode, change the action's two defaults, run the
+check gate with that Xcode, and catalog any symbol the audit names.
+
 Each example is built twice over: the bare binary, and a minimal `.app`
 bundle beside it (`Contents/MacOS/<name>` and an `Info.plist` with
 `CFBundleIdentifier` `dev.roc.native.<name>` and `LSMinimumSystemVersion`
@@ -58,6 +66,7 @@ The two keep separate `UserDefaults` domains (`todos` versus
 | `blueprint run test` | `roc test` on the platform root and every example
 | `blueprint run examples` | every example's recorded scripted runs; `examples -- --update` records new output
 | `blueprint run bundle` | the platform bundle, in `build/platform/` (see xref:contributing.adoc#the-bundle[The bundle])
+| `blueprint run release` | the release steps after the bundle: `archive`, `test` and `notes` (see xref:contributing.adoc#releasing[Releasing])
 | `blueprint run tooling-version` | the scripts' compiler version
 |===
 
@@ -104,10 +113,9 @@ path, `platform "../roc-native-macos/platform/main.roc"`, once
 `scripts/build.sh --platform` has built its native inputs; Roc rejects an
 absolute platform path.
 
-No release is published yet. A release workflow would build the bundle with
-this task, test those bytes on `macos-15`, and publish them under
-`releases/download/<version>/<hash>.tar.zst`; see the follow-ups in
-xref:roc-automation-review.adoc#releases-examples-archive-and-nightly-compatibility[the roc-automation review].
+A release publishes the bundle under
+`releases/download/<version>/<hash>.tar.zst`; see
+xref:contributing.adoc#releasing[Releasing].
 
 [#driving-an-app]
 == Driving an app
@@ -192,6 +200,71 @@ same one CI runs on `macos-15`. Its stages, in order:
 
 `check -- STAGE...` runs only the named stages.
 
+[#releasing]
+== Releasing
+
+`.github/workflows/release.yml` builds what a release contains once, tests
+those exact bytes, and publishes them once, as roc-automation's platform
+release workflow prescribes. A maintainer dispatches it from `main` with a
+version such as `0.0.1` or `0.1.0-rc1`; the tag it creates is the bare
+version, with no `v`. A pull request that touches the platform, the host, the
+examples, the scripts, the notes or the workflow runs it as a dry run under
+`0.0.1-dryrun`, which publishes nothing.
+
+[cols="1,3",options="header"]
+|===
+| Job | Does
+
+| Validate | resolves the Roc nightly for the whole run, and refuses a version that is not SemVer, a dispatch off `main`, an existing tag, or a missing `docs/releases/<version>.adoc`
+| Build (`macos-15`) | selects the pinned Xcode, runs `blueprint run check` (the whole gate, which builds the host and runs every recorded case against it), bundles that same `libhost.a` (`bundle -- --prebuilt`), writes the examples archive (`release -- archive`), builds every archived example against the bundle served on localhost with an empty package cache and runs every recorded case (`release -- test`), binds the bundle's SBOM sidecars (`actions/sbom-sidecars`, from `sbom/composition.json`) and renders the notes (`release -- notes`)
+| Cross-compile (`ubuntu-24.04`, `ubuntu-24.04-arm`, `windows-2025`) | with only Roc installed and no checkout, serves the candidate bundle on localhost and builds every archived example with `--target=arm64mac`; each output must be an arm64 Mach-O executable. It also records what `roc build` without `--target` does there.
+| Run the cross-compiled apps (`macos-15`) | runs every recorded case against each system's cross-compiled apps (`release -- test DIR --binaries BIN`)
+| Attest | build-provenance attestations for every file, an SBOM attestation for the bundle, exported as `<file>.intoto.jsonl`
+| Publish (`release` environment) | checks out nothing and runs no repository code: `actions/publish-release` stages a draft at the tested commit, downloads every asset back and compares it with the tested file, then publishes
+|===
+
+A release holds the bundle `<hash>.tar.zst`, its SBOM documents
+(`.spdx.json`, `.spdx-2.3.json`, `.cdx.json`, `.sbom-manifest.json`),
+`roc-native-macos-examples-<version>.zip` (every example naming the release
+URL, with its recorded cases and fixtures), and the exported attestations. The
+notes are `docs/releases/<version>.adoc` with `{platform-url}` and
+`{examples-url}` filled in, followed by the compilers, the Xcode and Swift
+versions, and every file's SHA-256.
+
+The bundle's hash depends on `libhost.a`, which is not byte-reproducible, so
+the URL is known only once the build job has run. It is printed at the top of
+that job's summary, in the notes, and in the dry run's summary.
+
+To cut a release:
+
+. Write `docs/releases/<version>.adoc`, opening with
+  `= roc-native-macos <version>` and naming the platform as
+  `{platform-url}`, and merge it. The pull request's dry run renders it.
+. Run *Release* from the Actions tab on `main` with the version, or
+  `gh workflow run release.yml --ref main -f version=<version>`.
+. Approve the `release` environment's deployment when the tests pass.
+. If publishing stops partway, follow roc-automation's "Recover an
+  interrupted publication": delete a draft and re-run the publish job; a
+  published release is never repaired.
+
+The repository needs a `release` environment limited to `main` (with a
+required reviewer if wanted), immutable releases enabled, and Actions allowed
+to create attestations (the attest job asks for `id-token: write` and
+`attestations: write`). No secret is needed: every job uses the workflow's own
+token.
+
+The scripts the workflow runs are tasks, so the build job's steps run the same
+way locally (with the nightly as `roc`):
+
+[source,sh]
+----
+blueprint run check
+blueprint run bundle -- --prebuilt --output-dir build/release
+blueprint run release -- archive 0.0.1-dryrun build/release
+blueprint run release -- test build/release
+blueprint run release -- notes 0.0.1-dryrun build/release build/release-notes.md
+----
+
 [#styling]
 == Styling
 
@@ -236,7 +309,10 @@ local `.tar.zst` path as a platform ("that package does not have a platform
 header") and any `http` URL that is not localhost. A server listening on
 `127.0.0.1` alone was not reached for `http://localhost:…`; one listening on
 `::` was, so serve the bundle with `--bind ::`. RC1 also rejects an
-absolute platform path.
+absolute platform path. Current compilers (`src/unbundle/download.zig`)
+accept plain `http` for the hosts `localhost`, `127.0.0.1` and `[::1]`, and
+connect to `localhost` on the first loopback address it resolves to, which
+is `::1` on macOS; a dual-stack server on `::` serves both.
 The same inputs bundle to the same name, but a rebuilt host does not:: Two
 builds of `libhost.a` from the same sources are not byte-identical, so
 `scripts/build.sh --platform` gives the bundle a new content hash each time.
