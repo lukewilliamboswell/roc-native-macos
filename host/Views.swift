@@ -208,6 +208,8 @@ extension Host {
             let image = NSImageView()
             image.symbolConfiguration = NSImage.SymbolConfiguration(textStyle: .body, scale: .medium)
             view = image
+        case "ui-asset-image":
+            view = Picture()  // Assets.swift
         case "ui-progress":
             let bar = NSProgressIndicator()
             bar.style = .bar
@@ -306,6 +308,13 @@ extension Host {
             image.symbolConfiguration = NSImage.SymbolConfiguration(
                 textStyle: Host.textStyle(n.attrs["text-style"] ?? "body"),
                 scale: Host.symbolScale(n.attrs["scale"] ?? "medium"))
+        // Asset images (Assets.swift)
+        case (let picture as Picture, "asset"):
+            picture.show(value ?? "")
+        case (let picture as Picture, "scaling"):
+            picture.scaling = Host.imageScaling(value ?? "fit")
+        case (let picture as Picture, "label"):
+            picture.label(value ?? "")
         // Choices
         case (let popup as NSPopUpButton, "choices"):
             popup.removeAllItems()

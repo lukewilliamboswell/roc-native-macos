@@ -51,7 +51,7 @@ record as a signal:
 Ui.text_s(total, over.map(|o| if (o) { color: Red, weight: Bold } else {}))
 ----
 
-`text_s`, `vstack_s`, `hstack_s`, `box_s` and `image_s` exist; a control's
+`text_s`, `vstack_s`, `hstack_s`, `box_s`, `image_s` and `asset_image_s` exist; a control's
 props already hold signals and handlers, so controls have no `_s` form, and
 neither do `scroll` and `list`, whose sizes the window takes over once open.
 
@@ -81,6 +81,7 @@ Handlers are fields too: `Ui.button("Save", { on_press: h })`.
 | `segmented` | `Signal(ctx, Str), ChoiceProps(ctx) -> Elem(ctx)` | `NSSegmentedControl` showing the selection
 | `tabs` | `Signal(ctx, Str), TabsProps(ctx) -> Elem(ctx)` | a centred segmented control above an `Engine.switch` of pages
 | `image`, `image_s` | `Str, ImageProps -> Elem(ctx)` | `NSImageView` of an SF Symbol (`"star.fill"`)
+| `asset_image`, `asset_image_s` | `Signal(ctx, Str), AssetImageProps -> Elem(ctx)` | an image from the app's `assets/` (`"logo.png"`), drawn to its frame; see xref:apps.adoc#assets[Assets and the icon]
 | `progress` | `Signal(ctx, I64), ProgressProps -> Elem(ctx)` | determinate `NSProgressIndicator` bar
 | `busy` | `Signal(ctx, Bool), BusyProps -> Elem(ctx)` | indeterminate bar, animating while true
 | `shortcut` | `List(Engine.Chord), ShortcutProps(ctx) -> Elem(ctx)` | none: a document key handler
@@ -122,6 +123,7 @@ table gives other defaults. Sizes are points.
 | `ChoiceProps(ctx)` | `choices : List(Str)` and `on_change : Handler(ctx)` (required), `enabled`, `size`, `width`, `squeeze`
 | `TabsProps(ctx)` | `choices : List(Str)`, `on_change : Handler(ctx)` and `page : Str -> Elem(ctx)` (required), `spacing : U32 ?? 16`, `size`
 | `ImageProps` | `color : Color ?? Label`, `style : TextStyle ?? Body` (the symbol is sized as that text), `scale : SymbolScale ?? Medium`, frame
+| `AssetImageProps` | `label : Str ?? ""` (names it to VoiceOver; empty is decorative), `scaling : ImageScaling ?? Fit`, frame (its natural size is the image's; bind one side and the other keeps the aspect ratio)
 | `ProgressProps` | `max : I64 ?? 100`, `size`, `width : Length ?? FillAtLeast(160)`
 | `BusyProps` | `size`, `width : Length ?? FillAtLeast(160)`
 | `ShortcutProps(ctx)` | `on_key : HandlerOf(ctx, Engine.Key)` (required)
@@ -158,6 +160,7 @@ The shared types, all inside `Ui` (`Ui.Length`, `Ui.Color`, …):
 | `TitleDisplay` | `Visible` or `Hidden`; a hidden title still names the control to VoiceOver, so an icon-only button keeps one: `Ui.button("Remove", { on_press, icon: Symbol("trash"), title_display: Hidden, bezel: Borderless })`
 | `Border` | `NoBorder`, `Line({ color, width })`, `Dashed({ color, width })`
 | `SymbolScale` | `Small`, `Medium`, `Large`
+| `ImageScaling` | how an asset image fits a frame of another shape: `Fit` (all of it, letterboxed), `Fill` (covers the frame, cropped), `Stretch` (distorted to the frame), `Original` (its own size, centred and clipped)
 |===
 
 Semantic colours follow light and dark mode, increased contrast and the

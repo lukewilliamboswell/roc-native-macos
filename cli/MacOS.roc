@@ -87,7 +87,9 @@ MacOS :: [].{
 		\\
 		\\build and run take --id ID (the bundle identifier, by default com.example.<name>)
 		\\and --name TEXT (the name in the menu bar, by default <name>), where <name> is
-		\\the app's directory. `roc macos.roc COMMAND --help` describes a command.
+		\\the app's directory. Images and other files go in assets/ beside main.roc, and
+		\\assets/icon.png is the app's icon. `roc macos.roc COMMAND --help` describes
+		\\a command.
 		\\
 		\\They need Roc as `roc`, on macOS, Linux or Windows; no Xcode is needed. The app
 		\\runs on Apple silicon Macs with macOS 11 or later, so run and test work only there.
@@ -116,6 +118,9 @@ MacOS :: [].{
 				\\to .macos/, and then replaces <name>.app.
 				\\--id sets the bundle identifier (by default com.example.<name>), which also
 				\\names the app's saved settings; --name sets its name in the menu bar.
+				\\The assets/ directory beside main.roc, if there is one, is copied into the
+				\\app, where Ui.asset_image finds its images. assets/icon.png (square, best
+				\\1024 by 1024 pixels) or assets/icon.icns becomes the app's icon.
 				\\A .app copied to a Mac from elsewhere may be quarantined; clear it with
 				\\xattr -dr com.apple.quarantine <name>.app before you open it.
 			"run" =>
@@ -173,6 +178,12 @@ MacOS :: [].{
 			NoCases => { code: 1, text: "There are no recorded cases to run: tests/ holds no .script files. `roc macos.roc init` writes tests/increment.script as an example, and `roc macos.roc test --help` describes them." }
 			CasesFailed({ failed, total }) => { code: 1, text: "${failed.len().to_str()} of ${total.to_str()} recorded cases failed: ${Str.join_with(failed, ", ")}. If the app changed on purpose, record what it prints now with `roc macos.roc test --update`." }
 			AppFailed(how) => { code: 1, text: "The app ${how}: its output is above." }
+			AssetsNotADirectory => { code: 1, text: "assets is not a directory: the app's images and other files go in a directory named assets beside main.roc." }
+			TwoIcons => { code: 1, text: "assets/ holds both icon.png and icon.icns, and an app has one icon: remove one of them." }
+			BadIcon(NotPng) => { code: 1, text: "assets/icon.png is not a PNG file, so it cannot be the app's icon: save it as a PNG, 1024 by 1024 pixels." }
+			BadIcon(NotSquare({ width, height })) => { code: 1, text: "assets/icon.png is ${width.to_str()} by ${height.to_str()} pixels, and an app's icon is square: make it 1024 by 1024 pixels." }
+			BadIcon(UnsupportedSize(size)) => { code: 1, text: "assets/icon.png is ${size.to_str()} pixels square, and an app's icon is 16, 32, 64, 128, 256, 512 or 1024: make it 1024 by 1024 pixels." }
+			BadIcon(NotIcns) => { code: 1, text: "assets/icon.icns is not an .icns file, so it cannot be the app's icon: use a 1024 by 1024 pixel assets/icon.png instead." }
 			InitWouldOverwrite(path) => { code: 1, text: "${path} already exists, so init changed nothing: it only creates files that are not there yet. Choose a new directory, for example `roc macos.roc init my-app`." }
 			NoToolToCopy(dir) => { code: 1, text: "init copies macos.roc into the new app, but there is no macos.roc in this directory, so ${dir} was not created. Run init from the directory that holds macos.roc." }
 			other => { code: 1, text: "macos.roc stopped on an error it did not expect: ${Str.inspect(other)}" }
@@ -211,4 +222,10 @@ expect {
 	explained = [UnknownCommand("x"), UnexpectedArguments({ command: "test", extra: ["-v"] }), BadId("x"), NoMainRoc, NotAppleSilicon({ command: "run", system: "Linux", bundle: "counter.app" }), CasesFailed({ failed: ["reset"], total: 2 })].map(MacOS.explain)
 	run_elsewhere = explained.drop_first(4).first().map_ok(|e| e.text)
 	explained.map(|e| e.code) == [2, 2, 2, 1, 1, 1] and run_elsewhere == Ok("Built counter.app, but this is Linux, and the app runs only on an Apple silicon Mac: copy counter.app to one and open it there.")
+}
+
+## An icon that cannot be used says why, in its own words.
+expect {
+	explained = [BadIcon(NotSquare({ width: 1024.U32, height: 512.U32 })), BadIcon(UnsupportedSize(100.U32)), TwoIcons].map(|problem| MacOS.explain(problem).text)
+	explained.all(|text| text.starts_with("assets/")) and explained.first() == Ok("assets/icon.png is 1024 by 512 pixels, and an app's icon is square: make it 1024 by 1024 pixels.")
 }

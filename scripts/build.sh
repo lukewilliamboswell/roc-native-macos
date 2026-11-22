@@ -44,12 +44,26 @@ build_example() {
 # A minimal .app beside the bare binary, so `open examples/<name>/<name>.app`
 # launches it with a bundle identifier (window tabbing, UserDefaults domain).
 # LSMinimumSystemVersion matches the minos Roc's linker writes (11.0).
+# The example's assets/ go to Contents/Resources/assets, where the host looks
+# (the bare binary finds the same directory beside it). An assets/icon.icns
+# becomes the app's icon; `macos.roc build` also makes one from an icon.png,
+# which this script does not.
 bundle_example() {
 	name="$1"
 	app="$here/examples/$name/$name.app"
+	assets="$here/examples/$name/assets"
+	icon=""
 	rm -rf "$app"
 	mkdir -p "$app/Contents/MacOS"
 	cp "$here/examples/$name/$name" "$app/Contents/MacOS/$name"
+	if [[ -d $assets ]]; then
+		mkdir -p "$app/Contents/Resources"
+		cp -R "$assets" "$app/Contents/Resources/assets"
+		if [[ -f $assets/icon.icns ]]; then
+			cp "$assets/icon.icns" "$app/Contents/Resources/AppIcon.icns"
+			icon="<key>CFBundleIconFile</key><string>AppIcon</string>"
+		fi
+	fi
 	cat >"$app/Contents/Info.plist" <<-PLIST
 	<?xml version="1.0" encoding="UTF-8"?>
 	<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -64,6 +78,7 @@ bundle_example() {
 		<key>NSPrincipalClass</key><string>NSApplication</string>
 		<key>NSHighResolutionCapable</key><true/>
 		<key>LSMinimumSystemVersion</key><string>11.0</string>
+		$icon
 	</dict>
 	</plist>
 	PLIST

@@ -147,6 +147,9 @@ extension Host {
             say("\(pad)\(name) \"\(text.replacingOccurrences(of: "\n", with: "\\n"))\"")
         case let image as NSImageView:
             say("\(pad)\(name) \(n.attrs["symbol"] ?? "")\(image.image == nil ? " (missing)" : "")")
+        case let picture as Picture:
+            let (wide, high) = picture.pixels
+            say("\(pad)\(name) \(picture.name) [\(wide)x\(high), \(Int(picture.frame.width))pt wide, \(Int(picture.frame.height))pt high]\(look(n, ["scaling": "fit", "label": ""]))")
         case let bar as NSProgressIndicator:
             say("\(pad)\(name) " + (bar.isIndeterminate ? (n.attrs["value"] == "1" ? "busy" : "idle") : "\(Int(bar.doubleValue))/\(Int(bar.maxValue))"))
         case is Surface:
