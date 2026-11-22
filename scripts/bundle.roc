@@ -17,7 +17,7 @@ import src/Bundle
 ##
 ##     blueprint run bundle                              # build/platform/<hash>.tar.zst
 ##     blueprint run bundle -- --output-dir DIR          # somewhere else
-##     blueprint run bundle -- --test                    # then build and run an example against it
+##     blueprint run bundle -- --test                    # then create, build and test an app against it
 ##     blueprint run bundle -- --prebuilt                # bundle the inputs already built
 ##
 ## It builds the platform's native inputs (`scripts/build.sh --platform`)
@@ -27,11 +27,13 @@ import src/Bundle
 ## `roc bundle` there. The output directory then holds exactly one
 ## content-addressed `<hash>.tar.zst`.
 ##
-## `--test` checks the bundle as an author would use it: it serves the
-## output directory on localhost (the compiler accepts `http` only for
-## localhost), builds `examples/counter` from a directory outside the
-## platform, its header naming the served bundle, with an empty Roc package
-## cache, and runs its recorded cases (`tests/examples/counter/`).
+## `--test` checks the bundle as an author would use it. It copies the
+## bundle to `build/bundle-test/served/` and serves that on localhost (the
+## compiler accepts `http` only for localhost), makes the `macos.roc` tool
+## there naming the served URLs (`scripts/release.roc -- tool`), and then,
+## with an empty Roc package cache, takes an author's first steps outside
+## the checkout: `roc macos.roc init counter`, then `build` and `test` in
+## `counter/`, which runs the counter's recorded cases.
 ##
 ## The package compiler is the `roc` on PATH.
 main! : List(OsStr) => Try({}, _)
@@ -95,25 +97,30 @@ main! = |raw_args| {
 	Ok({})
 }
 
-## Build `examples/counter` outside the platform against the served bundle,
-## with an empty package cache, and run its recorded cases.
+## Serve a copy of the bundle on localhost, make the `macos.roc` tool naming
+## it there, and create, build and test a counter with the tool.
 consumer_test! : Str, Str, Str => Try({}, _)
 consumer_test! = |root, out, bundle| {
+	dir = "${root}/build/bundle-test"
+	served_dir = "${dir}/served"
+	fresh!(dir)?
+	Path.create_all!(Path.utf8(served_dir))?
+	Path.copy!(Path.utf8("${out}/${bundle}"), Path.utf8("${served_dir}/${bundle}"))?
 	server = Cmd.new("python3")
-		.args(["-I", "-u", "-m", "http.server", "0", "--bind", "::", "--directory", OsStr.from_str(out)])
+		.args(["-I", "-u", "-m", "http.server", "0", "--bind", "::", "--directory", OsStr.from_str(served_dir)])
 		.stdin(Null)
 		.stdout(Pipe)
 		.stderr(MergeWithStdout)
 		.spawn!()?
 	result = match served!(server) {
-		Ok(port) => counter!(root, "http://localhost:${port.to_str()}/${bundle}")
+		Ok(port) => first_steps!(root, dir, "http://localhost:${port.to_str()}")
 		Err(problem) => Err(problem)
 	}
 	server.kill!() ?? {}
 	server.close!() ?? {}
 	match result {
 		Ok({}) => {
-			note!("bundle: the counter example built against the served bundle and passed its recorded cases")
+			note!("bundle: macos.roc created, built and tested a counter against the served bundle")
 			Ok({})
 		}
 		Err(problem) => {
@@ -132,39 +139,19 @@ served! = |server|
 		Err(error) => Err("the local server did not start: ${Str.inspect(error)}")
 	}
 
-counter! : Str, Str => Try({}, Str)
-counter! = |root, url| {
-	dir = "${root}/build/bundle-test"
-	app_dir = "${dir}/counter"
+## `roc macos.roc init counter`, then `build` and `test`, as an author takes
+## them, with the tool and the platform fetched from `base_url`.
+first_steps! : Str, Str, Str => Try({}, Str)
+first_steps! = |root, dir, base_url| {
+	served_dir = "${dir}/served"
 	cache = "${dir}/cache"
-	fresh!(dir) ? |error| "could not empty ${dir}: ${Str.inspect(error)}"
-	Path.create_all!(Path.utf8(app_dir)) ? |error| "could not create ${app_dir}: ${Str.inspect(error)}"
+	step!(Cmd.new("roc-stable").args(["${root}/scripts/release.roc", "--", "tool", Bundle.test_version, served_dir, "--base-url", base_url].map(OsStr.from_str)), "scripts/release.roc -- tool ${Bundle.test_version} build/bundle-test/served --base-url ${base_url}") ? |_| "the macos.roc tool could not be made"
+	Path.copy!(Path.utf8("${served_dir}/macos.roc"), Path.utf8("${dir}/macos.roc")) ? |error| "could not copy macos.roc: ${Str.inspect(error)}"
 	Path.create_all!(Path.utf8(cache)) ? |error| "could not create ${cache}: ${Str.inspect(error)}"
-	source = Path.read_utf8!(Path.utf8("examples/counter/main.roc")) ? |error| "could not read examples/counter/main.roc: ${Str.inspect(error)}"
-	released = Bundle.released_main(source, url) ? |_| "examples/counter/main.roc does not name ../../platform/main.roc"
-	Path.write_utf8!(Path.utf8("${app_dir}/main.roc"), released) ? |error| "could not write ${app_dir}/main.roc: ${Str.inspect(error)}"
-	note!("bundle: building ${app_dir}/main.roc against ${url}, package cache ${cache}")
-	step!(Cmd.new("roc").args(["build", "main.roc", "--output=${app_dir}/counter"]).cwd(Path.utf8(app_dir)).env("XDG_CACHE_HOME", OsStr.from_str(cache)), "roc build main.roc") ? |_| "roc build failed against the bundle"
-	cases = Path.list!(Path.utf8("tests/examples/counter")) ? |error| "could not list tests/examples/counter: ${Str.inspect(error)}"
-	names = cases.map(Path.display).keep_if(|path| path.ends_with(".script")).sort_with(Bundle.compare)
-	if names.is_empty() {
-		return Err("tests/examples/counter has no recorded case")
-	}
-	for script in names {
-		base = script.drop_suffix(".script")
-		steps = Path.read_utf8!(Path.utf8(script)) ? |error| "could not read ${script}: ${Str.inspect(error)}"
-		expected = Path.read_utf8!(Path.utf8("${base}.expected")) ? |error| "could not read ${base}.expected: ${Str.inspect(error)}"
-		output = Cmd.new(OsStr.from_str("${app_dir}/counter"))
-			.env("ROC_SCRIPT", OsStr.from_str(steps.trim()))
-			.stdin(Null)
-			.stderr(MergeWithStdout)
-			.timeout(Duration.seconds(60))
-			.run!() ? |error| "${app_dir}/counter did not finish: ${Str.inspect(error)}"
-		printed = Str.from_utf8_lossy(output.stdout_bytes)
-		if output.status != Exited(0) or printed != expected {
-			return Err("${base}: the app built against the bundle printed something other than ${base}.expected:\n--- expected\n${expected}--- printed\n${printed}")
-		}
-		note!("bundle: PASS ${base}")
+	note!("bundle: an author's first steps in ${dir}, package cache ${cache}")
+	for { args, cwd } in Bundle.first_steps {
+		shown = "roc macos.roc ${Str.join_with(args, " ")}${if (cwd.is_empty()) "" else " (in ${cwd}/)"}"
+		step!(Cmd.new("roc").args(["macos.roc"].concat(args).map(OsStr.from_str)).cwd(Path.utf8(if (cwd.is_empty()) dir else "${dir}/${cwd}")).env("XDG_CACHE_HOME", OsStr.from_str(cache)), shown) ? |_| "${shown} failed against the bundle"
 	}
 	Ok({})
 }

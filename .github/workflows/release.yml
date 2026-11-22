@@ -10,11 +10,13 @@ name: Release
 #
 #   validate   the version, the default branch, an unused tag, the notes
 #   build      macos-15: the whole check gate, then the bundle from the very
-#              host the gate built and tested, the examples archive, every
-#              archived example built against the served bundle and run, the
-#              bundle's SBOM sidecars and the notes
+#              host the gate built and tested, the macos.roc tool, the
+#              examples archive, every archived example built against the
+#              served bundle and run, a counter created, built and tested with
+#              macos.roc, the bundle's SBOM sidecars and the notes
 #   cross      Linux x64, Linux arm64 and Windows, with nothing but Roc: every
-#              archived example cross-compiled for arm64mac from the bundle
+#              archived example cross-compiled for arm64mac from the bundle,
+#              and a counter created and built with macos.roc
 #   cross-run  macos-15: those cross-compiled apps run their recorded cases
 #   attest     build provenance for every published file
 #   publish    actions/publish-release: draft, verify every asset, publish
@@ -31,6 +33,7 @@ on:
       - .github/actions/**
       - Blueprint.roc
       - Blueprint.lock
+      - cli/**
       - docs/releases/**
       - examples/**
       - host/**
@@ -122,16 +125,24 @@ jobs:
         run: blueprint run check
       - name: Bundle the host the gate tested
         run: blueprint run bundle -- --prebuilt --output-dir build/release
+      - name: Make the macos.roc tool naming the release
+        env:
+          VERSION: ${{ needs.validate.outputs.version }}
+        run: blueprint run release -- tool "$VERSION" build/release
       - name: Archive the examples against the release URL
         env:
           VERSION: ${{ needs.validate.outputs.version }}
         run: blueprint run release -- archive "$VERSION" build/release
-      - name: Build every archived example against the served bundle and run its cases
+      - name: Build every archived example against the served bundle and run its cases, then init, build and test a counter with macos.roc
         run: blueprint run release -- test build/release
       - id: bundle
         name: Name the bundle the release publishes
         run: |
-          bundles=(build/release/*.tar.zst)
+          # The platform's bundle; macos-<hash>.tar.zst is the tool's.
+          bundles=()
+          for file in build/release/*.tar.zst; do
+            case "$(basename "$file")" in macos-*) ;; *) bundles+=("$file") ;; esac
+          done
           test "${#bundles[@]}" -eq 1
           echo "file=${bundles[0]}" >> "$GITHUB_OUTPUT"
           echo "name=$(basename "${bundles[0]}")" >> "$GITHUB_OUTPUT"
@@ -175,9 +186,9 @@ jobs:
 
   # An app author on any system: install Roc, name the bundle, build for
   # arm64mac. No checkout, no Xcode, no Swift, no Apple SDK: only the release
-  # candidate's files and the compiler. The bundle is served on localhost in
-  # place of its release URL (Roc fetches only https URLs, or http from
-  # localhost).
+  # candidate's files and the compiler. The bundle and the macos.roc tool are
+  # served on localhost in place of their release URLs (Roc fetches only
+  # https URLs, or http from localhost).
   cross:
     name: Cross-compile from ${{ matrix.system }}
     needs: [validate, build]
@@ -207,7 +218,7 @@ jobs:
         with:
           name: release-candidate
           path: ${{ runner.temp }}/candidate
-      - name: Build every archived example for arm64mac against the served bundle
+      - name: Build every archived example for arm64mac against the served bundle, and a counter with macos.roc
         env:
           SYSTEM: ${{ matrix.system }}
         run: |
@@ -217,10 +228,15 @@ jobs:
           tmp="$RUNNER_TEMP"
           if [ "$RUNNER_OS" = Windows ]; then tmp=$(cygpath -m "$RUNNER_TEMP"); fi
           candidate="$tmp/candidate"
-          bundles=("$candidate"/*.tar.zst)
+          bundles=()
+          for file in "$candidate"/*.tar.zst; do
+            case "$(basename "$file")" in macos-*) ;; *) bundles+=("$file") ;; esac
+          done
+          tools=("$candidate"/macos-*.tar.zst)
           archives=("$candidate"/roc-native-macos-examples-*.zip)
-          test "${#bundles[@]}" -eq 1 && test "${#archives[@]}" -eq 1
+          test "${#bundles[@]}" -eq 1 && test "${#tools[@]}" -eq 1 && test "${#archives[@]}" -eq 1
           bundle=$(basename "${bundles[0]}")
+          tool=$(basename "${tools[0]}")
           work="$tmp/cross"
           apps="$tmp/apps"
           mkdir -p "$work" "$apps"
@@ -250,14 +266,28 @@ jobs:
             test "$(od -An -tx1 -N8 "$apps/$name" | tr -d ' \n')" = cffaedfe0c000001 \
               || { echo "::error::$apps/$name is not an arm64 Mach-O executable"; exit 1; }
           done
+          # An author's first steps with the release's macos.roc: init a
+          # counter, then build counter.app. cross-run runs its cases.
+          beginner="$tmp/beginner"
+          mkdir -p "$beginner"
+          sed "s#macos: \"https://[^\"]*/$tool\"#macos: \"http://localhost:8765/$tool\"#" "$candidate/macos.roc" > "$beginner/macos.roc"
+          grep -q "macos: \"http://localhost:8765/$tool\"" "$beginner/macos.roc" || { echo "::error::macos.roc does not name the release URL of $tool"; exit 1; }
+          (cd "$beginner" && roc macos.roc init counter)
+          sed -i "s#platform \"https://[^\"]*/$bundle\"#platform \"$url\"#" "$beginner/counter/main.roc"
+          grep -q "platform \"$url\"" "$beginner/counter/main.roc" || { echo "::error::init wrote a main.roc that does not name the release URL of $bundle"; exit 1; }
+          (cd "$beginner/counter" && roc macos.roc build)
+          test -f "$beginner/counter/counter.app/Contents/Info.plist"
+          test "$(od -An -tx1 -N8 "$beginner/counter/counter.app/Contents/MacOS/counter" | tr -d ' \n')" = cffaedfe0c000001 \
+            || { echo "::error::macos.roc build wrote no arm64 Mach-O executable"; exit 1; }
+          cp -R "$beginner/counter/counter.app" "$apps/counter.app"
           ls -l "$apps"
-          # Record what a plain `roc build` does here. The README tells authors
-          # on a non-Mac system to pass --target=arm64mac because the compiler
-          # defaults to the machine's own target, which the platform does not
-          # declare. This step reports, and never fails on, that behaviour.
+          # Record what a plain `roc build` does here. macos.roc always passes
+          # --target=arm64mac because the compiler defaults to the machine's
+          # own target, which the platform does not declare. This step
+          # reports, and never fails on, that behaviour.
           counter="$top/examples/counter"
           if (cd "$counter" && roc build main.roc --output="$tmp/probe") > "$tmp/probe.log" 2>&1; then
-            echo "::warning::roc build without --target succeeded on $SYSTEM; the README's --target=arm64mac rule may be relaxable"
+            echo "::warning::roc build without --target succeeded on $SYSTEM"
           else
             echo "roc build without --target on $SYSTEM:"; cat "$tmp/probe.log"
           fi
@@ -301,7 +331,7 @@ jobs:
           set -euo pipefail
           for system in x86_64-linux aarch64-linux x86_64-windows; do
             echo "== apps cross-compiled on $system"
-            chmod +x build/cross/cross-$system/*
+            chmod +x build/cross/cross-$system/* build/cross/cross-$system/*.app/Contents/MacOS/*
             blueprint run release -- test build/release --binaries "build/cross/cross-$system"
           done
 
@@ -331,10 +361,12 @@ jobs:
           files=(candidate/*.tar.zst.cdx.json)
           test "${#files[@]}" -eq 1
           echo "path=${files[0]}" >> "$GITHUB_OUTPUT"
+          echo "bundle=${files[0]%.cdx.json}" >> "$GITHUB_OUTPUT"
+      # The platform's bundle only; the tool's has no SBOM of its own.
       - name: Attest the bundle's SBOM
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6
         with:
-          subject-path: candidate/*.tar.zst
+          subject-path: ${{ steps.sbom-file.outputs.bundle }}
           sbom-path: ${{ steps.sbom-file.outputs.path }}
       # Exported beside the files, so provenance can be checked offline.
       - name: Export the attestations
@@ -343,7 +375,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p supply-chain
-          for asset in candidate/*.tar.zst candidate/*.zip; do
+          for asset in candidate/*.tar.zst candidate/*.zip candidate/macos.roc; do
             work="$RUNNER_TEMP/attestations-$(basename "$asset")"
             mkdir -p "$work"
             (cd "$work" && gh attestation download "$GITHUB_WORKSPACE/$asset" --repo "$GITHUB_REPOSITORY")

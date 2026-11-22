@@ -66,15 +66,16 @@ The two keep separate `UserDefaults` domains (`todos` versus
 | `blueprint run test` | `roc test` on the platform root and every example
 | `blueprint run examples` | every example's recorded scripted runs; `examples -- --update` records new output
 | `blueprint run bundle` | the platform bundle, in `build/platform/` (see xref:contributing.adoc#the-bundle[The bundle])
-| `blueprint run release` | the release steps after the bundle: `archive`, `test` and `notes` (see xref:contributing.adoc#releasing[Releasing])
+| `blueprint run release` | the release steps after the bundle: `tool`, `archive`, `test` and `notes` (see xref:contributing.adoc#releasing[Releasing])
 | `blueprint run tooling-version` | the scripts' compiler version
 |===
 
 === Two compilers
 
 `roc`, the latest Roc nightly, checks, builds and tests the platform, the
-glue and the examples. It is never pinned: CI installs the nightly of the
-day, and a contributor installs a current nightly (or RC1) as `roc`.
+glue, the examples and the `macos.roc` tool (`cli/`). It is never pinned: CI
+installs the nightly of the day, and a contributor installs a current nightly
+(or RC1) as `roc`.
 `roc-stable`, which `Blueprint.roc` pins to `nightly-2026-11-14-a87808d`,
 runs the scripts under `scripts/`, and only those scripts name it in their
 headers (`roc: "<tag>"`). Format the scripts with `roc-stable fmt`.
@@ -97,18 +98,19 @@ bundle` (`scripts/bundle.roc`) makes that bundle:
   `--output-dir DIR`), and prints its size and SHA-256.
 
 `blueprint run bundle -- --test` then checks the bundle the way an author
-uses it. It serves the output directory on localhost (Roc accepts `http`
-URLs for localhost only), writes `examples/counter/main.roc` to
-`build/bundle-test/counter/` with its header naming the served URL, builds it
-with an empty package cache (`XDG_CACHE_HOME`), and runs the recorded cases
-in `tests/examples/counter/` against the binary. The `bundle` stage of
-`check` does the same with `--prebuilt`. The empty cache means the platform's
-own dependency (roc-parser) is downloaded from GitHub on every run.
+uses it. It copies the bundle to `build/bundle-test/served/` and serves that
+on localhost (Roc accepts `http` URLs for localhost only), makes the
+`macos.roc` tool there naming the served URLs (`release -- tool`, see
+xref:contributing.adoc#the-tool[The tool]), and with an empty package cache
+(`XDG_CACHE_HOME`) runs `roc macos.roc init counter`, then `roc macos.roc
+build` and `roc macos.roc test` in `build/bundle-test/counter/`, which runs
+the counter's recorded cases. The `bundle` stage of `check` does the same with
+`--prebuilt`. The empty cache means basic-cli and the platform's own
+dependency (roc-parser) are downloaded from GitHub on every run.
 
 To build an app outside the checkout against a local bundle, serve
-`build/platform` and name the localhost URL, as the README's quick start
-shows. The bundle's name is its content hash, so the URL changes whenever
-the bundle does. An app can also name a checkout's platform by a relative
+`build/platform` and name the localhost URL in the app's header. The bundle's
+name is its content hash, so the URL changes whenever the bundle does. An app can also name a checkout's platform by a relative
 path, `platform "../roc-native-macos/platform/main.roc"`, once
 `scripts/build.sh --platform` has built its native inputs; Roc rejects an
 absolute platform path.
@@ -116,6 +118,62 @@ absolute platform path.
 A release publishes the bundle under
 `releases/download/<version>/<hash>.tar.zst`; see
 xref:contributing.adoc#releasing[Releasing].
+
+[#the-tool]
+== The tool
+
+`macos.roc` is the app author's tool: `init`, `build`, `run` and `test`. It
+is a package, `cli/`, on basic-cli, which a release bundles and names from a
+small launcher app, `macos.roc`, that the author downloads (the same model as
+roc-native-android's `android.roc` and roc-signals' `signals.roc`):
+
+[cols="1,3",options="header"]
+|===
+| Module | Does
+
+| `cli/main.roc` | the package root, exposing `MacOS`
+| `cli/MacOS.roc` | the command line: parsing, `help` and `COMMAND --help`, and every failure put into one sentence (`explain`; exit code 2 for misuse)
+| `cli/Init.roc` | `init`: the counter scaffold, never overwriting a file
+| `cli/App.roc` | `build` and `run`: `roc build --target=arm64mac` into `.macos/<name>`, then `<name>.app` with its `Info.plist`
+| `cli/Cases.roc` | `test`: each `tests/<case>.script` run with `ROC_SCRIPT` against `.macos/<name>`
+| `cli/Recorded.roc` | the recorded-case rules (`matches`, `portable`), shared with the scripts
+| `cli/Bundle.roc` | generated: the release, its platform URL, the Roc that tested it, and the scaffold
+|===
+
+`build` writes files and runs `roc`, nothing else, so it works on any system:
+Roc's linker signs the program ad hoc (`codesign -dv` shows
+`adhoc,linker-signed`), and the `.app` is a directory and a plist. It always
+passes `--target=arm64mac`, which on an Apple silicon Mac is the native
+target. `run` and `test` need an Apple silicon Mac, and say so elsewhere.
+
+`cli/Bundle.roc` is generated by `scripts/src/Release.roc`. The checked-in
+copy is for a checkout: version `development`, importing the scaffold
+(`examples/counter/main.roc` and `tests/examples/counter/*`) from the working
+tree, so `roc test cli/main.roc` works. A release generates its own, importing
+copies staged under `scaffold/`. The `tool` stage of `check` fails when the
+checked-in copy is not what the script generates (when a counter case is
+added, say); `blueprint run check -- tool --update` rewrites it.
+
+A script cannot import a module outside `scripts/`, so
+`scripts/src/Recorded.roc` is a byte-identical copy of `cli/Recorded.roc`,
+which the `tool` stage checks. Change `cli/Recorded.roc`, then copy it over.
+
+`blueprint run release -- tool VERSION DIR` makes the tool for the platform
+bundle in `DIR`: it stages `cli/` with the release's `Bundle.roc`, the
+scaffold and the notices under `build/tool-stage/`, runs its `expect`s,
+`roc bundle`s it into `DIR/macos-<hash>.tar.zst` (the prefix keeps it apart
+from the platform's bundle), and writes `DIR/macos.roc` naming it.
+`--base-url URL` names the assets at `URL` instead of the release's download
+URL, to try a release locally:
+
+[source,sh]
+----
+blueprint run bundle -- --prebuilt --output-dir /tmp/rel
+python3 -m http.server 8787 --bind :: --directory /tmp/rel &
+blueprint run release -- tool 0.0.1-dryrun /tmp/rel --base-url http://localhost:8787
+cd "$(mktemp -d)" && curl -LO http://localhost:8787/macos.roc
+roc macos.roc init counter && cd counter && roc macos.roc run
+----
 
 [#driving-an-app]
 == Driving an app
@@ -192,12 +250,13 @@ same one CI runs on `macos-15`. Its stages, in order:
 
 | `pins` | only the scripts pin a compiler, and they pin `roc-stable`
 | `engine` | the engine modules match their roc-signals digests (`tests/engine-modules.sha256`)
-| `fmt` | `roc fmt --check` over the platform, glue and examples (the not-yet-formatted files are skipped, and each skip prints), and `roc-stable fmt --check` over the scripts
+| `fmt` | `roc fmt --check` over the platform, glue, examples and tool (the not-yet-formatted files are skipped, and each skip prints), and `roc-stable fmt --check` over the scripts
 | `scripts` | the scripts' `expect` tests
+| `tool` | `cli/Bundle.roc` is current (`tool --update` writes it), `scripts/src/Recorded.roc` copies `cli/Recorded.roc`, and `roc test cli/main.roc`
 | `build` | `scripts/build.sh` with the `roc` on PATH
 | `test` | `roc test` on `platform/main.roc` and every example
 | `examples` | every recorded case
-| `bundle` | the bundle from the `build` stage's inputs, and its consumer test
+| `bundle` | the bundle from the `build` stage's inputs, and its consumer test: `macos.roc` `init`, `build` and `test` against it
 |===
 
 `check -- STAGE...` runs only the named stages.
@@ -218,20 +277,21 @@ examples, the scripts, the notes or the workflow runs it as a dry run under
 | Job | Does
 
 | Validate | resolves the Roc nightly for the whole run, and refuses a version that is not SemVer, a dispatch off `main`, an existing tag, or a missing `docs/releases/<version>.adoc`
-| Build (`macos-15`) | selects the pinned Xcode, runs `blueprint run check` (the whole gate, which builds the host and runs every recorded case against it), bundles that same `libhost.a` (`bundle -- --prebuilt`), writes the examples archive (`release -- archive`), builds every archived example against the bundle served on localhost with an empty package cache and runs every recorded case (`release -- test`), binds the bundle's SBOM sidecars (`actions/sbom-sidecars`, from `sbom/composition.json`) and renders the notes (`release -- notes`)
-| Cross-compile (`ubuntu-24.04`, `ubuntu-24.04-arm`, `windows-2025`) | with only Roc installed and no checkout, serves the candidate bundle on localhost and builds every archived example with `--target=arm64mac`; each output must be an arm64 Mach-O executable. It also records what `roc build` without `--target` does there.
-| Run the cross-compiled apps (`macos-15`) | runs every recorded case against each system's cross-compiled apps (`release -- test DIR --binaries BIN`)
+| Build (`macos-15`) | selects the pinned Xcode, runs `blueprint run check` (the whole gate, which builds the host and runs every recorded case against it), bundles that same `libhost.a` (`bundle -- --prebuilt`), makes the `macos.roc` tool naming it (`release -- tool`), writes the examples archive (`release -- archive`), builds every archived example against the bundle served on localhost with an empty package cache and runs every recorded case, then with the served `macos.roc` creates, builds and tests a counter (`release -- test`), binds the bundle's SBOM sidecars (`actions/sbom-sidecars`, from `sbom/composition.json`) and renders the notes (`release -- notes`)
+| Cross-compile (`ubuntu-24.04`, `ubuntu-24.04-arm`, `windows-2025`) | with only Roc installed and no checkout, serves the candidate on localhost, builds every archived example with `--target=arm64mac`, and with `macos.roc` creates a counter and builds `counter.app`; each program must be an arm64 Mach-O executable. It also records what `roc build` without `--target` does there.
+| Run the cross-compiled apps (`macos-15`) | runs every recorded case against each system's cross-compiled apps and the counter's against its `counter.app` (`release -- test DIR --binaries BIN`)
 | Attest | build-provenance attestations for every file, an SBOM attestation for the bundle, exported as `<file>.intoto.jsonl`
 | Publish (`release` environment) | checks out nothing and runs no repository code: `actions/publish-release` stages a draft at the tested commit, downloads every asset back and compares it with the tested file, then publishes
 |===
 
 A release holds the bundle `<hash>.tar.zst`, its SBOM documents
 (`.spdx.json`, `.spdx-2.3.json`, `.cdx.json`, `.sbom-manifest.json`),
+`macos.roc` and the tool's package `macos-<hash>.tar.zst`,
 `roc-native-macos-examples-<version>.zip` (every example naming the release
 URL, with its recorded cases and fixtures), and the exported attestations. The
-notes are `docs/releases/<version>.adoc` with `{platform-url}` and
-`{examples-url}` filled in, followed by the compilers, the Xcode and Swift
-versions, and every file's SHA-256.
+notes are `docs/releases/<version>.adoc` with `{platform-url}`,
+`{examples-url}` and `{launcher-url}` (`macos.roc`) filled in, followed by
+the compilers, the Xcode and Swift versions, and every file's SHA-256.
 
 The bundle's hash depends on `libhost.a`, which is not byte-reproducible, so
 the URL is known only once the build job has run. It is printed at the top of
@@ -262,6 +322,7 @@ way locally (with the nightly as `roc`):
 ----
 blueprint run check
 blueprint run bundle -- --prebuilt --output-dir build/release
+blueprint run release -- tool 0.0.1-dryrun build/release
 blueprint run release -- archive 0.0.1-dryrun build/release
 blueprint run release -- test build/release
 blueprint run release -- notes 0.0.1-dryrun build/release build/release-notes.md

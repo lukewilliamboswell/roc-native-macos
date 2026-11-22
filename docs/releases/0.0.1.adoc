@@ -6,7 +6,21 @@ engine and drawn with real AppKit controls.
 
 == Use this release
 
-Name the platform by this release's bundle in your app's header:
+Download [macos.roc]({launcher-url}), the tool for creating, building, running
+and testing an app, and create one:
+
+[source,sh]
+----
+curl -LO {launcher-url}
+roc macos.roc init counter
+cd counter
+roc macos.roc run
+----
+
+`init` writes a counter whose header names this release. `roc macos.roc
+build` builds `counter.app` on any system, and `roc macos.roc test` runs the
+counter's recorded cases. To use the release without the tool, name the
+platform by this release's bundle in your app's header:
 
 [source,roc]
 ----

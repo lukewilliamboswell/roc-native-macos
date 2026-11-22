@@ -4,10 +4,10 @@ Repo := [].{
 
 	## The check's stages, in the order a full run takes them.
 	stages : List(Str)
-	stages = ["pins", "engine", "fmt", "scripts", "build", "test", "examples", "bundle"]
+	stages = ["pins", "engine", "fmt", "scripts", "tool", "build", "test", "examples", "bundle"]
 
 	## The stages named on the command line, or every stage when none is.
-	## `--update` is an option of the examples stage, not a stage.
+	## `--update` is an option of the tool and examples stages, not a stage.
 	selection : List(Str) -> Try({ stages : List(Str), update : Bool }, [Unknown(Str)])
 	selection = |args| {
 		update = args.contains("--update")
@@ -134,47 +134,6 @@ Repo := [].{
 		len = text.count_utf8_bytes()
 		if (len >= width) text else "${Str.repeat(" ", width - len)}${text}"
 	}
-
-	## A recorded case's file names: `tests/examples/<example>/<case>.script`
-	## holds the `ROC_SCRIPT` steps and `<case>.expected` what the run prints.
-	## Whether a case printed what was recorded. Text must match exactly,
-	## except measurements, which depend on the system's fonts: a dump's
-	## `--- WxH` window line and any `NNNpt` value may each differ by up to
-	## `Repo.tolerance_pt` points.
-	matches : Str, Str -> Bool
-	matches = |expected, printed| {
-		want = expected.split_on("\n")
-		got = printed.split_on("\n")
-		want.len() == got.len() and List.map2(want, got, |w, g| { w, g }).all(|{ w, g }| w == g or same_but_measures(w, g))
-	}
-
-	## How far a measurement may move between systems, in points.
-	tolerance_pt : I64
-	tolerance_pt = 4
-
-	## A case's printed output with the repository's absolute path written
-	## `<repo>`, so a recorded case does not depend on where it was checked
-	## out (a file's URL, for example).
-	## When the path was printed, the window's size (a dump's `--- WxH`
-	## line) depends on it too, so that line becomes `--- <size>`.
-	portable : Str, Str -> Str
-	portable = |printed, root|
-		if root.is_empty() or !printed.contains(root) {
-			printed
-		} else {
-			lines = Str.join_with(printed.split_on(root), "<repo>")
-				.split_on("\n")
-				.map(|line| if (line.starts_with("--- ") and line.drop_prefix("--- ").contains("x")) "--- <size>" else line)
-			Str.join_with(lines, "\n")
-		}
-
-	case_name : Str -> Try(Str, [NotACase])
-	case_name = |file|
-		if file.ends_with(".script") {
-			Ok(file.drop_suffix(".script"))
-		} else {
-			Err(NotACase)
-		}
 }
 
 expect Repo.selection([]) == Ok({ stages: Repo.stages, update: Bool.False })
@@ -213,72 +172,3 @@ expect Repo.fmt_skip("examples/todos/main.roc").is_ok()
 expect (Repo.millis(12), Repo.millis(1204), Repo.millis(10000), Repo.millis(1002003)) == ("12ms", "1_204ms", "10_000ms", "1_002_003ms")
 
 expect Repo.progress({ index: 3, total: 20, name: "counter/increment", outcome: "PASS", ms: 1204 }) == " [ 3/20] counter/increment ..................... PASS   1_204ms"
-
-expect (Repo.case_name("increment.script"), Repo.case_name("increment.expected")) == (Ok("increment"), Err(NotACase))
-
-## The checkout's absolute path becomes `<repo>` wherever it is printed.
-expect Repo.portable("URL: file:///home/ci/repo/tests/a.txt\n", "/home/ci/repo") == "URL: file://<repo>/tests/a.txt\n"
-
-## Output that never printed the checkout's path keeps its window size.
-expect Repo.portable("--- 360x145\nui-label \"1\"\n", "/home/ci/repo") == "--- 360x145\nui-label \"1\"\n"
-
-## Output that printed the path loses its window size, which depended on it.
-expect Repo.portable("--- 570x351\nURL: file:///home/ci/repo/a.txt\n", "/home/ci/repo") == "--- <size>\nURL: file://<repo>/a.txt\n"
-
-## Two lines that differ only in their measurements, within the tolerance.
-same_but_measures : Str, Str -> Bool
-same_but_measures = |want, got| {
-	w = measure_tokens(want)
-	g = measure_tokens(got)
-	w.len() == g.len()
-		and List.map2(w, g, |a, b| { a, b }).all(
-			|{ a, b }|
-				match (a, b) {
-					(Word(x), Word(y)) => x == y
-					(Number(x), Number(y)) => (x - y).abs() <= Repo.tolerance_pt
-					_ => Bool.False
-				},
-		)
-}
-
-## A line split into words, with each measurement (the numbers of a `--- WxH`
-## window line, and an `NNNpt` value) as a number.
-measure_tokens : Str -> List([Word(Str), Number(I64)])
-measure_tokens = |line| {
-	if line.starts_with("--- ") {
-		match line.drop_prefix("--- ").split_on("x") {
-			[w, h] =>
-				match (I64.from_str(w), I64.from_str(h)) {
-					(Ok(a), Ok(b)) => return [Word("---"), Number(a), Number(b)]
-					_ => {}
-				}
-			_ => {}
-		}
-	}
-	line.split_on(" ").map(
-		|word|
-			match I64.from_str(word.drop_suffix("pt")) {
-				Ok(n) if word.ends_with("pt") => Number(n)
-				_ => Word(word)
-			},
-	)
-}
-
-## A window one point wider on another system still matches.
-expect Repo.matches("--- 406x493\nui-title \"Contacts\"\n", "--- 405x493\nui-title \"Contacts\"\n")
-
-## A scroll area's height may move a little too.
-expect Repo.matches("ui-scroll [1 views, 226pt high]", "ui-scroll [1 views, 228pt high]")
-
-## A bigger change in size, or any change in text, still fails.
-expect {
-	actual =
-		\\size: ${Str.inspect(Repo.matches("--- 406x493", "--- 360x493"))}
-		\\text: ${Str.inspect(Repo.matches("ui-label \"1 item left\"", "ui-label \"2 items left\""))}
-		\\count: ${Str.inspect(Repo.matches("ui-list [371 rows]", "ui-list [372 rows]"))}
-	expected =
-		\\size: False
-		\\text: False
-		\\count: False
-	actual == expected
-}

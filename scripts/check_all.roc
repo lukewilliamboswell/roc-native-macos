@@ -12,6 +12,8 @@ import cli.OsStr
 import cli.Path
 import cli.Stderr
 import cli.Stdout
+import src/Recorded
+import src/Release
 import src/Repo
 
 ## The `check` task, the pull-request gate: `blueprint run check` runs every
@@ -19,16 +21,19 @@ import src/Repo
 ##
 ## - `pins`: only the scripts pin a compiler, and they pin `roc-stable`.
 ## - `engine`: the engine modules match their recorded roc-signals digests.
-## - `fmt`: `roc fmt --check` over the platform, glue and examples, and
-##   `roc-stable fmt --check` over the scripts.
+## - `fmt`: `roc fmt --check` over the platform, glue, examples and the
+##   `macos.roc` tool (`cli/`), and `roc-stable fmt --check` over the scripts.
 ## - `scripts`: the scripts' `expect` tests.
+## - `tool`: `cli/Bundle.roc` is what `scripts/src/Release.roc` generates for
+##   a checkout (`tool --update` writes it), `scripts/src/Recorded.roc` is a
+##   copy of `cli/Recorded.roc`, and `roc test` on the tool.
 ## - `build`: `scripts/build.sh`, with the latest nightly as `roc`.
 ## - `test`: `roc test` on the platform root and on every example.
 ## - `examples`: every example's recorded scripted runs; `examples --update`
 ##   records what they print now.
-## - `bundle`: the platform bundle from the inputs `build` made, and the
-##   counter example built against it as an app author would
-##   (`scripts/bundle.roc --prebuilt --test`).
+## - `bundle`: the platform bundle from the inputs `build` made, and an
+##   author's first steps against it with the `macos.roc` tool: `init`,
+##   `build` and `test` a counter (`scripts/bundle.roc --prebuilt --test`).
 ##
 ## The package compiler is the `roc` on PATH: the latest nightly in CI.
 main! : List(OsStr) => Try({}, _)
@@ -68,6 +73,7 @@ run_stage! = |stage, update|
 		"pins" => pins!()
 		"engine" => engine!()
 		"fmt" => fmt!()
+		"tool" => tool!(update)
 		"scripts" => Ok(run!("roc-stable", ["test", "scripts/check_all.roc"])?.concat(run!("roc-stable", ["test", "scripts/bundle.roc"])?).concat(run!("roc-stable", ["test", "scripts/release.roc"])?))
 		"build" => build!()
 		"test" => test!()
@@ -116,7 +122,7 @@ engine! = || {
 
 fmt! : () => Try(List(Str), _)
 fmt! = || {
-	sources = tracked!(["platform", "glue", "examples"])?.keep_if(|path| path.ends_with(".roc"))
+	sources = tracked!(["platform", "glue", "examples", "cli"])?.keep_if(|path| path.ends_with(".roc"))
 	var $checked = []
 	for path in sources {
 		match Repo.fmt_skip(path) {
@@ -128,8 +134,28 @@ fmt! = || {
 	}
 	sources_fmt = run!("roc", ["fmt", "--check"].concat($checked))?
 	scripts = run!("roc-stable", ["fmt", "--check"].concat(tracked!(["scripts"])?.keep_if(|path| path.ends_with(".roc"))))?
-	note!("${$checked.len().to_str()} of ${sources.len().to_str()} platform, glue and example sources checked")
+	note!("${$checked.len().to_str()} of ${sources.len().to_str()} platform, glue, example and tool sources checked")
 	Ok(sources_fmt.concat(scripts))
+}
+
+## The `macos.roc` tool's package, `cli/`: its checked-in `Bundle.roc` is
+## current, its recorded-case rules are the scripts' own, and its `expect`s
+## pass. With `update`, write `cli/Bundle.roc` as generated.
+tool! : Bool => Try(List(Str), _)
+tool! = |update| {
+	var $problems = []
+	cases = Path.list!(Path.utf8("tests/examples/counter"))?.keep_oks(|path| Path.filename(path).map_ok(Path.display))
+	generated = Release.development_bundle(cases)
+	if update {
+		Path.write_utf8!(Path.utf8("cli/Bundle.roc"), generated)?
+		note!("wrote cli/Bundle.roc")
+	} else if Path.read_utf8!(Path.utf8("cli/Bundle.roc"))? != generated {
+		$problems = $problems.append("cli/Bundle.roc is not what scripts/src/Release.roc generates for this checkout (the counter's recorded cases may have changed): run `blueprint run check -- tool --update` and review the diff")
+	}
+	if Path.read_utf8!(Path.utf8("cli/Recorded.roc"))? != Path.read_utf8!(Path.utf8("scripts/src/Recorded.roc"))? {
+		$problems = $problems.append("scripts/src/Recorded.roc differs from cli/Recorded.roc, which it must copy byte for byte: change cli/Recorded.roc, then copy it over")
+	}
+	Ok($problems.concat(run!("roc", ["test", "cli/main.roc"])?))
 }
 
 build! : () => Try(List(Str), _)
@@ -164,7 +190,7 @@ examples! = |update| {
 		} else {
 			[]
 		}
-		names = files.keep_oks(Repo.case_name).sort_with(compare_str)
+		names = files.keep_oks(Recorded.case_name).sort_with(compare_str)
 		if names.is_empty() {
 			$problems = $problems.append("examples/${example} has no recorded case: add ${dir}/<case>.script, then run `blueprint run examples -- --update`")
 		}
@@ -219,7 +245,7 @@ run_case! = |{ example, base, .. }, update| {
 		Err(Interrupted) => return Ok(Err("interrupted"))
 	}
 	root = Env.cwd!().map_ok(|cwd| cwd.display()) ?? ""
-	printed = Repo.portable(Str.from_utf8_lossy(output.stdout_bytes), root)
+	printed = Recorded.portable(Str.from_utf8_lossy(output.stdout_bytes), root, "<repo>")
 	expected_path = Path.utf8("${base}.expected")
 	match output.status {
 		Exited(0) => {}
@@ -231,7 +257,7 @@ run_case! = |{ example, base, .. }, update| {
 		return Ok(Ok(Recorded))
 	}
 	expected = if (Path.exists!(expected_path)?) Path.read_utf8!(expected_path)? else ""
-	if Repo.matches(expected, printed) {
+	if Recorded.matches(expected, printed) {
 		Ok(Ok(Passed))
 	} else {
 		Ok(Err("printed something other than ${base}.expected (run `blueprint run examples -- --update` to record an intended change):\n--- expected\n${expected}--- printed\n${printed}"))

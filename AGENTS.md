@@ -8,9 +8,10 @@ rest need a reviewer.
 
 Run `blueprint run check` with a current Roc nightly installed as `roc`. It is
 the same gate CI runs on `macos-15`: compiler pins, engine digests,
-formatting, the scripts' tests, `scripts/build.sh`, `roc test`, every
-example's recorded scripted runs (`tests/examples/`), and the platform bundle
-with an example built and run against it (`scripts/bundle.roc --test`). A new example needs at
+formatting, the scripts' tests, the `macos.roc` tool's package (`cli/`),
+`scripts/build.sh`, `roc test`, every example's recorded scripted runs
+(`tests/examples/`), and the platform bundle with a counter created, built
+and tested against it through `macos.roc` (`scripts/bundle.roc --test`). A new example needs at
 least one recorded case: add `tests/examples/<example>/<case>.script` and run
 `blueprint run examples -- --update`. Review the `.expected` diff before you
 commit it.
@@ -59,10 +60,12 @@ on any shape it does not support.
 
 ## Roc compiler gotchas
 
-- The platform, examples and glue are checked, built and tested with `roc`,
-  the latest nightly. Pin no compiler in them. Only the scripts under
-  `scripts/` pin `roc: "<tag>"`, the `roc-stable` release `Blueprint.roc`
-  names. Format scripts with `roc-stable fmt`.
+- The platform, examples, glue and the `macos.roc` tool (`cli/`) are
+  checked, built and tested with `roc`, the latest nightly, and formatted
+  with `roc fmt`. Pin no compiler in them. Only the scripts under `scripts/`
+  pin `roc: "<tag>"`, the `roc-stable` release `Blueprint.roc` names. Format
+  scripts with `roc-stable fmt`.
+- `app` is a keyword: it cannot name a variable or a record field.
 - A function with no arguments is written `() -> T` in annotations and
   `|| ...` in definitions, as `Ui.divider : () -> Elem(ctx)` is.
 - A record builder with a single field, `{ a: Engine.cell(…) }.Engine.Cells`,
@@ -71,6 +74,17 @@ on any shape it does not support.
   at least two cells.
 - `Engine.watch` never cancels what it issued. A start/stop effect such as an
   interval uses `Engine.watch_latest`.
+
+## The tool
+
+`cli/` is `macos.roc`, the app author's tool. `cli/Bundle.roc` is generated
+by `scripts/src/Release.roc`: never hand-edit it; `blueprint run check -- tool
+--update` rewrites it. `scripts/src/Recorded.roc` is a byte-identical copy of
+`cli/Recorded.roc`, the one definition of how a recorded case's output is
+compared: change `cli/Recorded.roc` and copy it over. The tool's `build` must
+keep working from Linux and Windows: write files and run `roc`, and never
+call a macOS program to build. Every failure is one sentence from
+`MacOS.explain`.
 
 ## Change discipline
 
