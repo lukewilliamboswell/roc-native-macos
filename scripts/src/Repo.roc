@@ -140,8 +140,18 @@ Repo := [].{
 	## A case's printed output with the repository's absolute path written
 	## `<repo>`, so a recorded case does not depend on where it was checked
 	## out (a file's URL, for example).
+	## When the path was printed, the window's size (a dump's `--- WxH`
+	## line) depends on it too, so that line becomes `--- <size>`.
 	portable : Str, Str -> Str
-	portable = |printed, root| if (root.is_empty()) printed else Str.join_with(printed.split_on(root), "<repo>")
+	portable = |printed, root|
+		if root.is_empty() or !printed.contains(root) {
+			printed
+		} else {
+			lines = Str.join_with(printed.split_on(root), "<repo>")
+				.split_on("\n")
+				.map(|line| if (line.starts_with("--- ") and line.drop_prefix("--- ").contains("x")) "--- <size>" else line)
+			Str.join_with(lines, "\n")
+		}
 
 	case_name : Str -> Try(Str, [NotACase])
 	case_name = |file|
@@ -193,3 +203,9 @@ expect (Repo.case_name("increment.script"), Repo.case_name("increment.expected")
 
 ## The checkout's absolute path becomes `<repo>` wherever it is printed.
 expect Repo.portable("URL: file:///home/ci/repo/tests/a.txt\n", "/home/ci/repo") == "URL: file://<repo>/tests/a.txt\n"
+
+## Output that never printed the checkout's path keeps its window size.
+expect Repo.portable("--- 360x145\nui-label \"1\"\n", "/home/ci/repo") == "--- 360x145\nui-label \"1\"\n"
+
+## Output that printed the path loses its window size, which depended on it.
+expect Repo.portable("--- 570x351\nURL: file:///home/ci/repo/a.txt\n", "/home/ci/repo") == "--- <size>\nURL: file://<repo>/a.txt\n"
