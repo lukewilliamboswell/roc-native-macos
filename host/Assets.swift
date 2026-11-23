@@ -13,7 +13,10 @@ import AppKit
 /// 1. `ROC_ASSETS`, when it is set: a program run away from its assets (the
 ///    release tests run bare programs from one directory);
 /// 2. `Contents/Resources/assets` of the `.app` the program is in;
-/// 3. `assets/` beside the program.
+/// 3. `assets/` beside the program;
+/// 4. for a bare program, `assets/` of the current directory: `roc main.roc`
+///    builds its program in Roc's cache, away from `main.roc`, and runs it
+///    in the directory it was started from.
 ///
 /// An asset is read when a view first shows it, on the main thread, and an
 /// image is kept by name for the life of the process. A missing asset, or a
@@ -25,7 +28,7 @@ enum Assets {
         let program = Bundle.main.executablePath.flatMap(resolved) ?? "."
         let dir = String(program[..<(program.lastIndex(of: "/") ?? program.endIndex)])
         let inApp = dir.hasSuffix(".app/Contents/MacOS")
-        return (inApp ? ["\(dir.dropLast("MacOS".count))Resources/assets"] : []) + ["\(dir)/assets"]
+        return inApp ? ["\(dir.dropLast("MacOS".count))Resources/assets", "\(dir)/assets"] : ["\(dir)/assets", "assets"]
     }()
 
     /// The first of `searched` that is a directory, if any, resolved.

@@ -36,7 +36,9 @@ import src/Repo
 ##   example.
 ## - `test`: `roc test` on the platform root and on every example.
 ## - `examples`: every example's recorded scripted runs; `examples --update`
-##   records what they print now.
+##   records what they print now. Then the counter's first case once more
+##   through Roc's run mode, `roc main.roc`, which links the host with the
+##   compiler's own run shim against the stubs, and must print the same.
 ## - `bench`: every harness under `bench/` (`bench/<name>/run.sh --smoke`),
 ##   built and run at a token size, so it never goes stale.
 ## - `bundle`: the platform bundle from the inputs `build` made, and an
@@ -277,7 +279,7 @@ examples! = |update, colour| {
 	for case in $cases {
 		$index = $index + 1
 		case_start = Monotonic.now!()
-		outcome = run_case!(case, update)?
+		outcome = run_case!(case, if (update) Update else Built)?
 		ms = Monotonic.elapsed!(case_start).to_millis()
 		label = match outcome {
 			Ok(Passed) => "PASS"
@@ -295,21 +297,46 @@ examples! = |update, colour| {
 		}
 	}
 	note!("Summary: ${$passed.to_str()} passed, ${($cases.len() - $passed).to_str()} failed in ${Repo.millis(Monotonic.elapsed!(start).to_millis())}")
+	# Roc's run mode, which `roc build` never exercises: a run shim import
+	# the stubs lack fails this link.
+	if !update {
+		match $cases.find_first(|case| case.example == "counter") {
+			Ok(case) => {
+				run_start = Monotonic.now!()
+				outcome = run_case!(case, RunMode)?
+				label = if (outcome.is_ok()) "PASS" else "FAIL"
+				note!(Repo.progress({ index: 1, total: 1, name: "counter/${case.name} via roc main.roc", outcome: Repo.paint(label, colour), ms: Monotonic.elapsed!(run_start).to_millis() }))
+				match outcome {
+					Ok(_) => {}
+					Err(problem) => {
+						$problems = $problems.append("counter/${case.name} via `roc main.roc`: ${problem}")
+					}
+				}
+			}
+			Err(_) => {
+				$problems = $problems.append("the counter has no recorded case to run through `roc main.roc`")
+			}
+		}
+	}
 	Ok($problems)
 }
 
-run_case! : { example : Str, name : Str, base : Str }, Bool => Try(Try([Passed, Recorded], Str), _)
-run_case! = |{ example, base, .. }, update| {
+## One recorded case: the built app (`Built`), recording its output when
+## `Update`, or `roc main.roc` in the example's directory (`RunMode`).
+run_case! : { example : Str, name : Str, base : Str }, [Built, Update, RunMode] => Try(Try([Passed, Recorded], Str), _)
+run_case! = |{ example, base, .. }, how| {
 	exe = "examples/${example}/${example}"
-	if !(Path.exists!(Path.utf8(exe))?) {
+	update = how == Update
+	if how != RunMode and !(Path.exists!(Path.utf8(exe))?) {
 		return Ok(Err("${exe} is not built: run `blueprint run build` first"))
 	}
 	steps = Path.read_utf8!(Path.utf8("${base}.script"))?.trim()
-	result = Cmd.new(OsStr.from_str(exe))
+	command = if (how == RunMode) Cmd.new("roc").args(["main.roc"]).cwd(Path.utf8("examples/${example}")) else Cmd.new(OsStr.from_str(exe))
+	result = command
 		.env("ROC_SCRIPT", OsStr.from_str(steps))
 		.stdin(Null)
 		.stderr(MergeWithStdout)
-		.timeout(Duration.seconds(60))
+		.timeout(Duration.seconds(if (how == RunMode) 600 else 60))
 		.run!()
 	output = match result {
 		Ok(done) => done
