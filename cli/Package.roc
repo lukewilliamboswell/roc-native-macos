@@ -7,12 +7,12 @@ import cli.System
 import App
 import Meta
 import Sign
-import Zip
+import Archive
 
 ## `package`: build `<name>.app`, seal or sign it, and write
 ## `dist/<name>-<version>.zip`, which people download and open.
 ##
-## The zip is written here, byte for byte (`Zip`), so the program keeps its
+## The zip is written here (`Archive`, with roc-zip), so the program keeps its
 ## execute bit whichever system made it. With `--sign` the app is signed
 ## with a Developer ID, and with `--notarize` also notarized by Apple and
 ## the ticket stapled, and then zipped again. The credentials come from the
@@ -80,7 +80,7 @@ Package := [].{
 			_ => {}
 		}
 		seconds = match environment.source_date_epoch {
-			"" => Zip.default_time
+			"" => Archive.default_time
 			text => U64.from_str(text) ? |_| BadSourceDateEpoch(text)
 		}
 		{ bundle, meta, .. } = App.build!(options.fields)?
@@ -204,14 +204,11 @@ write_zip! = |bundle, zip, seconds| {
 				{ path, kind: Plain, bytes }
 			},
 	)
-	if !Zip.fits(entries) {
-		return Err(TooLargeToZip(bundle))
-	}
 	Path.create_all!(Path.utf8(Package.dist))?
 	if Path.exists!(Path.utf8(zip))? {
 		Path.delete!(Path.utf8(zip))?
 	}
-	Path.write_bytes!(Path.utf8(zip), Zip.archive(entries, seconds))?
+	Path.write_bytes!(Path.utf8(zip), Archive.archive(entries, seconds)?)?
 	Ok({})
 }
 
