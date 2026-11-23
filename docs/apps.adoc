@@ -31,9 +31,10 @@ release, two recorded runs of it in `tests/`, its metadata in `macos.json`,
 a `.gitignore`, a release workflow in `.github/workflows/release.yml` (see
 xref:apps.adoc#ship-your-app[Ship your app]) and a copy of `macos.roc`.
 `run` builds `counter.app` and starts it, with its output (`dbg`, a crash
-report) in the terminal. Edit `main.roc` and run it again, or, on a Mac,
-start it with `roc main.roc` instead: Roc then runs the app straight from
-the compiler and loads each edit you save into it
+report) in the terminal. While you work on it, start it with
+`roc macos.roc dev` instead: it runs `roc main.roc`, which starts the app
+straight from the compiler and loads each edit you save into it, and
+Command-R in the app shows the new code
 (xref:apps.adoc#hot-reloading[Hot reloading]).
 
 An app is one `main.roc`, whose header names the platform by its release URL:
@@ -58,6 +59,7 @@ Run `macos.roc` from the app's directory, the one holding `main.roc`:
 | `roc macos.roc init [DIR]` | create an app in `DIR`, or in this directory; it never overwrites a file
 | `roc macos.roc build` | build `<name>.app`, on any system
 | `roc macos.roc run` | build the app and start it, on an Apple silicon Mac
+| `roc macos.roc dev` | start the app with `roc main.roc`, which reloads it as you save, on an Apple silicon Mac; no `.app`, so `macos.json` and the icon do not apply (xref:apps.adoc#hot-reloading[Hot reloading])
 | `roc macos.roc test` | build the app and run its recorded cases, on an Apple silicon Mac; `--update` records what they print now
 | `roc macos.roc package` | build the app, sign it and zip it as `dist/<name>-<version>.zip`, on any system; `--sign` and `--notarize` sign it with a Developer ID (see xref:apps.adoc#ship-your-app[Ship your app])
 | `roc macos.roc ci package`, `ci release` | what the release workflow runs: package the app as the secrets allow, and attach the zip to the pushed tag's GitHub release (see xref:apps.adoc#automate[Let GitHub release it])
@@ -290,19 +292,26 @@ The README shows each example running. What each one uses:
 [#hot-reloading]
 == Hot reloading
 
-On a Mac, `roc main.roc` (or `roc run main.roc`), run from the app's
-directory, compiles the app with Roc's fast development backend and starts
-it straight from the compiler, with no `.app`. It also watches `main.roc`
-and every module it imports. When you save a change that compiles, Roc
-rebuilds the app in the background and loads the new code into the running
-program; a change that does not compile prints its errors and leaves the
-running code alone.
+On an Apple silicon Mac, `roc macos.roc dev`, run from the app's directory,
+starts the app for hot reloading. It runs `roc main.roc` there (you can run
+that yourself; `roc run main.roc` is the same), which compiles the app with
+Roc's fast development backend and starts it straight from the compiler,
+with no `.app`. Roc also watches `main.roc` and every module it imports.
+When you save a change that compiles, Roc rebuilds the app in the background
+and loads the new code into the running program; a change that does not
+compile prints its errors and leaves the running code alone. Quit the app to
+return to the terminal.
 
 [source,sh]
 ----
 cd counter
-roc main.roc
+roc macos.roc dev
 ----
+
+The bare program finds its images in `assets/` of the app's directory, as
+the `.app` does. `macos.json` and the icon belong to the `.app`, which `dev`
+does not make, so they do not apply and `dev` takes none of the metadata
+flags; `roc macos.roc run` shows the app as people will see it.
 
 What reloads:: Roc swaps the code in at the next call into the app, but this
 platform's window keeps the views and the state it mounted with the old
@@ -317,7 +326,7 @@ flight start again, as when a browser reloads a page.
 Limits:: Change the state's types (an `Engine.state`'s value, a store's
 cells) only with Command-R right after saving: until then the new code is
 handed the state the old code built. A change to the platform's interface
-asks you to restart `roc main.roc`. A reload keeps the old state's memory
+asks you to restart `roc macos.roc dev`. A reload keeps the old state's memory
 rather than release it with code that may describe it differently, which is
 harmless while you develop. *Reload* appears only in a bare program, such as
 the one `roc main.roc` runs, never in an `.app`.

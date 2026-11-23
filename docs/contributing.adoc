@@ -146,7 +146,9 @@ on localhost (Roc accepts `http` URLs for localhost only), makes the
 xref:contributing.adoc#the-tool[The tool]), and with an empty package cache
 (`XDG_CACHE_HOME`) runs `roc macos.roc init counter`, then `roc macos.roc
 build` and `roc macos.roc test` in `build/bundle-test/counter/`, which runs
-the counter's recorded cases. The `bundle` stage of `check` does the same with
+the counter's recorded cases. It also builds and tests `examples/about`, with
+its assets, through the tool, and runs one of its cases under
+`roc macos.roc dev`. The `bundle` stage of `check` does the same with
 `--prebuilt`. The empty cache means basic-cli and the platform's own
 dependency (roc-parser) are downloaded from GitHub on every run.
 

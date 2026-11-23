@@ -36,11 +36,12 @@ roc macos.roc run
 
 `init` writes a counter app, `main.roc`, whose header names the platform
 release, and two recorded runs of it in `tests/`. `run` builds `counter.app`
-and starts it. Edit `main.roc` and run it again; `roc macos.roc build` builds
-the app on any system, and `roc macos.roc test` runs its recorded cases.
-`roc macos.roc package` zips the app for people to download, signed and
-notarized with a Developer ID if you have one, and the workflow `init` writes
-does that on GitHub when you push a tag ([Ship your app](https://lukewilliamboswell.github.io/roc-native-macos/apps.html#ship-your-app)).
+and starts it. While you edit `main.roc`, `roc macos.roc dev` runs the app
+with hot reloading: it rebuilds as you save, and Command-R shows the new code.
+`roc macos.roc build` builds the app on any system, and `roc macos.roc test`
+runs its recorded cases. `roc macos.roc package` zips the app for people to
+download, signed and notarized with a Developer ID if you have one, and the
+workflow `init` writes does that on GitHub when you push a tag ([Ship your app](https://lukewilliamboswell.github.io/roc-native-macos/apps.html#ship-your-app)).
 
 An app is one `main.roc`. A smaller counter than the one `init` writes:
 
