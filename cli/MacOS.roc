@@ -186,10 +186,10 @@ MacOS :: [].{
 				\\Usage: roc macos.roc dev
 				\\
 				\\Run from the app's directory, on an Apple silicon Mac. It runs
-				\\`roc src/main.roc` there (`roc main.roc` in an app made by 0.0.1): Roc builds
-				\\the app with its development backend and starts it, with no .app, and
-				\\watches the modules and packages it imports. When you save a change that
-				\\compiles, Roc rebuilds the app and
+				\\`roc src/main.roc` (`roc main.roc` in an app made by 0.0.1), from .macos/:
+				\\Roc builds the app with its development backend and starts it, with no
+				\\.app, and watches the modules and packages it imports. When you save a
+				\\change that compiles, Roc rebuilds the app and
 				\\swaps the new code in; press Command-R (Reload in the app menu) to remount
 				\\the window with it, which starts the state again. A change that does not
 				\\compile prints its errors and leaves the app running. Quit the app to return.

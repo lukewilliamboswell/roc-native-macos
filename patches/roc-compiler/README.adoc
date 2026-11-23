@@ -36,6 +36,13 @@ and the measurements below are the ones taken on that series.
   `table_view` copied its columns on every turn; worked around by engine
   patches 0004 and 0005 (see <<destructure-sharing>>). Upstream:
   https://github.com/roc-lang/roc/issues/13376[roc-lang/roc#13376].
+. `watch-cache-dir/`: Roc's watcher (`--watch`, and the hot reload of
+  `roc main.roc`) writes its list of watched files under `.zig-cache/` of
+  the working directory, and leaves the directory behind. Not an engine
+  cost: it put a stray `.zig-cache/` beside an app's `main.roc` after
+  `roc macos.roc dev`. Worked around in the tool, which runs `roc main.roc`
+  from `.macos/`, and the `.gitignore` `init` writes (see
+  <<watch-cache-dir>>). Upstream: not yet reported.
 
 The first two reproduce with Roc 0.1.0 RC1 (`roc`) and nightly-2026-11-14-a87808d
 (`roc-stable`), with `roc build` (LLVM, `--opt=speed`); `erased-captures`
@@ -349,3 +356,48 @@ built that way, 0.3 s of mount engine time at 10,000 rows and 53 s at
 takes the table apart with `match`, see <<destructure-sharing>>): 19 ms
 and 0.15 s. bench/rows' `--smoke` guards it (2,000 against 18,000 rows
 inserted one at a time).
+
+[#watch-cache-dir]
+== The watcher writes .zig-cache/ in the working directory
+
+Title:: `roc --watch` and `roc main.roc`'s hot reload leave a `.zig-cache/`
+directory in the working directory
+
+Summary:: The watcher passes its child build a file listing the inputs to
+watch, and makes it at `.zig-cache/roc-watch-<random>.inputs`, relative to
+the working directory, creating `.zig-cache/` if it is missing. It deletes
+the file when the child is done, but never the directory, so an app's
+directory, which has nothing to do with Zig, gains an empty `.zig-cache/`.
+Roc's own cache honours `XDG_CACHE_HOME`; this path does not, and no flag
+or variable moves it. A watcher stopped by a signal also leaves the
+`.inputs` file.
+
+Reproduction:: `watch-cache-dir/main.roc` (basic-cli 0.28.1), in an empty
+directory:
++
+[source,sh]
+----
+roc check --watch main.roc   # stop it with Control-C
+ls -a                        # .zig-cache/ is there
+----
++
+`roc main.roc` does the same as soon as a save makes it rebuild for hot
+reload.
+
+Expected:: Nothing new in the working directory: the inputs file under
+Roc's cache (`XDG_CACHE_HOME`, `~/.cache/roc`) or the system's temporary
+directory.
+
+Actual:: `.zig-cache/` in the working directory, with nightly-2026-11-22-3350b1c.
+
+Mechanism (compiler at 3ff191391f):: `createWatchInputsPath` in
+`src/cli/main.zig` runs `std.Io.Dir.cwd().createDirPath(".zig-cache")`
+and returns `.zig-cache/roc-watch-<hex>.inputs`; `runWatchCommand` (for
+`--watch`) and `spawnHotReloadRebuild` (for a hot reload) call it, and
+delete only the file.
+
+Tool impact. `roc macos.roc dev` left `.zig-cache/` beside an app's
+`main.roc` after the first save. The tool now runs `roc ../main.roc` from
+`.macos/`, its build directory, with `ROC_ASSETS=../assets` so the app
+still finds its images, and the `.gitignore` `init` writes lists
+`/.zig-cache/` for an author who runs `roc main.roc` themselves.
