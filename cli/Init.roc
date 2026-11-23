@@ -94,6 +94,8 @@ gitignore =
 	\\/.macos/
 	\\/*.app/
 	\\/dist/
+	\\# Written by Roc's watcher when you run `roc main.roc` yourself.
+	\\/.zig-cache/
 	\\
 
 ## The scaffold names the release's platform, not a path.

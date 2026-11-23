@@ -293,8 +293,8 @@ The README shows each example running. What each one uses:
 == Hot reloading
 
 On an Apple silicon Mac, `roc macos.roc dev`, run from the app's directory,
-starts the app for hot reloading. It runs `roc main.roc` there (you can run
-that yourself; `roc run main.roc` is the same), which compiles the app with
+starts the app for hot reloading. It runs `roc main.roc` (you can run that
+yourself; `roc run main.roc` is the same), which compiles the app with
 Roc's fast development backend and starts it straight from the compiler,
 with no `.app`. Roc also watches `main.roc` and every module it imports.
 When you save a change that compiles, Roc rebuilds the app in the background
@@ -308,10 +308,15 @@ cd counter
 roc macos.roc dev
 ----
 
-The bare program finds its images in `assets/` of the app's directory, as
-the `.app` does. `macos.json` and the icon belong to the `.app`, which `dev`
-does not make, so they do not apply and `dev` takes none of the metadata
-flags; `roc macos.roc run` shows the app as people will see it.
+`dev` runs it from the build directory, `.macos/`, because Roc's watcher
+makes a `.zig-cache/` directory in the directory it runs in, for the list of
+files it watches; run yourself, `roc main.roc` makes it beside `main.roc`,
+and the `.gitignore` `init` writes leaves it out. The bare program finds its
+images in `assets/` of the app's directory, as the `.app` does: `dev` sets
+`ROC_ASSETS` to it, unless you have. `macos.json` and the icon belong to the
+`.app`, which `dev` does not make, so they do not apply and `dev` takes none
+of the metadata flags; `roc macos.roc run` shows the app as people will see
+it.
 
 What reloads:: Roc swaps the code in at the next call into the app, but this
 platform's window keeps the views and the state it mounted with the old

@@ -172,7 +172,7 @@ MacOS :: [].{
 				\\Usage: roc macos.roc dev
 				\\
 				\\Run from the app's directory, containing main.roc, on an Apple silicon Mac.
-				\\It runs `roc main.roc` there: Roc builds the app with its development
+				\\It runs `roc main.roc`, from .macos/: Roc builds the app with its development
 				\\backend and starts it, with no .app, and watches main.roc and the modules
 				\\it imports. When you save a change that compiles, Roc rebuilds the app and
 				\\swaps the new code in; press Command-R (Reload in the app menu) to remount

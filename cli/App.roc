@@ -149,10 +149,10 @@ App := [].{
 		}
 	}
 
-	## Start `roc main.roc` in this directory, with this terminal, until it
-	## ends: Roc's run mode, which rebuilds the app when a file it reads is
-	## saved and swaps the new code in, for Command-R (*Reload*) to remount.
-	## The bare program finds `assets/` here; `macos.json` and the icon
+	## Start `roc main.roc`, from `.macos/` (`dev_run`), with this terminal,
+	## until it ends: Roc's run mode, which rebuilds the app when a file it
+	## reads is saved and swaps the new code in, for Command-R (*Reload*) to
+	## remount. The bare program finds `assets/` here; `macos.json` and the icon
 	## belong to the `.app`, which this does not make.
 	dev! : () => Try({}, _)
 	dev! = || {
@@ -166,13 +166,32 @@ App := [].{
 		if !Cmd.check_available!("roc") {
 			return Err(RocMissing)
 		}
+		Path.create_all!(Path.utf8(App.work))?
 		Stdout.line!("Running main.roc with `roc main.roc`: it rebuilds when you save, and Command-R in the app shows the new code.")?
-		ran = Cmd.new("roc").args(["main.roc"].map(OsStr.from_str)).inherit_stdio().run!()?
+		dev = App.dev_run(Env.var_str!(OsStr.from_str("ROC_ASSETS")).is_ok())
+		ran = Cmd.new("roc")
+			.args(dev.args.map(OsStr.from_str))
+			.envs(dev.env.map(|(name, value)| (OsStr.from_str(name), OsStr.from_str(value))))
+			.cwd(Path.utf8(dev.dir))
+			.inherit_stdio()
+			.run!()?
 		match ran.status {
 			Exited(0) => Ok({})
 			Exited(code) => Err(DevFailed({ how: "exited with code ${code.to_str()}", code }))
 			Signaled(signal) => Err(DevFailed({ how: "stopped on signal ${signal.to_str()}", code: 128 + signal }))
 		}
+	}
+
+	## How `dev` runs `roc main.roc`: from the build directory, so the
+	## directory Roc's watcher makes in its working directory (`.zig-cache/`,
+	## for the list of files it watches) lands in `.macos/`, not beside
+	## `main.roc`. The app then looks for its images in `../assets`, the
+	## app's `assets/`, unless `ROC_ASSETS` already says where they are.
+	dev_run : Bool -> { dir : Str, args : List(Str), env : List((Str, Str)) }
+	dev_run = |assets_set| {
+		dir: App.work,
+		args: ["../main.roc"],
+		env: if (assets_set) [] else [("ROC_ASSETS", "../${App.assets}")],
 	}
 
 	## Whether the app can run here: only an Apple silicon Mac runs it.
@@ -271,3 +290,8 @@ expect {
 		and text.contains("<key>CFBundleShortVersionString</key><string>1.2.0</string>")
 		and text.contains("<key>CFBundleVersion</key><string>7</string>")
 }
+
+## `dev` runs `roc ../main.roc` from `.macos/`, so Roc's `.zig-cache/` lands
+## there, and points the app at `assets/` beside `main.roc` unless
+## `ROC_ASSETS` is set.
+expect [App.dev_run(Bool.False), App.dev_run(Bool.True)] == [{ dir: ".macos", args: ["../main.roc"], env: [("ROC_ASSETS", "../assets")] }, { dir: ".macos", args: ["../main.roc"], env: [] }]
