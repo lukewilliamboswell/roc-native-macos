@@ -18,7 +18,14 @@ see <<where-it-breaks>>.
 It is a harness, not an example. The gate's `bench` stage builds it and runs
 `run.sh --smoke`: a 4×4 grid and a 12-move sweep, which fails unless the
 cells were hovered and every trail timer has cooled. That keeps it from going
-stale without putting any load on the gate.
+stale without putting any load on the gate. `--smoke` then checks that mount
+scales: it mounts N=20 and N=60 (400 and 3,600 cells), prints both mount
+engine times, and fails if the larger is more than 27 times the smaller (9
+times the cells, so 3 times the linear expectation; the smaller time is
+floored at 2 ms). A quadratic mount gives about 87. Engine patches 0001 and
+0002 (`patches/roc-signals`) made mount linear by working around compiler
+behaviour, and this keeps them from regressing silently. `NO_SCALING=1`
+skips it.
 
 == Running it
 

@@ -19,9 +19,13 @@ flowchart TB
 [#engine-revision]
 Engine:: `Core.roc`, `Engine.roc` and the modules they import (`Web`,
 `EntryRoutes`, `Url`, `ReadyIndex`, `Spelling`, `Layout`, `TableCore`, `View`,
-`Seq`, `MarkupAdvice`, `SignalCore`) are byte-identical copies of roc-signals
-`a13ff70e`. Nothing in the engine was changed. `tests/engine-modules.sha256`
-records their digests, and `check` compares them.
+`Seq`, `MarkupAdvice`, `SignalCore`) are copies of roc-signals `a13ff70e`
+plus the patch series in `patches/roc-signals/`, whose `README.adoc` lists the
+patches in order with their upstream status
+(xref:contributing.adoc#engine-patches[Engine patches]). Two patches split
+`Core.roc`'s mount functions so the compiler keeps the turn and the block
+unshared, which makes mounting linear. `tests/engine-modules.sha256` records
+the pristine digests, and `check` reverse-applies the series and compares.
 
 Platform root:: `platform/main.roc` is a trimmed copy of roc-signals' root.
 It provides `roc_engine_keys`, `roc_engine_init`, `roc_engine_event`,

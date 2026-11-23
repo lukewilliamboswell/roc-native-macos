@@ -289,7 +289,7 @@ same one CI runs on `macos-15`. Its stages, in order:
 | Stage | Checks
 
 | `pins` | `roc-policy check` (roc-automation's source-policy utility) with `repository_policy` from `Blueprint.roc`: the scripts pin `roc-stable`, nothing else pins a compiler, and every example names `../../platform/main.roc`
-| `engine` | the engine modules match their roc-signals digests (`tests/engine-modules.sha256`)
+| `engine` | the engine modules are roc-signals' plus the patch series: `patches/roc-signals/README.adoc` lists every `*.patch` there, in order, and reverse-applying them to copies of the modules gives back the digests `tests/engine-modules.sha256` records (xref:contributing.adoc#engine-patches[Engine patches])
 | `fmt` | `roc fmt --check` over the platform, glue, examples and tool, and `roc-stable fmt --check` over the scripts
 | `scripts` | the scripts' `expect` tests
 | `tool` | `cli/Bundle.roc` is current (`tool --update` writes it), `scripts/src/Recorded.roc` copies `cli/Recorded.roc`, and `roc test cli/main.roc`
@@ -297,13 +297,29 @@ same one CI runs on `macos-15`. Its stages, in order:
 | `build` | `scripts/build.roc` with the `roc` on PATH
 | `test` | `roc test` on `platform/main.roc` and every example
 | `examples` | every recorded case
-| `bench` | every harness under `bench/`, built and run at a token size (`bench/<name>/run.sh --smoke`) so it never goes stale; a harness's `--smoke` fails unless the run does what it measures
+| `bench` | every harness under `bench/`, built and run at a token size (`bench/<name>/run.sh --smoke`) so it never goes stale; a harness's `--smoke` fails unless the run does what it measures, and the grid's also fails if mount grows superlinearly (N=20 against N=60, xref:contributing.adoc#engine-patches[Engine patches])
 | `bundle` | the bundle from the `build` stage's inputs, and its consumer test: `macos.roc` `init`, `build` and `test` against it
 |===
 
 `check -- STAGE...` runs only the named stages. On a terminal the result
 words (`PASS`, `FAIL`, `SKIP`, `passed`, `failed`) are coloured; `NO_COLOR`
 or a redirected output leaves them plain, and the word is always printed.
+
+[#engine-patches]
+== Engine patches
+
+The engine modules are roc-signals' at the revision
+xref:architecture.adoc#engine-revision[Engine] names, plus the patches in
+`patches/roc-signals/`. Its `README.adoc` is the series, one line per patch
+with its upstream status, and says how to make a patch. Each patch carries
+a header: what it changes, why, what it measured before and after, and
+`Upstream: not yet sent` or the pull request's link. When a patch lands
+upstream and a newer engine is taken, the patch is dropped.
+
+A cost that turns out to be the compiler's is not patched here. It gets a
+standalone reproducer and a write-up in `patches/roc-compiler/`, listed in
+its `README.adoc` for reporting to roc-lang/roc; an engine patch that only
+works around it says so in its header.
 
 [#releasing]
 == Releasing
@@ -505,6 +521,14 @@ on another attribute having been applied first. `title-display` is
 reapplied after any title, bezel or size change for this reason.
 No `Str` order:: `Str` has no ordering in RC1, so `Engine.sort_by` cannot
 sort rows by a name; `contacts` sorts by key.
+Turns copy the storage on the event's path:: Every site is an erased
+closure (the state crosses to the host in a `Box`), and an erased call
+reads its captures borrowed, so each turn copies the child list of every
+block on the event's path. With 10,000 sites in one block that is a
+2.4 MB copy per call and most of a 2.4 ms hover turn
+(`patches/roc-compiler`, "Erased closures borrow their captures").
+Mount was quadratic, also the compiler's doing, until engine patches 0001
+and 0002 (xref:contributing.adoc#engine-patches[Engine patches]).
 A bundle is fetched only over https, or http to localhost:: Roc rejects a
 local `.tar.zst` path as a platform and an absolute platform path, and
 accepts plain `http` only for `localhost`, `127.0.0.1` and `[::1]`. It
