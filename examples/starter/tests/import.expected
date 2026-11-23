@@ -1,0 +1,67 @@
+workers: limit 2, 1 live, 0 running, 0 queued; 1 started, 1 answered, 0 lost, 0 stopped, 0 timed out, 0 dropped
+--- 520x495
+ui-vstack [1 views]
+  ui-vstack [5 views]
+    ui-hstack [2 views]
+      ui-asset-image icon.png [1024x1024, 36pt wide, 36pt high]
+      ui-text "Expenses" {text-style=large-title weight=bold}
+    ui-form [1 views]
+      ui-hstack [3 views]
+        ui-text-field ""
+        ui-dropdown "Food" of ["Food", "Transport", "Home", "Fun", "Other"]
+        ui-button "Add"
+    ui-vstack [2 views]
+      ui-hstack [3 views]
+        ui-text "Summary" {text-style=headline}
+        ui-spacer
+        ui-button "Hide Summary"
+      ui-hstack [3 views]
+        ui-box
+          ui-vstack [2 views]
+            ui-text "Spent" {color=secondary-label text-style=caption1}
+            ui-text "980.15" {design=monospaced-digits text-style=title3 weight=semibold}
+        ui-box
+          ui-vstack [2 views]
+            ui-text "Expenses" {color=secondary-label text-style=caption1}
+            ui-text "4" {design=monospaced-digits text-style=title3 weight=semibold}
+        ui-box
+          ui-vstack [2 views]
+            ui-text "Largest" {color=secondary-label text-style=caption1}
+            ui-text "Rent, 900.00" {design=monospaced-digits text-style=title3 weight=semibold}
+    ui-vstack [2 views]
+      ui-hstack [3 views]
+        ui-text "Expenses" {text-style=headline}
+        ui-spacer
+        ui-button "Hide Expenses"
+      ui-vstack [2 views]
+        ui-hstack [3 views]
+          ui-file-button "Import CSV…"
+          ui-spacer
+          ui-button "Clear All"
+        ui-box {border=line:1:separator}
+          ui-scroll [4 views, 180pt high]
+            ui-hstack [5 views]
+              ui-text "Cinema, two tickets"
+              ui-spacer
+              ui-text "Fun" {color=secondary-label text-style=caption1}
+              ui-text "15.00" {design=monospaced-digits}
+              ui-button "Remove"
+            ui-hstack [5 views]
+              ui-text "Bus to work"
+              ui-spacer
+              ui-text "Transport" {color=secondary-label text-style=caption1}
+              ui-text "2.80" {design=monospaced-digits}
+              ui-button "Remove"
+            ui-hstack [5 views]
+              ui-text "Groceries"
+              ui-spacer
+              ui-text "Food" {color=secondary-label text-style=caption1}
+              ui-text "62.35" {design=monospaced-digits}
+              ui-button "Remove"
+            ui-hstack [5 views]
+              ui-text "Rent"
+              ui-spacer
+              ui-text "Home" {color=secondary-label text-style=caption1}
+              ui-text "900.00" {design=monospaced-digits}
+              ui-button "Remove"
+    ui-text "Imported 4 expenses from expenses.csv; 2 lines were not expenses." {color=secondary-label text-style=callout}

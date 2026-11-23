@@ -55,12 +55,13 @@ Bundle := [].{
 	## test's (empty for the test's own).
 	first_steps : List({ args : List(Str), cwd : Str })
 	first_steps = [
-		{ args: ["init", "counter"], cwd: "" },
-		{ args: ["build"], cwd: "counter" },
-		{ args: ["test"], cwd: "counter" },
+		{ args: ["init", "my-app"], cwd: "" },
+		{ args: ["build"], cwd: "my-app" },
+		{ args: ["test"], cwd: "my-app" },
+		{ args: ["fuzz", "--check"], cwd: "my-app" },
 	]
 
-	## How the consumer test packages the counter `init` made, in its
+	## How the consumer test packages the app `init` made, in its
 	## directory: as the release workflow `init` wrote does, with no secrets,
 	## for a pushed pre-release tag, whose version overrides the starter
 	## `macos.json`'s.
@@ -71,10 +72,10 @@ Bundle := [].{
 	package_env : List((Str, Str))
 	package_env = [("GITHUB_ACTIONS", "true"), ("GITHUB_REF_TYPE", "tag"), ("GITHUB_REF_NAME", "v1.0.0-rc.1"), ("RELEASE_VERSION", "")]
 
-	## The zip that makes, relative to the counter's directory: its name
+	## The zip that makes, relative to the app's directory: its name
 	## keeps the pre-release suffix.
 	package_zip : Str
-	package_zip = "dist/counter-1.0.0-rc.1.zip"
+	package_zip = "dist/my-app-1.0.0-rc.1.zip"
 
 	## What the packaged `Info.plist` must say: the version's numbers alone,
 	## and the build number following them.
@@ -86,21 +87,24 @@ Bundle := [].{
 
 	## The recorded case run on the program extracted from the zip.
 	package_case : Str
-	package_case = "increment"
+	package_case = "add"
 
 	## What the zip must hold, in order, with each entry's Unix mode: an ad
 	## hoc seal (`_CodeSignature/`) over the program, `Info.plist` and the
-	## (empty) resources.
+	## resources: the icon made from `assets/icon.png`, and the assets.
 	package_entries : List({ name : Str, mode : U32 })
 	package_entries = [
-		{ name: "counter.app/", mode: 0o040755 },
-		{ name: "counter.app/Contents/", mode: 0o040755 },
-		{ name: "counter.app/Contents/Info.plist", mode: 0o100644 },
-		{ name: "counter.app/Contents/MacOS/", mode: 0o040755 },
-		{ name: "counter.app/Contents/MacOS/counter", mode: 0o100755 },
-		{ name: "counter.app/Contents/Resources/", mode: 0o040755 },
-		{ name: "counter.app/Contents/_CodeSignature/", mode: 0o040755 },
-		{ name: "counter.app/Contents/_CodeSignature/CodeResources", mode: 0o100644 },
+		{ name: "my-app.app/", mode: 0o040755 },
+		{ name: "my-app.app/Contents/", mode: 0o040755 },
+		{ name: "my-app.app/Contents/Info.plist", mode: 0o100644 },
+		{ name: "my-app.app/Contents/MacOS/", mode: 0o040755 },
+		{ name: "my-app.app/Contents/MacOS/my-app", mode: 0o100755 },
+		{ name: "my-app.app/Contents/Resources/", mode: 0o040755 },
+		{ name: "my-app.app/Contents/Resources/AppIcon.icns", mode: 0o100644 },
+		{ name: "my-app.app/Contents/Resources/assets/", mode: 0o040755 },
+		{ name: "my-app.app/Contents/Resources/assets/icon.png", mode: 0o100644 },
+		{ name: "my-app.app/Contents/_CodeSignature/", mode: 0o040755 },
+		{ name: "my-app.app/Contents/_CodeSignature/CodeResources", mode: 0o100644 },
 	]
 
 	## A zip's entries from its central directory: each name, and the Unix
@@ -151,12 +155,14 @@ Bundle := [].{
 	assets_case = "switch"
 
 	## An example's `main.roc` with its checkout platform path replaced by
-	## the bundle's URL, as an app author's header names it.
+	## the bundle's URL, as an app author's header names it: the path from
+	## `examples/<name>/main.roc`, or from `examples/<name>/src/main.roc`.
 	released_main : Str, Str -> Try(Str, [NoPlatformPath])
-	released_main = |source, url| {
-		local = "platform \"../../platform/main.roc\""
-		if (source.contains(local)) Ok(source.replace_each(local, "platform \"${url}\"")) else Err(NoPlatformPath)
-	}
+	released_main = |source, url|
+		match ["platform \"../../platform/main.roc\"", "platform \"../../../platform/main.roc\""].keep_if(|local| source.contains(local)) {
+			[local] => Ok(source.replace_each(local, "platform \"${url}\""))
+			_ => Err(NoPlatformPath)
+		}
 
 	## The port Python's `http.server` says it is serving on, from its first
 	## line: `Serving HTTP on :: port 54321 (http://[::]:54321/) ...`.
@@ -198,6 +204,7 @@ expect
 	Bundle.released_main("app [main] { pf: platform \"../../platform/main.roc\" }\n", "http://localhost:8000/abc.tar.zst")
 		== Ok("app [main] { pf: platform \"http://localhost:8000/abc.tar.zst\" }\n")
 expect Bundle.released_main("app [main] { pf: platform \"x\" }\n", "u") == Err(NoPlatformPath)
+expect Bundle.released_main("app [main] {\n\tpf: platform \"../../../platform/main.roc\",\n\tlogic: \"../logic/main.roc\",\n}\n", "u") == Ok("app [main] {\n\tpf: platform \"u\",\n\tlogic: \"../logic/main.roc\",\n}\n")
 
 expect Bundle.served_port("Serving HTTP on :: port 54321 (http://[::]:54321/) ...\n") == Ok(54321)
 expect Bundle.served_port("Traceback") == Err(NoPort)

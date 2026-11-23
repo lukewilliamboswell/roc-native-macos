@@ -5,7 +5,7 @@ name: Nightly compatibility
 # downloaded unchanged; every archived example is built against that bundle
 # (served on localhost, byte for byte the published file, as release.yml tests
 # a candidate) and runs its recorded cases on a macOS GUI session, and a
-# counter is created, built and tested with the release's macos.roc. One
+# app is created, built and tested with the release's macos.roc. One
 # tracking issue records a failure and is closed by the next pass.
 #
 # roc-automation's shared nightly-compatibility.yml cannot run these cases:

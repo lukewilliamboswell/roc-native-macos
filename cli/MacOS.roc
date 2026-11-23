@@ -4,6 +4,7 @@ import cli.Stdout
 import App
 import Bundle
 import Cases
+import Fuzz
 import Init
 import Meta
 import Ci
@@ -18,17 +19,22 @@ import Package
 ## roc macos.roc run           # build it and start it
 ## roc macos.roc dev           # start it with hot reloading
 ## roc macos.roc build         # build my-app.app, on any system
-## roc macos.roc test          # run its recorded cases
+## roc macos.roc test          # run its expect tests and recorded cases
+## roc macos.roc fuzz          # run its roc-fuzz targets, fuzz/main.roc
 ## roc macos.roc package       # dist/my-app-<version>.zip, to share
 ## ```
+##
+## The app's root module is `src/main.roc`, where `init` puts it, or
+## `main.roc` at the top of the app's directory, where apps made by 0.0.1
+## keep it (`App.entry!`). Everything else is at the top in both layouts.
 MacOS :: [].{
 
 	## What the user asked for.
-	Command : [Help, CommandHelp(Str), Init(Str), Build(Meta.Fields), Run(Meta.Fields), Dev, Test({ update : Bool }), Package(Package.Options), CiPackage(Meta.Fields), CiRelease]
+	Command : [Help, CommandHelp(Str), Init(Str), Build(Meta.Fields), Run(Meta.Fields), Dev, Test({ update : Bool }), Fuzz(Fuzz.Options), Package(Package.Options), CiPackage(Meta.Fields), CiRelease]
 
 	## The commands, in the order `help` lists them.
 	commands : List(Str)
-	commands = ["init", "build", "run", "dev", "test", "package", "ci"]
+	commands = ["init", "build", "run", "dev", "test", "fuzz", "package", "ci"]
 
 	## Run the tool on the arguments `roc macos.roc` passed it. Every failure
 	## is explained in a sentence on standard error and ends the program with
@@ -44,6 +50,7 @@ MacOS :: [].{
 			Ok(Run(chosen)) => App.run!(chosen)
 			Ok(Dev) => App.dev!()
 			Ok(Test({ update })) => Cases.run!(update)
+			Ok(Fuzz(chosen)) => Fuzz.run!(chosen)
 			Ok(Package(chosen)) => Package.run!(chosen, Package.environment!()).map_ok(|_| {})
 			Ok(CiPackage(fields)) => Ci.package!(fields)
 			Ok(CiRelease) => Ci.release!()
@@ -76,6 +83,7 @@ MacOS :: [].{
 			["dev"] => Ok(Dev)
 			["test"] => Ok(Test({ update: Bool.False }))
 			["test", "--update"] => Ok(Test({ update: Bool.True }))
+			["fuzz", .. as rest] => Fuzz.options(rest, Fuzz.defaults).map_ok(|chosen| Fuzz(chosen))
 			[command, .. as extra] if MacOS.commands.contains(command) => Err(UnexpectedArguments({ command, extra }))
 			[command, ..] => Err(UnknownCommand(command))
 		}
@@ -109,21 +117,24 @@ MacOS :: [].{
 		\\  roc macos.roc init [DIR]       Create an app in DIR, or in this directory.
 		\\  roc macos.roc build            Build the app, <name>.app, on any system.
 		\\  roc macos.roc run              Build it and start it, its output in this terminal.
-		\\  roc macos.roc dev              Start it with roc main.roc, which reloads it as you save.
-		\\  roc macos.roc test [--update]  Build it and run its recorded cases, tests/*.script.
+		\\  roc macos.roc dev              Start it with roc src/main.roc, which reloads it as you save.
+		\\  roc macos.roc test [--update]  Run its expect tests, then its recorded cases, tests/*.script.
+		\\  roc macos.roc fuzz [--check]   Build its roc-fuzz targets, fuzz/main.roc, and run them.
 		\\  roc macos.roc package          Build it, sign it and zip it, as dist/<name>-<version>.zip.
 		\\  roc macos.roc ci package       Package it in CI, signing it as the secrets allow.
 		\\  roc macos.roc ci release       Attach dist/*.zip to the pushed tag's GitHub release.
 		\\
-		\\<name> is the app's directory. The app's metadata is in macos.json beside
-		\\main.roc: its name, bundle identifier (by default com.example.<name>),
-		\\version, build number, copyright, category and oldest macOS. build, run and
-		\\package take each as a flag too, such as --version 1.2.0, which overrides the
-		\\file. Images and other files go in assets/, and assets/icon.png is the app's
-		\\icon. `roc macos.roc COMMAND --help` describes a command.
+		\\<name> is the app's directory, which holds src/main.roc (or main.roc, in an app
+		\\made by 0.0.1). The app's metadata is in macos.json there: its name, bundle
+		\\identifier (by default com.example.<name>), version, build number, copyright,
+		\\category and oldest macOS. build, run and package take each as a flag too,
+		\\such as --version 1.2.0, which overrides the file. Images and other files go
+		\\in assets/, and assets/icon.png is the app's icon. `roc macos.roc COMMAND
+		\\--help` describes a command.
 		\\
 		\\They need Roc as `roc`, on macOS, Linux or Windows; no Xcode is needed. The app
-		\\runs on Apple silicon Macs with macOS 11 or later, so run, dev and test work only there.
+		\\runs on Apple silicon Macs with macOS 11 or later, so run, dev and the recorded
+		\\cases work only there; fuzz runs there and on Linux x64.
 		\\This is roc-native-macos ${Bundle.version}, tested with Roc ${Bundle.roc_version}.
 		\\Documentation: https://lukewilliamboswell.github.io/roc-native-macos/apps.html
 
@@ -132,12 +143,15 @@ MacOS :: [].{
 	command_usage = |command| {
 		description = match command {
 			"init" =>
-				\\Create a counter app, with two recorded cases of it.
+				\\Create an app to build on: an expense tracker with its tests.
 				\\
 				\\Usage: roc macos.roc init [DIR]
 				\\
-				\\DIR defaults to the current directory. init writes main.roc, tests/*.script
-				\\and tests/*.expected, macos.json (the app's name, identifier and version),
+				\\DIR defaults to the current directory. init writes the app in src/ (its
+				\\store, window, widgets and a worker), its business logic as a package of
+				\\pure Roc in logic/, roc-fuzz targets for that logic in fuzz/, its icon in
+				\\assets/, recorded runs of it in tests/, AGENTS.md (how the project is laid
+				\\out and worked on), macos.json (the app's name, identifier and version),
 				\\.gitignore, and .github/workflows/release.yml, which packages the app on
 				\\GitHub when you push a tag such as v1.0.0. It never overwrites a file. Keep
 				\\macos.roc in the directory you run init from; a new app gets a copy.
@@ -146,11 +160,11 @@ MacOS :: [].{
 				\\
 				\\Usage: roc macos.roc build [METADATA FLAGS]
 				\\
-				\\Run from the app's directory, containing main.roc. It works on macOS, Linux
-				\\and Windows alike: the platform carries everything the link needs, and the
-				\\app is built for Apple silicon (roc build --target=arm64mac). The build goes
-				\\to .macos/, and then replaces <name>.app.
-				\\The assets/ directory beside main.roc, if there is one, is copied into the
+				\\Run from the app's directory, containing src/main.roc (or main.roc). It works
+				\\on macOS, Linux and Windows alike: the platform carries everything the link
+				\\needs, and the app is built for Apple silicon (roc build --target=arm64mac).
+				\\The build goes to .macos/, and then replaces <name>.app.
+				\\The app directory's assets/, if there is one, is copied into the
 				\\app, where Ui.asset_image finds its images. assets/icon.png (square, best
 				\\1024 by 1024 pixels) or assets/icon.icns becomes the app's icon.
 				\\A .app copied to a Mac from elsewhere may be quarantined; clear it with
@@ -162,8 +176,8 @@ MacOS :: [].{
 				\\
 				\\Usage: roc macos.roc run [METADATA FLAGS]
 				\\
-				\\Run from the app's directory, containing main.roc, on an Apple silicon Mac.
-				\\It builds <name>.app as build does, then runs the program inside it, so dbg
+				\\Run from the app's directory, on an Apple silicon Mac. It builds <name>.app
+				\\as build does, then runs the program inside it, so dbg
 				\\output and crash reports appear here. Quit the app to return. It takes the
 				\\metadata flags build takes.
 			"dev" =>
@@ -171,10 +185,11 @@ MacOS :: [].{
 				\\
 				\\Usage: roc macos.roc dev
 				\\
-				\\Run from the app's directory, containing main.roc, on an Apple silicon Mac.
-				\\It runs `roc main.roc` there: Roc builds the app with its development
-				\\backend and starts it, with no .app, and watches main.roc and the modules
-				\\it imports. When you save a change that compiles, Roc rebuilds the app and
+				\\Run from the app's directory, on an Apple silicon Mac. It runs
+				\\`roc src/main.roc` there (`roc main.roc` in an app made by 0.0.1): Roc builds
+				\\the app with its development backend and starts it, with no .app, and
+				\\watches the modules and packages it imports. When you save a change that
+				\\compiles, Roc rebuilds the app and
 				\\swaps the new code in; press Command-R (Reload in the app menu) to remount
 				\\the window with it, which starts the state again. A change that does not
 				\\compile prints its errors and leaves the app running. Quit the app to return.
@@ -235,16 +250,35 @@ MacOS :: [].{
 				\\creates the release when there is none, as a pre-release for a tag with a
 				\\suffix, and replaces zips of the same name.
 			"test" =>
-				\\Build the app and run its recorded cases.
+				\\Run the app's expect tests, then build the app and run its recorded cases.
 				\\
 				\\Usage: roc macos.roc test [--update]
 				\\
-				\\Run from the app's directory, containing main.roc, on an Apple silicon Mac.
+				\\Run from the app's directory. It runs `roc test src/main.roc` (or
+				\\`roc test main.roc`), which runs the expects of every module of the app and
+				\\of the packages it names by path, such as logic/; that works on any system.
+				\\Then, on an Apple silicon Mac, it builds the app and runs its recorded cases.
 				\\Each tests/<case>.script holds steps (click:+;dump;quit), which drive the
 				\\app's real controls without taking focus, and tests/<case>.expected what the
 				\\run prints. A case passes when it exits normally having printed that, with
 				\\window and point sizes allowed to differ by up to 4. --update records what
 				\\each case prints now; review the change before you commit it.
+			"fuzz" =>
+				\\Build the app's fuzz targets and run them.
+				\\
+				\\Usage: roc macos.roc fuzz [--check] [--time SECONDS] [TARGET...]
+				\\
+				\\Run from the app's directory, on an Apple silicon Mac or on Linux x64.
+				\\fuzz/main.roc is an app on roc-fuzz's platform that declares properties of
+				\\the app's logic package; it builds it with `roc build --fuzz` into
+				\\.macos/fuzz, then runs each target (or the TARGETs named) in turn: it
+				\\explores inputs for SECONDS each (10 by default), keeping those worth
+				\\revisiting in .roc-fuzz/corpus/<target>. --check runs only the examples
+				\\each target declares, quickly, as CI does. A failure prints its report and
+				\\leaves the failing input under .roc-fuzz/; `.macos/fuzz --target=NAME
+				\\replay INPUT` runs it again, and `.macos/fuzz --target=NAME --help` lists
+				\\what else the program does. roc-fuzz's manual is at
+				\\https://lukewilliamboswell.github.io/roc-fuzz/.
 			_ => return MacOS.usage
 		}
 		"${description}\n\nThis is roc-native-macos ${Bundle.version}, tested with Roc ${Bundle.roc_version}."
@@ -260,6 +294,7 @@ MacOS :: [].{
 			"package" => "Use it as `roc macos.roc package [--sign] [--notarize] [METADATA FLAGS]`; `roc macos.roc package --help` lists the flags."
 			"ci" | "ci package" => "Use it as `roc macos.roc ci package [METADATA FLAGS]` or `roc macos.roc ci release`; ci decides how to sign from the secrets that are set. `roc macos.roc ci --help` describes them."
 			"test" => "Use it as `roc macos.roc test [--update]`."
+			"fuzz" => "Use it as `roc macos.roc fuzz [--check] [--time SECONDS] [TARGET...]`, where SECONDS is a whole number above 0; `roc macos.roc fuzz --help` describes it."
 			_ => "`roc macos.roc help` describes it."
 		}
 
@@ -290,7 +325,7 @@ MacOS :: [].{
 	explain : _ -> { text : Str, code : I32 }
 	explain = |problem|
 		match problem {
-			UnknownCommand(command) => { code: 2, text: "There is no command \"${command}\". The commands are init, build, run, dev, test, package and ci; `roc macos.roc help` describes them." }
+			UnknownCommand(command) => { code: 2, text: "There is no command \"${command}\". The commands are init, build, run, dev, test, fuzz, package and ci; `roc macos.roc help` describes them." }
 			UnexpectedArguments({ command, extra }) => { code: 2, text: "${command} does not take ${Str.join_with(extra.map(|a| "\"${a}\""), " ")}. ${MacOS.synopsis(command)}" }
 			BadField({ field, value, from }) => { code: if (from == Flag) 2 else 1, text: MacOS.bad_field(field, value, from) }
 			MetaMalformed({ line, expected }) => { code: 1, text: "${Meta.file} is not the JSON object the tool reads: on line ${line.to_str()} it expected ${expected}. It holds one object of text fields, such as { \"version\": \"1.2.0\" }." }
@@ -321,7 +356,13 @@ MacOS :: [].{
 			NoZips => { code: 1, text: "There is no zip in ${Package.dist}/ to attach: run `roc macos.roc ci package` first, or download its artifact there." }
 			LinkInBundle(path) => { code: 1, text: "${path} is a symbolic link, which package does not zip: copy the file it names into assets/ instead." }
 			RocMissing => { code: 1, text: "The Roc compiler is not on your PATH as `roc`, so the app cannot be built. Install Roc ${Bundle.roc_version} (or a later nightly) and put it on your PATH as `roc`." }
-			NoMainRoc => { code: 1, text: "There is no main.roc here, so there is no app to build. Run this from your app's directory, or create an app with `roc macos.roc init my-app`." }
+			NoMainRoc => { code: 1, text: "There is no src/main.roc or main.roc here, so there is no app to build. Run this from your app's directory, or create an app with `roc macos.roc init my-app`." }
+			TwoEntries => { code: 1, text: "This directory holds both src/main.roc and main.roc, and an app has one root module: keep src/main.roc, where init puts it, and move or remove main.roc." }
+			ExpectsFailed(entry) => { code: 1, text: "roc test ${entry} failed, so the recorded cases did not run: its report is above. Fix the expect, or the code it checks, and run test again." }
+			NoFuzzTargets => { code: 1, text: "There is no fuzz/main.roc here, so there is nothing to fuzz: it is an app on roc-fuzz's platform that checks the app's logic package, as `roc macos.roc init` writes one, and `roc macos.roc fuzz --help` describes it." }
+			FuzzNotHere(system) => { code: 1, text: "roc-fuzz runs on Apple silicon Macs and on Linux x64, and this is ${system}, so fuzz cannot run here. `roc macos.roc test` runs the expect tests on any system." }
+			UnknownFuzzTargets({ unknown, known }) => { code: 2, text: "fuzz/main.roc has no target named ${Str.join_with(unknown, " or ")}: its targets are ${Str.join_with(known, ", ")}." }
+			FuzzFailed({ failed, total }) => { code: 1, text: "${failed.len().to_str()} of ${total.to_str()} fuzz targets failed: ${Str.join_with(failed, ", ")}. Each report is above, and the input that failed is under .roc-fuzz/: `.macos/fuzz --target=NAME replay INPUT` runs it again." }
 			BuildFailed => { code: 1, text: "The build failed: the compiler's report is above." }
 			NotAppleSilicon({ command, system, bundle }) =>
 				if command == "run" {
@@ -330,11 +371,11 @@ MacOS :: [].{
 					{ code: 1, text: "The recorded cases run the app, which runs only on an Apple silicon Mac, and this is ${system}, so test cannot run them here. `roc macos.roc build` builds the app on any system." }
 				}
 			DevNotAppleSilicon(system) => { code: 1, text: "dev starts the app, which runs only on an Apple silicon Mac, and this is ${system}, so it cannot start it here. `roc macos.roc build` builds the app on any system." }
-			DevFailed({ how, code }) => { code, text: "roc main.roc ${how}: its output is above." }
-			NoCases => { code: 1, text: "There are no recorded cases to run: tests/ holds no .script files. `roc macos.roc init` writes tests/increment.script as an example, and `roc macos.roc test --help` describes them." }
+			DevFailed({ how, code, entry }) => { code, text: "roc ${entry} ${how}: its output is above." }
+			NoCases => { code: 1, text: "There are no recorded cases to run: tests/ holds no .script files. `roc macos.roc init` writes tests/add.script as an example, and `roc macos.roc test --help` describes them." }
 			CasesFailed({ failed, total }) => { code: 1, text: "${failed.len().to_str()} of ${total.to_str()} recorded cases failed: ${Str.join_with(failed, ", ")}. If the app changed on purpose, record what it prints now with `roc macos.roc test --update`." }
 			AppFailed(how) => { code: 1, text: "The app ${how}: its output is above." }
-			AssetsNotADirectory => { code: 1, text: "assets is not a directory: the app's images and other files go in a directory named assets beside main.roc." }
+			AssetsNotADirectory => { code: 1, text: "assets is not a directory: the app's images and other files go in a directory named assets in the app's directory." }
 			TwoIcons => { code: 1, text: "assets/ holds both icon.png and icon.icns, and an app has one icon: remove one of them." }
 			BadIcon(NotPng) => { code: 1, text: "assets/icon.png is not a PNG file, so it cannot be the app's icon: save it as a PNG, 1024 by 1024 pixels." }
 			BadIcon(NotSquare({ width, height })) => { code: 1, text: "assets/icon.png is ${width.to_str()} by ${height.to_str()} pixels, and an app's icon is square: make it 1024 by 1024 pixels." }
@@ -353,7 +394,7 @@ nothing = { fields: Meta.none, sign: Bool.False, notarize: Bool.False }
 ## What `build --help` and `package --help` say about the metadata.
 metadata_help : Str
 metadata_help =
-	\\The app's metadata comes from macos.json beside main.roc, if there is one,
+	\\The app's metadata comes from macos.json in the app's directory, if there is one,
 	\\and from these flags, which override it. Each field is optional:
 	\\
 	\\  --name TEXT           its name in the menu bar and About (by default <name>)
@@ -418,6 +459,19 @@ expect {
 	}
 }
 
+## fuzz takes --check, --time and target names; a bad time is refused.
+expect {
+	actual = [["fuzz"], ["fuzz", "--check"], ["fuzz", "money-parse", "--time", "60"], ["fuzz", "--time", "soon"], ["fuzz", "--update"]].map(MacOS.parse)
+	expected = [
+		Ok(Fuzz(Fuzz.defaults)),
+		Ok(Fuzz({ ..Fuzz.defaults, check: Bool.True })),
+		Ok(Fuzz({ ..Fuzz.defaults, names: ["money-parse"], seconds: 60 })),
+		Err(UnexpectedArguments({ command: "fuzz", extra: ["--time", "soon"] })),
+		Err(UnexpectedArguments({ command: "fuzz", extra: ["--update"] })),
+	]
+	actual == expected
+}
+
 ## Help belongs to an exact known command, and needs no app.
 expect MacOS.commands.all(|command| ["--help", "-h"].all(|flag| MacOS.parse([command, flag]) == Ok(CommandHelp(command))))
 
@@ -468,9 +522,9 @@ expect {
 
 ## dev elsewhere points at build; a failed run keeps roc's exit code.
 expect {
-	explained = [DevNotAppleSilicon("Linux"), DevFailed({ how: "exited with code 3", code: 3 })].map(MacOS.explain)
+	explained = [DevNotAppleSilicon("Linux"), DevFailed({ how: "exited with code 3", code: 3, entry: "src/main.roc" })].map(MacOS.explain)
 	explained == [
 		{ code: 1, text: "dev starts the app, which runs only on an Apple silicon Mac, and this is Linux, so it cannot start it here. `roc macos.roc build` builds the app on any system." },
-		{ code: 3, text: "roc main.roc exited with code 3: its output is above." },
+		{ code: 3, text: "roc src/main.roc exited with code 3: its output is above." },
 	]
 }

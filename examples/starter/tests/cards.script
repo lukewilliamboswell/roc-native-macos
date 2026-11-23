@@ -1,0 +1,1 @@
+type:Tea 3.20;enter;type:Cake 4;enter;click:Hide Summary;dump;click:Show Summary;click:Remove;dump;click:Clear All;dump;quit

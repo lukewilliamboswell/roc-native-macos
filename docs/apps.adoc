@@ -21,36 +21,72 @@ app, and create one:
 [source,sh]
 ----
 curl -LO https://github.com/lukewilliamboswell/roc-native-macos/releases/latest/download/macos.roc
-roc macos.roc init counter
-cd counter
+roc macos.roc init my-app
+cd my-app
 roc macos.roc run
 ----
 
-`init` writes a counter app, `main.roc`, whose header names the platform
-release, two recorded runs of it in `tests/`, its metadata in `macos.json`,
-a `.gitignore`, a release workflow in `.github/workflows/release.yml` (see
-xref:apps.adoc#ship-your-app[Ship your app]) and a copy of `macos.roc`.
-`run` builds `counter.app` and starts it, with its output (`dbg`, a crash
-report) in the terminal. While you work on it, start it with
-`roc macos.roc dev` instead: it runs `roc main.roc`, which starts the app
-straight from the compiler and loads each edit you save into it, and
-Command-R in the app shows the new code
-(xref:apps.adoc#hot-reloading[Hot reloading]).
+`init` writes a project to build on, not a minimal one (the
+xref:apps.adoc#the-examples[examples] are smaller): an expense tracker that
+shows how a real app is laid out, with a copy of `macos.roc`, its metadata
+in `macos.json`, a `.gitignore` and a release workflow in
+`.github/workflows/release.yml` (see xref:apps.adoc#ship-your-app[Ship your
+app]). It is the repository's `starter` example. `run` builds `my-app.app`
+and starts it, with its output (`dbg`, a crash report) in the terminal.
+While you work on it, start it with `roc macos.roc dev` instead: it runs
+`roc src/main.roc`, which starts the app straight from the compiler and
+loads each edit you save into it, and Command-R in the app shows the new
+code (xref:apps.adoc#hot-reloading[Hot reloading]).
 
-An app is one `main.roc`, whose header names the platform by its release URL:
+[#layout]
+=== How an app is laid out
+
+----
+my-app/
+  src/main.roc       the program: its store, window and workers
+  src/Store.roc      shared state, and the decisions that change it
+  src/Home.roc       the window, composed from the store and the widgets
+  src/Widgets.roc    reusable widgets, which know nothing of the store
+  src/Import.roc     a worker task, and the site that asks for its jobs
+  logic/             the business logic: a package of pure Roc, no platform
+  fuzz/main.roc      roc-fuzz targets for the logic package
+  assets/icon.png    the app's icon, and any other images it draws
+  tests/             recorded runs of the app
+  AGENTS.md          how the project is laid out and worked on
+  macos.json         the app's name, bundle identifier and version
+----
+
+Every module opens with a comment saying what belongs in it, and
+`AGENTS.md` (which `CLAUDE.md` points to) says how state flows, how to add
+a screen, a widget, a worker or a fuzz target, and the mistakes to avoid,
+for whoever works on the project next, a person or an agent.
+
+The app's root module is `src/main.roc`, whose header names the platform by
+its release URL, and the logic package by its path:
 
 [source,roc]
 ----
-app [main] { pf: platform "https://github.com/lukewilliamboswell/roc-native-macos/releases/download/<version>/<hash>.tar.zst" }
+app [main] {
+	logic: "../logic/main.roc",
+	pf: platform "https://github.com/lukewilliamboswell/roc-native-macos/releases/download/<version>/<hash>.tar.zst",
+}
 ----
 
-Each release's notes give that URL, so an app can also be written and built
-without the tool (see xref:apps.adoc#without-the-tool[Without the tool]).
+`logic/main.roc` is a package header, `package [Ledger, Money] {}`, so the
+app imports `logic.Money`; the logic cannot import the platform, which keeps
+it testable with `expect` and fuzzable on any system. `macos.json`,
+`assets/`, `tests/` and `fuzz/` stay at the top of the app's directory.
+An app made by 0.0.1's `init` keeps its root module at the top, as
+`main.roc`, and the tool builds it there just the same; an app has one or the
+other, never both. Each release's notes give the platform's URL, so an app
+can also be written and built without the tool (see
+xref:apps.adoc#without-the-tool[Without the tool]).
 
 [#the-tool]
 == The tool's commands
 
-Run `macos.roc` from the app's directory, the one holding `main.roc`:
+Run `macos.roc` from the app's directory, the one holding `src/main.roc`
+(or `main.roc`) and `macos.json`:
 
 [cols="1,2",options="header"]
 |===
@@ -59,8 +95,9 @@ Run `macos.roc` from the app's directory, the one holding `main.roc`:
 | `roc macos.roc init [DIR]` | create an app in `DIR`, or in this directory; it never overwrites a file
 | `roc macos.roc build` | build `<name>.app`, on any system
 | `roc macos.roc run` | build the app and start it, on an Apple silicon Mac
-| `roc macos.roc dev` | start the app with `roc main.roc`, which reloads it as you save, on an Apple silicon Mac; no `.app`, so `macos.json` and the icon do not apply (xref:apps.adoc#hot-reloading[Hot reloading])
-| `roc macos.roc test` | build the app and run its recorded cases, on an Apple silicon Mac; `--update` records what they print now
+| `roc macos.roc dev` | start the app with `roc src/main.roc`, which reloads it as you save, on an Apple silicon Mac; no `.app`, so `macos.json` and the icon do not apply (xref:apps.adoc#hot-reloading[Hot reloading])
+| `roc macos.roc test` | run the app's `expect` tests (`roc test src/main.roc`, on any system), then build the app and run its recorded cases, on an Apple silicon Mac; `--update` records what they print now
+| `roc macos.roc fuzz` | build the app's roc-fuzz targets, `fuzz/main.roc`, and run each for 10 seconds, on an Apple silicon Mac or Linux x64; `--check` runs only their declared examples, `--time SECONDS` longer, and target names only those (xref:apps.adoc#fuzz-the-logic[Fuzz the logic])
 | `roc macos.roc package` | build the app, sign it and zip it as `dist/<name>-<version>.zip`, on any system; `--sign` and `--notarize` sign it with a Developer ID (see xref:apps.adoc#ship-your-app[Ship your app])
 | `roc macos.roc ci package`, `ci release` | what the release workflow runs: package the app as the secrets allow, and attach the zip to the pushed tag's GitHub release (see xref:apps.adoc#automate[Let GitHub release it])
 |===
@@ -68,7 +105,7 @@ Run `macos.roc` from the app's directory, the one holding `main.roc`:
 `<name>` is the app's directory. `roc macos.roc COMMAND --help` describes a
 command, and every failure is explained in a sentence.
 
-`build` runs `roc build main.roc --target=arm64mac`, which writes the program
+`build` runs `roc build src/main.roc --target=arm64mac`, which writes the program
 to `.macos/<name>`, and puts it in a minimal `.app`, named for the app's
 `name` (by default `<name>.app`), with the app's
 xref:apps.adoc#assets[assets and icon] and its
@@ -77,7 +114,7 @@ xref:apps.adoc#metadata[metadata]. `test` runs the same program.
 [#metadata]
 === The app's metadata
 
-`macos.json`, beside `main.roc`, says what the app's `Info.plist` holds. It
+`macos.json`, at the top of the app's directory, says what the app's `Info.plist` holds. It
 is one JSON object of text fields, every one optional, and `init` writes a
 starter:
 
@@ -118,7 +155,8 @@ not clash with another tool's `app.json`.
 == Write an app
 
 Programs and state:: `Engine.program(|| view)` is an app with no store;
-local state comes from `Engine.state(initial, |s| ...)`, as in the counter.
+local state comes from `Engine.state(initial, |s| ...)`, as in the counter
+and in the starter's form and cards (`src/Home.roc`, `src/Widgets.roc`).
 An app with shared state declares a store of cells and builds its view from
 their signals:
 +
@@ -195,12 +233,12 @@ https://github.com/lukewilliamboswell/roc-signals[roc-signals].
 [#assets]
 == Assets and the icon
 
-Everything an app ships lives beside its `main.roc`. Put images and other
-files in an `assets/` directory there:
+Everything an app ships lives in its directory. Put images and other files
+in an `assets/` directory at its top, beside `src/`:
 
 ----
 my-app/
-  main.roc
+  src/main.roc
   assets/
     icon.png        the app's icon
     logo.png
@@ -235,15 +273,16 @@ program (`.macos/<name>`) has the generic icon.
 
 Data files:: A file the app reads as data, such as a word list or a JSON
 table, is best compiled in: `import "data/words.txt" as words : Str` (or
-`: List(U8)`) at the top of `main.roc` makes it a value, with nothing to find
-at run time. Such files can live anywhere beside `main.roc`.
+`: List(U8)`) at the top of a module makes it a value, with nothing to find
+at run time. The path is relative to the module, so such files can live
+anywhere in the app's directory.
 
 Where they go:: `build` copies `assets/` into
 `<name>.app/Contents/Resources/assets/`, and beside the program it tests,
 `.macos/assets/`. The program looks in `ROC_ASSETS` when that is set, then in
 the `.app` it is in, then in `assets/` beside itself, and a bare program last
-in `assets/` of the directory it was started in, which is how `roc main.roc`
-finds them. So copy the whole `.app` to share it; a bare program moved away
+in `assets/` of the directory it was started in, which is how
+`roc src/main.roc`, run from the app's directory, finds them. So copy the whole `.app` to share it; a bare program moved away
 from its assets needs `ROC_ASSETS`.
 The assets are plain files in the bundle: the program's ad hoc signature does
 not cover them, as it does not cover `Info.plist`.
@@ -264,9 +303,10 @@ cd roc-native-macos-examples-<version>/examples/todos
 roc ../../../macos.roc run
 ----
 
-To start your own app from an example, copy its `main.roc` over the one
-`init` wrote. A copy from the archive already names the release; a copy of
-an example read on GitHub names the platform by a path in this repository
+To start your own app from a one-file example, copy its `main.roc` over
+the `src/main.roc` `init` wrote, and delete the `src/` modules it no longer
+imports. A copy from the archive already names the release; a copy of an
+example read on GitHub names the platform by a path in this repository
 (`../../platform/main.roc`), so keep `init`'s platform line instead.
 
 [#the-examples]
@@ -278,6 +318,7 @@ The README shows each example running. What each one uses:
 |===
 | Example | Shows
 
+| `starter` | What `init` writes: an expense tracker laid out as a project, with modules in `src/` (a store with a table and decisions, a window composing them, a reusable `stat` and a `card` widget with local state, each used more than once), a worker importing a CSV file, saving to local storage, an icon, a pure logic package in `logic/` with `expect` tests, and roc-fuzz targets for it in `fuzz/`
 | `counter` | Local state (`Engine.state`), icon buttons, a large monospaced readout
 | `todos` | A store with a table, `table_view` rows (row templates) in a `Ui.scroll` inside a `box`, a form with Return-to-submit, a segmented filter, a Command-N shortcut, done rows greyed by `text_s`, an empty state, a shared `Theme`, saving to local storage and reading it back at boot, and `expect` tests
 | `gallery` | `tabs` over labelled sections: a dropdown, a slider and progress bar, a text area, text styles, semantic and adaptive colours, SF Symbols, Command-N/Command-K shortcuts
@@ -293,10 +334,12 @@ The README shows each example running. What each one uses:
 == Hot reloading
 
 On an Apple silicon Mac, `roc macos.roc dev`, run from the app's directory,
-starts the app for hot reloading. It runs `roc main.roc` there (you can run
-that yourself; `roc run main.roc` is the same), which compiles the app with
-Roc's fast development backend and starts it straight from the compiler,
-with no `.app`. Roc also watches `main.roc` and every module it imports.
+starts the app for hot reloading. It runs `roc src/main.roc` there (`roc
+main.roc` in an app made by 0.0.1; you can run that yourself, and
+`roc run src/main.roc` is the same), which compiles the app with Roc's fast
+development backend and starts it straight from the compiler, with no
+`.app`. Roc also watches the root module and every module and local package
+it imports.
 When you save a change that compiles, Roc rebuilds the app in the background
 and loads the new code into the running program; a change that does not
 compile prints its errors and leaves the running code alone. Quit the app to
@@ -304,7 +347,7 @@ return to the terminal.
 
 [source,sh]
 ----
-cd counter
+cd my-app
 roc macos.roc dev
 ----
 
@@ -329,9 +372,9 @@ handed the state the old code built. A change to the platform's interface
 asks you to restart `roc macos.roc dev`. A reload keeps the old state's memory
 rather than release it with code that may describe it differently, which is
 harmless while you develop. *Reload* appears only in a bare program, such as
-the one `roc main.roc` runs, never in an `.app`.
+the one `roc src/main.roc` runs, never in an `.app`.
 Compilers:: Roc 0.1.0 RC1 and current nightlies. `roc --opt=interpreter
-main.roc` runs the app too, but only the default development backend hot
+src/main.roc` runs the app too, but only the default development backend hot
 reloads.
 
 `roc macos.roc run` builds the real `.app` and is still how to check the app
@@ -340,12 +383,16 @@ as people will see it.
 [#test-an-app]
 == Test an app
 
-`roc test main.roc` runs the app's `expect` tests. It also reports the
-single-field record builder (`{ a: Engine.cell(…) }.Engine.Cells`), which
-builds but fails at run time.
+`roc test src/main.roc` runs the app's `expect` tests: those of every
+module of the app, and of the packages its header names by path, such as
+`logic/`. It works on any system, and also reports the single-field record
+builder (`{ a: Engine.cell(…) }.Engine.Cells`), which builds but fails at run
+time. Keep decisions (functions that return a store's writes) and logic
+pure, and test them there: `Store.store.after(writes).read(cell)` is the
+state after the writes, with no window.
 
-`roc macos.roc test` runs the app's recorded cases. A case is two files in
-`tests/`:
+`roc macos.roc test` runs those `expect` tests, then the app's recorded
+cases. A case is two files in `tests/`:
 
 * `<case>.script`: the steps of a run, such as `click:+;click:+;dump;quit`.
   The platform performs them on the app's real controls, through the same
@@ -429,6 +476,47 @@ as in `ROC_APPEARANCE=dark roc macos.roc run`.
 | `ROC_STORAGE_SUITE=<name>` | a `UserDefaults` suite for local storage; otherwise a scripted run's local storage is in memory
 | `ROC_ASSETS=<dir>` | the app's assets directory, for a program run away from its `assets/` (see xref:apps.adoc#assets[Assets and the icon])
 |===
+
+[#fuzz-the-logic]
+=== Fuzz the logic
+
+https://github.com/lukewilliamboswell/roc-fuzz[roc-fuzz] checks a property
+of pure Roc code against inputs it generates and mutates, with coverage
+feedback. `fuzz/main.roc` is an app on roc-fuzz's platform that imports the
+logic package as `src/main.roc` does, and declares its targets:
+
+[source,roc]
+----
+target = Fuzz.suite([money_round_trip, money_parse, ledger_round_trip, ledger_import])
+
+money_round_trip = Fuzz.target_with({
+	name: "money-round-trip",
+	generator: Fuzz.u64_in(0, Money.most),
+	test: |cents|
+		if cents > Money.most {
+			Fuzz.reject
+		} else if Money.parse(Money.format(cents)) == Ok(cents) {
+			Fuzz.keep
+		} else {
+			crash "${Money.format(cents)} did not parse back to ${cents.to_str()}"
+		},
+	show: Str.inspect,
+	examples: [Fuzz.example({ name: "zero", revision: "1", make: || 0 })],
+})
+----
+
+`roc macos.roc fuzz` builds it with `roc build --fuzz fuzz/main.roc` into
+`.macos/fuzz` and runs each target in turn for 10 seconds, keeping the
+inputs worth revisiting in `.roc-fuzz/corpus/<target>`;
+`roc macos.roc fuzz money-parse --time 300` runs one target for longer, and
+`roc macos.roc fuzz --check` runs only the examples each target declares,
+quickly, as the release workflow does. A failure prints its report and
+leaves the failing input under `.roc-fuzz/`, which
+`.macos/fuzz --target=NAME replay INPUT` runs again; roc-fuzz's
+https://lukewilliamboswell.github.io/roc-fuzz/[manual] covers minimizing it
+and keeping it as an example. roc-fuzz runs on Apple silicon Macs and Linux
+x64. Saved and mutated inputs bypass a generator's bounds, so a property
+states its preconditions again and returns `Fuzz.reject` outside them.
 
 [#ship-your-app]
 == Ship your app
@@ -542,8 +630,10 @@ git tag v1.0.0
 git push origin v1.0.0
 ----
 
-Each of its steps is one command: the workflow runs the app's recorded
-cases on a macOS runner (`roc macos.roc test`), then packages the app on
+Each of its steps is one command: the workflow runs the app's `expect`
+tests and recorded cases on a macOS runner (`roc macos.roc test`) and, when
+it has `fuzz/main.roc`, its fuzz targets' examples
+(`roc macos.roc fuzz --check`), then packages the app on
 Linux (`roc macos.roc ci package`), and attaches `<name>-1.0.0.zip` to the
 tag's GitHub release, creating the release if there is none
 (`roc macos.roc ci release`). A tag with a suffix, such as `v1.0.0-beta.1`,
@@ -599,7 +689,7 @@ yourself, since the platform's one target is Apple silicon macOS:
 
 [source,sh]
 ----
-roc build main.roc --target=arm64mac
+roc build src/main.roc --target=arm64mac
 ----
 
 A `.app` copied to a Mac from elsewhere (downloaded, or built on Linux or

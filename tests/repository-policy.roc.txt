@@ -5,6 +5,7 @@ profile = {
 	schema_version: 2,
 	rules: [
 		{ id: "no-pin", kind: NoCompilerPin, include: ["platform/**/*.roc", "examples/**/*.roc", "bench/**/*.roc", "glue/**/*.roc", "cli/**/*.roc"] },
-		{ id: "examples-platform", kind: Dependency, include: ["examples/**/main.roc"], name: "pf", value: "../../platform/main.roc" },
+		{ id: "examples-platform", kind: Dependency, include: ["examples/*/main.roc"], name: "pf", value: "../../platform/main.roc" },
+		{ id: "examples-src-platform", kind: Dependency, include: ["examples/*/src/main.roc"], name: "pf", value: "../../../platform/main.roc" },
 	],
 }

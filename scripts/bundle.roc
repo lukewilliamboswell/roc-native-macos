@@ -33,9 +33,11 @@ import src/Recorded
 ## compiler accepts `http` only for localhost), makes the `macos.roc` tool
 ## there naming the served URLs (`scripts/release.roc -- tool`), and then,
 ## with an empty Roc package cache, takes an author's first steps outside
-## the checkout: `roc macos.roc init counter`, then `build` and `test` in
-## `counter/`, which runs the counter's recorded cases. It packages the
-## counter twice with `macos.roc package`, and checks that the two zips are
+## the checkout: `roc macos.roc init my-app`, which writes the starter app
+## (`examples/starter`, with `src/main.roc`), then `build`, `test` (its
+## `expect`s and recorded cases) and `fuzz --check` (its roc-fuzz targets)
+## in `my-app/`. It packages the app twice with `macos.roc package`, and
+## checks that the two zips are
 ## the same bytes, hold the sealed bundle with each entry's Unix mode, and
 ## extract with `ditto` to an app whose seal verifies and whose program runs
 ## a recorded case; `actionlint`, when it is on PATH, lints the release
@@ -110,7 +112,7 @@ main! = |raw_args| {
 }
 
 ## Serve a copy of the bundle on localhost, make the `macos.roc` tool naming
-## it there, and create, build and test a counter with the tool.
+## it there, and create, build, test and package an app with the tool.
 consumer_test! : Str, Str, Str => Try({}, _)
 consumer_test! = |root, out, bundle| {
 	dir = "${root}/build/bundle-test"
@@ -128,7 +130,7 @@ consumer_test! = |root, out, bundle| {
 		Ok(port) =>
 			match first_steps!(root, dir, "http://localhost:${port.to_str()}") {
 				Ok({}) =>
-					match package_counter!(dir) {
+					match package_app!(dir) {
 						Ok({}) => assets_app!(root, dir, "http://localhost:${port.to_str()}/${bundle}")
 						Err(problem) => Err(problem)
 					}
@@ -140,7 +142,7 @@ consumer_test! = |root, out, bundle| {
 	server.close!() ?? {}
 	match result {
 		Ok({}) => {
-			note!("bundle: macos.roc created, built, tested and packaged a counter, and built, tested and ran under dev ${Bundle.assets_example} with its assets, against the served bundle")
+			note!("bundle: macos.roc created, built, tested and packaged the starter app, and built, tested and ran under dev ${Bundle.assets_example} with its assets, against the served bundle")
 			Ok({})
 		}
 		Err(problem) => {
@@ -159,8 +161,9 @@ served! = |server|
 		Err(error) => Err("the local server did not start: ${Str.inspect(error)}")
 	}
 
-## `roc macos.roc init counter`, then `build` and `test`, as an author takes
-## them, with the tool and the platform fetched from `base_url`.
+## `roc macos.roc init my-app`, then `build`, `test` and `fuzz --check`, as
+## an author takes them, with the tool and the platform fetched from
+## `base_url`.
 first_steps! : Str, Str, Str => Try({}, Str)
 first_steps! = |root, dir, base_url| {
 	served_dir = "${dir}/served"
@@ -176,7 +179,7 @@ first_steps! = |root, dir, base_url| {
 	Ok({})
 }
 
-## `roc macos.roc ci package` the counter `init` made, twice, as the release
+## `roc macos.roc ci package` the app `init` made, twice, as the release
 ## workflow `init` wrote does for a pushed pre-release tag
 ## with no secrets: both zips must be the same bytes, hold exactly the entries
 ## `Bundle.package_entries` names with their modes, pass `unzip -t`, and
@@ -184,12 +187,12 @@ first_steps! = |root, dir, base_url| {
 ## `codesign --verify --strict` accepts and whose program runs a recorded
 ## case, and whose Info.plist has the tag's version. The workflow is linted
 ## when actionlint is on PATH.
-package_counter! : Str => Try({}, Str)
-package_counter! = |dir| {
-	app_dir = "${dir}/counter"
+package_app! : Str => Try({}, Str)
+package_app! = |dir| {
+	app_dir = "${dir}/my-app"
 	cache = "${dir}/cache"
 	zip = "${app_dir}/${Bundle.package_zip}"
-	shown = "roc macos.roc ${Str.join_with(Bundle.package_args, " ")} (in counter/)"
+	shown = "roc macos.roc ${Str.join_with(Bundle.package_args, " ")} (in my-app/)"
 	var $digests = []
 	for _ in ["first", "second"] {
 		command = Bundle.package_env.fold(
@@ -208,36 +211,36 @@ package_counter! = |dir| {
 	entries = Bundle.zip_entries(bytes) ? |_| "${zip} is not a zip archive"
 	if entries != Bundle.package_entries {
 		listed = Str.join_with(entries.map(|e| "${e.name} ${e.mode.to_str()}"), ", ")
-		return Err("${zip} holds other entries or modes than a sealed counter.app should: ${listed}")
+		return Err("${zip} holds other entries or modes than a sealed my-app.app should: ${listed}")
 	}
 	step!(Cmd.new("unzip").args(["-tq", OsStr.from_str(zip)]), "unzip -tq ${Bundle.package_zip}") ? |_| "unzip found ${zip} damaged"
 	extracted = "${dir}/extracted"
 	fresh!(extracted) ? |_| "could not empty ${extracted}"
 	step!(Cmd.new("ditto").args(["-x", "-k", OsStr.from_str(zip), OsStr.from_str(extracted)]), "ditto -x -k ${Bundle.package_zip}") ? |_| "ditto could not extract ${zip}"
-	extracted_app = "${extracted}/counter.app"
-	step!(Cmd.new("codesign").args(["--verify", "--strict", "--verbose=2", OsStr.from_str(extracted_app)]), "codesign --verify --strict the extracted counter.app") ? |_| "the extracted counter.app's seal does not verify"
+	extracted_app = "${extracted}/my-app.app"
+	step!(Cmd.new("codesign").args(["--verify", "--strict", "--verbose=2", OsStr.from_str(extracted_app)]), "codesign --verify --strict the extracted my-app.app") ? |_| "the extracted my-app.app's seal does not verify"
 	plist = Path.read_utf8!(Path.utf8("${extracted_app}/Contents/Info.plist")) ? |error| "could not read the extracted Info.plist: ${Str.inspect(error)}"
 	for line in Bundle.package_plist {
 		if !plist.contains(line) {
-			return Err("the packaged counter.app's Info.plist does not hold ${line}, for the tag v1.0.0-rc.1")
+			return Err("the packaged my-app.app's Info.plist does not hold ${line}, for the tag v1.0.0-rc.1")
 		}
 	}
 	steps = Path.read_utf8!(Path.utf8("${app_dir}/tests/${Bundle.package_case}.script")) ? |error| "could not read the case: ${Str.inspect(error)}"
 	expected = Path.read_utf8!(Path.utf8("${app_dir}/tests/${Bundle.package_case}.expected")) ? |error| "could not read the case: ${Str.inspect(error)}"
-	note!("RUN the extracted counter.app/Contents/MacOS/counter with tests/${Bundle.package_case}.script")
-	ran = Cmd.new(OsStr.from_str("${extracted_app}/Contents/MacOS/counter"))
+	note!("RUN the extracted my-app.app/Contents/MacOS/my-app with tests/${Bundle.package_case}.script")
+	ran = Cmd.new(OsStr.from_str("${extracted_app}/Contents/MacOS/my-app"))
 		.env("ROC_SCRIPT", OsStr.from_str(steps.trim()))
 		.stdin(Null)
 		.stderr(MergeWithStdout)
 		.timeout(Duration.seconds(60))
-		.run!() ? |error| "the extracted counter.app did not finish: ${Str.inspect(error)}"
+		.run!() ? |error| "the extracted my-app.app did not finish: ${Str.inspect(error)}"
 	printed = Str.from_utf8_lossy(ran.stdout_bytes)
 	if ran.status != Exited(0) or !Recorded.matches(expected, printed) {
-		return Err("the extracted counter.app's program did not print tests/${Bundle.package_case}.expected; it printed:\n${printed}")
+		return Err("the extracted my-app.app's program did not print tests/${Bundle.package_case}.expected; it printed:\n${printed}")
 	}
 	workflow = "${app_dir}/.github/workflows/release.yml"
 	if Cmd.check_available!("actionlint") {
-		step!(Cmd.new("actionlint").args([OsStr.from_str(workflow)]), "actionlint counter/.github/workflows/release.yml") ? |_| "actionlint found problems in the workflow init writes"
+		step!(Cmd.new("actionlint").args([OsStr.from_str(workflow)]), "actionlint my-app/.github/workflows/release.yml") ? |_| "actionlint found problems in the workflow init writes"
 	} else {
 		note!("bundle: actionlint is not on PATH, so the workflow init writes was not linted")
 	}
@@ -246,6 +249,8 @@ package_counter! = |dir| {
 
 ## The repository's example with assets, as an author would have it beside
 ## the tool: `main.roc` naming the served bundle, `assets/` and `tests/`.
+## Its `main.roc` is at its top, the layout 0.0.1's `init` wrote, which the
+## tool still builds, tests and runs.
 ## `macos.roc build` and `test` it, check the bundle it made, and run its
 ## case on the program inside the bundle, then under `macos.roc dev`.
 assets_app! : Str, Str, Str => Try({}, Str)

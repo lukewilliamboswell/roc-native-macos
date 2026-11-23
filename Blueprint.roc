@@ -41,7 +41,7 @@ roc_stable_program = Fetch("roc-stable", Recipes.roc_nightly(tooling.compiler))
 repository_policy = {
 	schema_version: 2,
 	roots: ["platform", "examples", "bench", "glue", "cli", "scripts"],
-	profiles: [{ name: "repository", path: "tests/repository-policy.roc.txt", definition: "profile", sha256: "e5b247be4e3dc93857bca967e841893eed6326c734611b60813fbb4798d59b12" }],
+	profiles: [{ name: "repository", path: "tests/repository-policy.roc.txt", definition: "profile", sha256: "fce043941579ab350443bdafbcb2d9a858c919accab5b1b263df35bc7870094e" }],
 	rules: [{ id: "tooling/pin", kind: CompilerPin, include: ["scripts/**/*.roc"], value: tooling.compiler }],
 	overrides: [],
 }

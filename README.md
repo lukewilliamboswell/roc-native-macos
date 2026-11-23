@@ -30,21 +30,25 @@ app, and create one:
 
 ```sh
 curl -LO https://github.com/lukewilliamboswell/roc-native-macos/releases/latest/download/macos.roc
-roc macos.roc init counter
-cd counter
+roc macos.roc init my-app
+cd my-app
 roc macos.roc run
 ```
 
-`init` writes a counter app, `main.roc`, whose header names the platform
-release, and two recorded runs of it in `tests/`. `run` builds `counter.app`
-and starts it. While you edit `main.roc`, `roc macos.roc dev` runs the app
-with hot reloading: it rebuilds as you save, and Command-R shows the new code.
-`roc macos.roc build` builds the app on any system, and `roc macos.roc test`
-runs its recorded cases. `roc macos.roc package` zips the app for people to
+`init` writes a project to build on: a small expense tracker with its app
+in `src/`, its business logic as a package of pure Roc in `logic/`,
+[roc-fuzz](https://github.com/lukewilliamboswell/roc-fuzz) targets for that
+logic in `fuzz/`, an icon, recorded runs in `tests/`, and an `AGENTS.md`
+saying how it is laid out and worked on. `run` builds `my-app.app` and
+starts it. While you edit it, `roc macos.roc dev` runs the app with hot
+reloading: it rebuilds as you save, and Command-R shows the new code.
+`roc macos.roc build` builds the app on any system, `roc macos.roc test`
+runs its `expect` tests and recorded runs, and `roc macos.roc fuzz` its fuzz
+targets. `roc macos.roc package` zips the app for people to
 download, signed and notarized with a Developer ID if you have one, and the
 workflow `init` writes does that on GitHub when you push a tag ([Ship your app](https://lukewilliamboswell.github.io/roc-native-macos/apps.html#ship-your-app)).
 
-An app is one `main.roc`. A smaller counter than the one `init` writes:
+An app can be as small as one `main.roc`, as this counter is:
 
 ```roc
 app [main] { pf: platform "https://github.com/lukewilliamboswell/roc-native-macos/releases/download/<version>/<hash>.tar.zst" }

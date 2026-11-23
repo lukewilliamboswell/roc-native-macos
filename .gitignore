@@ -7,9 +7,14 @@ platform/targets/macos-sysroot/
 examples/*/*
 examples/*/*.app/
 !examples/*/*.roc
+!examples/*/*.md
 !examples/*/demo.script
 !examples/*/assets/
 !examples/*/tests/
+# The starter's app, logic package and fuzz targets (examples/starter)
+!examples/*/src/
+!examples/*/logic/
+!examples/*/fuzz/
 # The bench harnesses' binaries (bench/<name>/<name>), beside their sources
 bench/*/*
 !bench/*/*.roc
