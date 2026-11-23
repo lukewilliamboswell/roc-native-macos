@@ -103,7 +103,7 @@ Init :: [].{
 			"  .gitignore   keeps build output out of version control",
 			"  .github/     a workflow that tests and packages it when you push a tag such as v1.0.0",
 			"",
-			"Next, run the app (on an Apple silicon Mac; `build` and `package` work anywhere):",
+			"Next, run the app (on a Mac; `build` and `package` work anywhere):",
 			"",
 			next,
 			"",

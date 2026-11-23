@@ -12,7 +12,9 @@ explains the design.
 
 Building the platform itself (not an app: an app needs only Roc, on any
 system) needs Apple silicon macOS, Xcode, `python3`, and a Roc compiler
-installed as `roc`: a current nightly, or 0.1.0 RC1. The repository follows
+installed as `roc`: a current nightly, or 0.1.0 RC1. An Apple silicon Mac
+cross-compiles the Intel host as well; CI builds and runs everything on an
+Intel Mac too (xref:contributing.adoc#intel-macs[Intel Macs]). The repository follows
 https://github.com/lukewilliamboswell/roc-automation[roc-automation], and
 https://github.com/lukewilliamboswell/roc-blueprint[Blueprint] 0.13.0
 provides the rest of the environment.
@@ -29,21 +31,25 @@ open examples/counter/counter.app
 The build is `scripts/build.roc`, which builds examples with the `roc` on
 PATH, or `$ROC`. Building the platform is two steps over committed inputs:
 
-. *Host.* `swiftc` compiles `host/*.swift`, with the committed glue
-  `host/roc_swift_abi.h` as its bridging header, object by object under
-  `build/host`, and `libtool -static -D` archives them into
-  `platform/targets/arm64mac/libhost.a`, with framework autolinking and
-  `FORCE_LOAD` symbols off. The same commit and Xcode build the same bytes
-  on any checkout path, so the host is fingerprinted (its sources, the glue
-  header, the recipe, swiftc and Xcode, recorded in
-  `libhost.fingerprint`) and a current one is reused. `build -- host
-  --reproduce` builds it twice and compares.
-. *Linker stubs.* The macOS TAPI stubs in `platform/targets/macos-sysroot`
-  come from the linker-input release that `link-inputs.lock.json` selects,
-  verified by size and SHA-256, and the host's references are audited
-  against `host/interfaces.json`, then the system imports of the `roc`
+. *Host.* `swiftc` compiles `host/*.swift` for each target, with the
+  committed glue `host/roc_swift_abi.h` as its bridging header and an
+  explicit `-target` (`arm64-apple-macos15.0`, `x86_64-apple-macos15.0`),
+  object by object under `build/host-<target>`, and `libtool -static -D`
+  archives them into `platform/targets/arm64mac/libhost.a` and
+  `platform/targets/x64mac/libhost.a`, with framework autolinking and
+  `FORCE_LOAD` symbols off. `platform/targets/x64v1mac/libhost.a` is a copy
+  of the Intel one. The same commit and Xcode build the same bytes on any
+  checkout path and either kind of Mac, so each host is fingerprinted (its
+  target, its sources, the glue header, the recipe, swiftc and Xcode,
+  recorded in `libhost.fingerprint`) and a current one is reused. `build --
+  host --reproduce` builds each twice and compares.
+. *Linker stubs.* The macOS TAPI stubs in `platform/targets/macos-sysroot`,
+  one set for both architectures, come from the linker-input release that
+  `link-inputs.lock.json` selects, verified by size and SHA-256, and each
+  host's references are audited against what `host/interfaces.json`
+  exports for its architecture, then the system imports of the `roc`
   compiler's run shims, which `roc main.roc` links the host with, against
-  the catalog's `run_shim` (see
+  the catalog's `run_shim` for the architecture of that `roc` (see
   xref:architecture.adoc#linker-inputs[Linker inputs]). A nightly whose
   shims import a symbol the catalog lacks fails the build until a reviewed
   catalog edit adds it, with its evidence, to its library and to
@@ -67,7 +73,7 @@ check gate with that Xcode, and catalog any symbol the audit names.
 Each example is built twice over: the bare binary, and a minimal `.app`
 bundle beside it (`Contents/MacOS/<name>` and an `Info.plist` with
 `CFBundleIdentifier` `dev.roc.native.<name>` and `LSMinimumSystemVersion`
-11.0, the `minos` Roc's linker writes). Launched from the bundle, AppKit has a
+15.0, the host's deployment target). Launched from the bundle, AppKit has a
 bundle identifier, so it no longer warns that it cannot index window tabs.
 The two keep separate `UserDefaults` domains (`todos` versus
 `dev.roc.native.todos`), so they do not share saved values.
@@ -132,7 +138,8 @@ bundle` (`scripts/bundle.roc`) makes that bundle:
 . It builds the platform's native inputs (`scripts/build.roc -- --platform`),
   unless `--prebuilt` is given.
 . It stages, under `build/bundle-stage/`, the tracked `platform/*.roc`
-  modules, `targets/arm64mac/libhost.a`, the generated
+  modules, `targets/arm64mac/libhost.a`, `targets/x64mac/libhost.a` and its
+  copy `targets/x64v1mac/libhost.a`, the generated
   `targets/macos-sysroot/` stubs, `LICENSE` and `THIRD_PARTY_LICENSES.md`.
   The stubs are the catalog's generated TAPI files, not Apple SDK files.
 . It runs `roc bundle` there with `main.roc` first, which writes one
@@ -181,8 +188,9 @@ roc-native-android's `android.roc` and roc-signals' `signals.roc`):
 | `cli/main.roc` | the package root, exposing `MacOS`
 | `cli/MacOS.roc` | the command line: parsing, `help` and `COMMAND --help`, and every failure put into one sentence (`explain`; exit code 2 for misuse)
 | `cli/Init.roc` | `init`: the starter scaffold (`examples/starter`), never overwriting a file
-| `cli/App.roc` | the app's root module (`src/main.roc`, or `main.roc` in an app made by 0.0.1), and `build` and `run`: `roc build --target=arm64mac` into `.macos/<name>`, then `<name>.app` with its `Info.plist`
-| `cli/Cases.roc` | `test`: `roc test` on the root module, then each `tests/<case>.script` run with `ROC_SCRIPT` against `.macos/<name>`
+| `cli/App.roc` | the app's root module (`src/main.roc`, or `main.roc` in an app made by 0.0.1), and `build` and `run`: `roc build --target=arm64mac` and `--target=x64mac`, joined into the universal `.macos/<name>`, then `<name>.app` with its `Info.plist`
+| `cli/Universal.roc` | the universal (fat) Mach-O file, written byte for byte as `lipo -create` writes it, with no Apple tool
+| `cli/Cases.roc` | `test`: `roc test` on the root module, then each `tests/<case>.script` run with `ROC_SCRIPT` against `.macos/<name>`, built for this Mac's own target alone
 | `cli/Fuzz.roc` | `fuzz`: `roc build --fuzz fuzz/main.roc` into `.macos/fuzz`, then each roc-fuzz target it lists, run or (`--check`) checked
 | `cli/Recorded.roc` | the recorded-case rules (`matches`, `portable`), shared with the scripts
 | `cli/Bundle.roc` | generated: the release, its platform URL, the Roc that tested it, and the scaffold
@@ -191,8 +199,11 @@ roc-native-android's `android.roc` and roc-signals' `signals.roc`):
 `build` writes files and runs `roc`, nothing else, so it works on any system:
 Roc's linker signs the program ad hoc (`codesign -dv` shows
 `adhoc,linker-signed`), and the `.app` is a directory and a plist. It always
-passes `--target=arm64mac`, which on an Apple silicon Mac is the native
-target. `run` and `test` need an Apple silicon Mac, and say so elsewhere.
+names its targets, `--target=arm64mac` and `--target=x64mac`, and joins the
+two programs itself (`Universal`) rather than with `lipo`, which only a Mac
+has. Each slice is copied byte for byte, so the linker's signature of each
+still holds, and `package` seals the universal program as it sealed a thin
+one. `run`, `dev` and `test` need a Mac, either kind, and say so elsewhere.
 
 `cli/Bundle.roc` is generated by `scripts/src/Release.roc`. The checked-in
 copy is for a checkout: version `development`, importing the scaffold (every
@@ -298,7 +309,8 @@ depends on the network; the file-inspector demo drops files from
 == The check gate
 
 `blueprint run check` (`scripts/check_all.roc`) is the pull-request gate, the
-same one CI runs on `macos-15`. Its stages, in order:
+same one CI runs on `macos-15`, and in part on `macos-15-intel`
+(xref:contributing.adoc#intel-macs[Intel Macs]). Its stages, in order:
 
 [cols="1,3",options="header"]
 |===
@@ -320,6 +332,45 @@ same one CI runs on `macos-15`. Its stages, in order:
 `check -- STAGE...` runs only the named stages. On a terminal the result
 words (`PASS`, `FAIL`, `SKIP`, `passed`, `failed`) are coloured; `NO_COLOR`
 or a redirected output leaves them plain, and the word is always printed.
+
+[#intel-macs]
+=== Intel Macs
+
+The platform's targets are `arm64mac` and `x64mac`, and `x64v1mac`, Roc's
+baseline Intel target, which a machine whose CPU does not report x86-64-v3
+(Rosetta, and some virtual machines) builds for natively. Nobody needs an
+Intel Mac to work on it: an Apple silicon Mac cross-compiles the Intel host,
+and the linker stubs serve both. CI runs what depends on the CPU on GitHub's
+Intel runner, `macos-15-intel`, with the hosts the `host` job
+cross-compiled:
+
+* `ci.yml`'s `Check on an Intel Mac` job runs `scripts/check_all.roc --
+  scripts tool glue build test examples bundle`: the glue the Intel `roc`
+  generates (identical to Apple silicon's), the stub audit of both hosts and
+  of the Intel `roc`'s own run shims, every example's `expect`s, every
+  example built natively and its recorded cases run, the counter's through
+  `roc main.roc` too, and the bundle's consumer test, which inits the
+  starter app and whose `macos.roc` builds a universal app and runs its
+  Intel half. roc-fuzz has no Intel Mac target (only `arm64mac` and
+  `x64musl`), so on Intel the `test` stage does not check the starter's
+  fuzz targets and the consumer test skips `macos.roc fuzz --check`; the
+  Apple silicon `Check` job runs both.
+* `link-inputs.yml`'s `intel` job links and runs every example against a
+  linker-input candidate before it can be published.
+* `release.yml`'s `Intel` job tests the candidate's files natively, and
+  `cross-run` runs the cross-compiled Intel programs and universal apps.
+
+Blueprint's dev environment is Apple silicon only: roc-policy and roc-docs,
+which it locks, have no `x86_64-darwin` build. So the Intel jobs install the
+two compilers themselves (`.github/actions/setup-roc-tooling`: the tooling
+release as `roc-stable`, the nightly as `roc`) and run the scripts with
+`roc-stable`, leaving out the `pins`, `engine`, `fmt` and `bench` stages,
+whose results do not depend on the CPU.
+
+To try the Intel side on an Apple silicon Mac, put the Intel `roc` nightly
+(`roc_nightly-macos_x86_64-…`) first on PATH as `roc`; Rosetta runs it, and
+`roc-stable scripts/check_all.roc -- build examples` builds every example for
+`x64v1mac` and runs its cases under Rosetta.
 
 [#engine-package]
 == The engine package
@@ -363,8 +414,9 @@ examples, the scripts, the notes or the workflow runs it as a dry run under
 
 | Validate | resolves the Roc nightly for the whole run and the latest final release, and refuses a version that is not SemVer, a dispatch off `main`, an existing tag, or a missing `docs/releases/<version>.adoc`
 | Build (`macos-15`) | selects the pinned Xcode, checks the version against the latest final release (`release -- bump`, below), runs `blueprint run check` (the whole gate, which builds the host and runs every recorded case against it), bundles that same `libhost.a` (`bundle -- --prebuilt`), makes the `macos.roc` tool naming it (`release -- tool`), writes the examples archive (`release -- archive`), builds every archived example against the bundle served on localhost with an empty package cache and runs every recorded case, then with the served `macos.roc` creates, builds and tests an app (`release -- test`), binds the SBOM sidecars of the bundle, the examples archive and the tool (`actions/sbom-sidecars`, from `sbom/composition.json`, `sbom/examples.json` and `sbom/tool.json`) and renders the notes (`release -- notes`)
-| Cross-compile (`ubuntu-24.04`, `ubuntu-24.04-arm`, `windows-2025`) | with only Roc installed and no checkout, serves the candidate on localhost, builds every archived example with `--target=arm64mac`, and with `macos.roc` creates the starter app with `init` and builds `starter.app`; each program must be an arm64 Mach-O executable. It also records what `roc build` without `--target` does there.
-| Run the cross-compiled apps (`macos-15`) | runs every recorded case against each system's cross-compiled apps and the starter's against the `starter.app` `init` made (`release -- test DIR --binaries BIN`)
+| Intel (`macos-15-intel`) | the same candidate on an Intel Mac: builds every archived example natively against the served bundle and runs every recorded case, then with the served `macos.roc` creates, builds (universal) and tests an app (`release -- test`)
+| Cross-compile (`ubuntu-24.04`, `ubuntu-24.04-arm`, `windows-2025`) | with only Roc installed and no checkout, serves the candidate on localhost, builds every archived example with `--target=arm64mac` and `--target=x64mac`, and with `macos.roc` creates the starter app with `init` and builds `starter.app`; each program must be a Mach-O executable for its CPU, and each `.app`'s a universal one. It also records what `roc build` without `--target` does there.
+| Run the cross-compiled apps (`macos-15`, `macos-15-intel`) | on each Mac, runs every recorded case against each system's programs for that Mac and the universal `.app`s, the starter's against the `starter.app` `init` made (`release -- cross-run DIR CROSS TARGET`)
 | Attest | build-provenance attestations for every file, and SBOM attestations for the bundle, the examples archive, the tool's package and `macos.roc`, exported as `<file>.intoto.jsonl`
 | Publish (`release` environment) | checks out nothing and runs no repository code: `actions/publish-release` stages a draft at the tested commit, downloads every asset back and compares it with the tested file, then publishes
 |===
@@ -441,7 +493,8 @@ roc-automation's "Repository settings" chapter, do:
 * Actions: the default workflow token is read-only, and Actions may not
   create or approve pull requests.
 * A ruleset on `main`: require a pull request, require the status checks
-  `Check` (`ci.yml`), `Release dry run` (`release.yml`) and `Build the manual`
+  `Check` and `Check on an Intel Mac` (`ci.yml`), `Release dry run`
+  (`release.yml`) and `Build the manual`
   (`docs.yml`) on the current commit with the branch up to date, require
   signed commits, and give no bot a bypass. Merge commits stay allowed: the
   linker-input publisher binds its evidence to the exact commits of a pull

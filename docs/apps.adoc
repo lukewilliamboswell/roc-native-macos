@@ -12,8 +12,8 @@ xref:ui.adoc#builders[The Ui reference] lists every builder.
 You need Roc as `roc` on your PATH: a current
 https://github.com/roc-lang/nightlies/releases[nightly] or 0.1.0 RC1, on
 macOS, Linux or Windows. The platform carries the prebuilt Swift host and its
-linker inputs. The app runs on Apple silicon Macs with macOS 11 or later;
-Intel Macs are not supported.
+linker inputs. The app is universal: it runs on Apple silicon and Intel Macs
+with macOS 15 or later.
 
 Download `macos.roc`, the tool for creating, building, running and testing an
 app, and create one:
@@ -94,10 +94,10 @@ Run `macos.roc` from the app's directory, the one holding `src/main.roc`
 
 | `roc macos.roc init [DIR]` | create an app in `DIR`, or in this directory; it never overwrites a file
 | `roc macos.roc build` | build `<name>.app`, on any system
-| `roc macos.roc run` | build the app and start it, on an Apple silicon Mac
-| `roc macos.roc dev` | start the app with `roc src/main.roc`, which reloads it as you save, on an Apple silicon Mac; no `.app`, so `macos.json` and the icon do not apply (xref:apps.adoc#hot-reloading[Hot reloading])
-| `roc macos.roc test` | run the app's `expect` tests (`roc test src/main.roc`, on any system), then build the app and run its recorded cases, on an Apple silicon Mac; `--update` records what they print now
-| `roc macos.roc fuzz` | build the app's roc-fuzz targets, `fuzz/main.roc`, and run each for 10 seconds, on an Apple silicon Mac or Linux x64; `--check` runs only their declared examples, `--time SECONDS` longer, and target names only those (xref:apps.adoc#fuzz-the-logic[Fuzz the logic])
+| `roc macos.roc run` | build the app and start it, on a Mac
+| `roc macos.roc dev` | start the app with `roc src/main.roc`, which reloads it as you save, on a Mac; no `.app`, so `macos.json` and the icon do not apply (xref:apps.adoc#hot-reloading[Hot reloading])
+| `roc macos.roc test` | run the app's `expect` tests (`roc test src/main.roc`, on any system), then build the app for this Mac and run its recorded cases, on a Mac; `--update` records what they print now
+| `roc macos.roc fuzz` | build the app's roc-fuzz targets, `fuzz/main.roc`, and run each for 10 seconds, on an Apple silicon Mac or Linux x64 (roc-fuzz has no Intel Mac target); `--check` runs only their declared examples, `--time SECONDS` longer, and target names only those (xref:apps.adoc#fuzz-the-logic[Fuzz the logic])
 | `roc macos.roc package` | build the app, sign it and zip it as `dist/<name>-<version>.zip`, on any system; `--sign` and `--notarize` sign it with a Developer ID (see xref:apps.adoc#ship-your-app[Ship your app])
 | `roc macos.roc ci package`, `ci release` | what the release workflow runs: package the app as the secrets allow, and attach the zip to the pushed tag's GitHub release (see xref:apps.adoc#automate[Let GitHub release it])
 |===
@@ -105,11 +105,13 @@ Run `macos.roc` from the app's directory, the one holding `src/main.roc`
 `<name>` is the app's directory. `roc macos.roc COMMAND --help` describes a
 command, and every failure is explained in a sentence.
 
-`build` runs `roc build src/main.roc --target=arm64mac`, which writes the program
-to `.macos/<name>`, and puts it in a minimal `.app`, named for the app's
-`name` (by default `<name>.app`), with the app's
-xref:apps.adoc#assets[assets and icon] and its
-xref:apps.adoc#metadata[metadata]. `test` runs the same program.
+`build` runs `roc build src/main.roc --target=arm64mac` and `--target=x64mac`,
+which write the program for Apple silicon and for Intel Macs, joins the two
+into one universal program, `.macos/<name>`, with no Apple tool, and puts it
+in a minimal `.app`, named for the app's `name` (by default `<name>.app`),
+with the app's xref:apps.adoc#assets[assets and icon] and its
+xref:apps.adoc#metadata[metadata]. Each Mac runs its own half natively.
+`test` builds the program for the Mac it runs on alone, and runs that.
 
 [#metadata]
 === The app's metadata
@@ -127,7 +129,7 @@ starter:
   "build": "7",
   "copyright": "© 2026 Jane Doe",
   "category": "public.app-category.utilities",
-  "minimum_macos": "13.0"
+  "minimum_macos": "26.0"
 }
 ----
 
@@ -141,7 +143,7 @@ starter:
 | `build`, `--build 7` | `CFBundleVersion` | the build number, one to three whole numbers with no suffix; by default the version's numbers. Set it to tell builds of one version apart, such as a beta from the release that follows it
 | `copyright`, `--copyright TEXT` | `NSHumanReadableCopyright` | shown in the app's About panel
 | `category`, `--category CATEGORY` | `LSApplicationCategoryType` | an App Store category, `public.app-category.` and its name, such as `utilities` or `developer-tools`
-| `minimum_macos`, `--minimum-macos 13.0` | `LSMinimumSystemVersion` | the oldest macOS the app opens on; by default 11.0, the oldest the platform runs on, and never earlier
+| `minimum_macos`, `--minimum-macos 26.0` | `LSMinimumSystemVersion` | the oldest macOS the app opens on; by default 15.0, the oldest the platform runs on, and never earlier
 |===
 
 `build`, `run` and `package` take each field as a flag, which overrides the
@@ -333,7 +335,7 @@ The README shows each example running. What each one uses:
 [#hot-reloading]
 == Hot reloading
 
-On an Apple silicon Mac, `roc macos.roc dev`, run from the app's directory,
+On a Mac, `roc macos.roc dev`, run from the app's directory,
 starts the app for hot reloading. It runs `roc src/main.roc` (`roc
 main.roc` in an app made by 0.0.1; you can run that yourself, and
 `roc run src/main.roc` is the same), which compiles the app with Roc's fast
@@ -689,13 +691,21 @@ in an empty directory and copy the file from there.
 
 `roc macos.roc build` works the same on macOS, Linux and Windows: the
 platform carries everything the link needs, and Roc's linker signs the
-program ad hoc wherever it is built. Without the tool, name the target
-yourself, since the platform's one target is Apple silicon macOS:
+program ad hoc wherever it is built. Without the tool, name the Mac to
+build for yourself, since the platform's targets are macOS ones (`roc`
+builds for the machine it runs on by default):
 
 [source,sh]
 ----
-roc build src/main.roc --target=arm64mac
+roc build src/main.roc --target=arm64mac   # Apple silicon
+roc build src/main.roc --target=x64mac     # Intel
 ----
+
+`roc build` makes one program for one Mac; `roc macos.roc build` makes both
+and joins them into a universal one. On an Intel Mac, `roc src/main.roc` and a
+bare `roc build` need no `--target`. A machine whose CPU does not report
+x86-64-v3 (an Intel virtual machine, say, or Rosetta) gets Roc's baseline
+target, `x64v1mac`, which the platform supports too.
 
 A `.app` copied to a Mac from elsewhere (downloaded, or built on Linux or
 Windows) may be quarantined by Gatekeeper, which then refuses to open it.

@@ -24,7 +24,7 @@ Package := [].{
 	## with a Developer ID and to notarize (which implies signing).
 	Options : { fields : Meta.Fields, sign : Bool, notarize : Bool }
 
-	## Where the zip goes, beside `main.roc`.
+	## Where the zip goes, in the app's directory.
 	dist : Str
 	dist = "dist"
 

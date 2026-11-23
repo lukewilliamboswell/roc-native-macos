@@ -26,7 +26,7 @@ import src/Release
 ##     blueprint run release -- test DIR --binaries BIN   # run the archived examples' cases on prebuilt apps in BIN
 ##     blueprint run release -- notes VERSION DIR OUT     # the release notes, as Markdown, to OUT
 ##     blueprint run release -- bump VERSION [LATEST URL] # roc bump --expect against the latest final release
-##     blueprint run release -- cross-run DIR CROSS       # test DIR's cases on every CROSS/cross-<system>/ app
+##     blueprint run release -- cross-run DIR CROSS TARGET   # test DIR's cases on every CROSS/cross-<system>/ app for TARGET
 ##     blueprint run release -- versions                  # the compilers and the Swift toolchain
 ##
 ## `tool` writes `macos.roc`, the app author's tool: it stages the tool's
@@ -50,6 +50,9 @@ import src/Release
 ## `--binaries BIN` it builds nothing and runs the cases against `BIN/<example>`,
 ## apps cross-compiled on another system from the same archive and bundle,
 ## and against `BIN/<example>.app` where `macos.roc build` made one there.
+## `cross-run` does that for each cross-compiling system's apps, with the
+## programs built for TARGET, this Mac's own (`BIN/<TARGET>/<example>`),
+## and the universal `BIN/<example>.app`.
 ##
 ## `bump` checks that VERSION goes far enough past LATEST, the latest final
 ## release, whose platform bundle is at URL: `roc bump --old URL --expect
@@ -71,13 +74,13 @@ main! = |raw_args| {
 		["tool", version, dir, "--base-url", url] => tool!(root, version, absolute(root, dir), Ok(url.drop_suffix("/")))
 		["archive", version, dir] => archive!(root, version, absolute(root, dir))
 		["test", dir] => test!(root, absolute(root, dir), Err(NoBinaries))
-		["test", dir, "--binaries", bin] => test!(root, absolute(root, dir), Ok(absolute(root, bin)))
+		["test", dir, "--binaries", bin] => test!(root, absolute(root, dir), Ok({ programs: absolute(root, bin), apps: absolute(root, bin) }))
 		["notes", version, dir, out] => notes!(version, absolute(root, dir), absolute(root, out))
 		["bump", version] => bump!(version, "", "")
 		["bump", version, latest, url] => bump!(version, latest, url)
-		["cross-run", dir, cross] => cross_run!(root, absolute(root, dir), absolute(root, cross))
+		["cross-run", dir, cross, target] if cross_targets.contains(target) => cross_run!(root, absolute(root, dir), absolute(root, cross), target)
 		["versions"] => versions!()
-		_ => Err("usage: release tool VERSION DIR [--base-url URL] | archive VERSION DIR | test DIR [--binaries BIN] | notes VERSION DIR OUT | bump VERSION [LATEST URL] | cross-run DIR CROSS | versions")
+		_ => Err("usage: release tool VERSION DIR [--base-url URL] | archive VERSION DIR | test DIR [--binaries BIN] | notes VERSION DIR OUT | bump VERSION [LATEST URL] | cross-run DIR CROSS (arm64mac | x64mac) | versions")
 	}
 	match result {
 		Ok({}) => Ok({})
@@ -225,16 +228,18 @@ readme = |version, url, count|
 			"    ${url}",
 			"",
 			"Build one with a Roc compiler on any system; the app runs on Apple silicon",
-			"macOS 11 or later. With macos.roc, the tool this release publishes, saved",
-			"beside this directory, build and start an example from its own directory:",
+			"and Intel Macs with macOS 15 or later. With macos.roc, the tool this release",
+			"publishes, saved beside this directory, build and start an example from its",
+			"own directory:",
 			"",
 			"    cd examples/todos",
 			"    roc ../../../macos.roc run",
 			"",
-			"`roc ../../../macos.roc build` builds `todos.app` on any system. Without",
-			"the tool, name the target, since the app is for Apple silicon macOS:",
+			"`roc ../../../macos.roc build` builds `todos.app`, a universal app for both",
+			"kinds of Mac, on any system. Without the tool, name the Mac to build for:",
 			"",
-			"    roc build main.roc --target=arm64mac",
+			"    roc build main.roc --target=arm64mac   # Apple silicon",
+			"    roc build main.roc --target=x64mac     # Intel",
 			"",
 			"Each example's `tests/<case>.script` holds the steps of a recorded run and",
 			"`<case>.expected` what the app prints. Run them from the example's directory:",
@@ -250,7 +255,7 @@ readme = |version, url, count|
 
 ## Build every archived example against the served bundle and run its
 ## recorded cases, or run them against prebuilt apps.
-test! : Str, Str, Try(Str, [NoBinaries]) => Try({}, Str)
+test! : Str, Str, Try({ programs : Str, apps : Str }, [NoBinaries]) => Try({}, Str)
 test! = |root, dir, binaries| {
 	bundle = bundle_in!(dir)?
 	zips = names_in!(dir)?.keep_if(|name| name.starts_with("roc-native-macos-examples-") and name.ends_with(".zip"))
@@ -267,12 +272,12 @@ test! = |root, dir, binaries| {
 	if examples.is_empty() {
 		return Err("${zip} holds no examples")
 	}
-	apps = match binaries {
-		Ok(bin) => bin
+	{ programs, apps } = match binaries {
+		Ok(given) => given
 		Err(NoBinaries) => {
 			tool = tool_in!(dir)?
 			build_all!(work, top, dir, { bundle, tool }, examples)?
-			"${work}/apps"
+			{ programs: "${work}/apps", apps: "${work}/apps" }
 		}
 	}
 	var $failed = []
@@ -288,7 +293,7 @@ test! = |root, dir, binaries| {
 		if cases.is_empty() {
 			$failed = $failed.append("${example} has no recorded case")
 		}
-		for { exe, label, assets } in [{ exe: "${apps}/${example}", label: example, assets: "${top}/examples/${example}/assets" }].concat(bundled) {
+		for { exe, label, assets } in [{ exe: "${programs}/${example}", label: example, assets: "${top}/examples/${example}/assets" }].concat(bundled) {
 			for name in cases {
 				match run_case!("${top}/examples/${example}", { exe, assets }, name) {
 					Ok({}) => {
@@ -530,18 +535,29 @@ bump! = |version, latest, url| {
 cross_systems : List(Str)
 cross_systems = ["x86_64-linux", "aarch64-linux", "x86_64-windows"]
 
-## Every recorded case against each system's cross-compiled apps, which the
-## artifact download leaves without their executable bits.
-cross_run! : Str, Str, Str => Try({}, Str)
-cross_run! = |root, dir, cross| {
+## The Macs the cross-compiled programs are for: each system builds every
+## example into `<target>/<example>` for both, and its `.app`s universal.
+cross_targets : List(Str)
+cross_targets = ["arm64mac", "x64mac"]
+
+## Every recorded case against each system's cross-compiled apps for
+## `target`, this Mac's own, which the artifact download leaves without
+## their executable bits.
+cross_run! : Str, Str, Str, Str => Try({}, Str)
+cross_run! = |root, dir, cross, target| {
 	for system in cross_systems {
 		bin = "${cross}/cross-${system}"
-		note!("== apps cross-compiled on ${system}")
-		for name in names_in!(bin)? {
-			path = if (name.ends_with(".app")) "${bin}/${name}/Contents/MacOS/${name.drop_suffix(".app")}" else "${bin}/${name}"
+		programs = "${bin}/${target}"
+		note!("== apps cross-compiled on ${system}, for ${target}")
+		for name in names_in!(programs)? {
+			path = "${programs}/${name}"
 			step!(Cmd.new("chmod").args(["+x", OsStr.from_str(path)]), "chmod +x ${path}")?
 		}
-		test!(root, dir, Ok(bin))?
+		for name in names_in!(bin)?.keep_if(|name| name.ends_with(".app")) {
+			path = "${bin}/${name}/Contents/MacOS/${name.drop_suffix(".app")}"
+			step!(Cmd.new("chmod").args(["+x", OsStr.from_str(path)]), "chmod +x ${path}")?
+		}
+		test!(root, dir, Ok({ programs, apps: bin }))?
 	}
 	Ok({})
 }

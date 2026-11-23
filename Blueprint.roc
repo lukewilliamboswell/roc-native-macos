@@ -19,8 +19,11 @@
 # contributor installs a current nightly (or a release such as 0.1.0 RC1) as
 # `roc`, so the environment expects it on PATH.
 #
-# The host is Swift and links AppKit, so the environment is Apple silicon
-# macOS only, and Xcode's `swiftc` comes from the machine.
+# The host is Swift and links AppKit, so the environment is macOS, and
+# Xcode's `swiftc` comes from the machine. It is Apple silicon only, since
+# roc-policy and roc-docs have no x86_64-darwin build; Apple silicon
+# cross-compiles the Intel host, and CI's Intel jobs run the scripts with
+# `roc-stable` directly (.github/actions/setup-roc-tooling).
 app [config] { pf: platform "https://github.com/lukewilliamboswell/roc-blueprint/releases/download/0.13.0/DBtzmMfrSgt6nCGVAcZYCVPxWbhpqw3MXpm6sdQzMn4v.tar.zst" }
 
 import pf.Recipes

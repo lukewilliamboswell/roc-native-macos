@@ -12,15 +12,22 @@ name: Release
 #              the nightly, the latest final release (workflow -- validate)
 #   build      macos-15: the version against that release (roc bump), the
 #              whole check gate, then the bundle from the very
-#              host the gate built and tested, the macos.roc tool, the
-#              examples archive, every archived example built against the
-#              served bundle and run, an app created, built and tested with
-#              macos.roc, the bundle's SBOM sidecars and the notes
+#              hosts the gate built and tested (Apple silicon and Intel), the
+#              macos.roc tool, the examples archive, every archived example
+#              built against the served bundle and run, an app created, built
+#              and tested with macos.roc, the bundle's SBOM sidecars and the
+#              notes
+#   intel      macos-15-intel: the same candidate's files on an Intel Mac:
+#              every archived example built natively against the served
+#              bundle and run, and an app created, built (universal) and
+#              tested with macos.roc
 #   cross      Linux x64, Linux arm64 and Windows, with nothing but Roc: every
-#              archived example cross-compiled for arm64mac from the bundle,
-#              an app created and built with macos.roc, and each example
-#              with assets/ built with it into a .app
-#   cross-run  macos-15: those cross-compiled apps run their recorded cases
+#              archived example cross-compiled for arm64mac and x64mac from
+#              the bundle, an app created and built with macos.roc into a
+#              universal .app, and each example with assets/ built with it
+#   cross-run  macos-15 and macos-15-intel: those cross-compiled apps run
+#              their recorded cases, each Mac its own programs and the
+#              universal .apps
 #   attest     build provenance for every published file
 #   publish    actions/publish-release: draft, verify every asset, publish
 on:
@@ -195,8 +202,33 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+  # The candidate on an Intel Mac, as an author with one meets it: the
+  # bundle's x64mac host, the stubs' x86_64 slice and macos.roc's universal
+  # build, natively. Blueprint's environment is Apple silicon only, so the
+  # scripts run with roc-stable directly.
+  intel:
+    name: Test the release on an Intel Mac
+    needs: [validate, build]
+    runs-on: macos-15-intel
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-roc-tooling
+        with:
+          nightly-tag: ${{ needs.validate.outputs.nightly-tag }}
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          name: release-candidate
+          path: build/release
+      - name: Build every archived example against the served bundle and run its cases, then init, build and test an app with macos.roc
+        run: roc-stable scripts/release.roc -- test build/release
+
   # An app author on any system: install Roc, name the bundle, build for
-  # arm64mac. No checkout, no Xcode, no Swift, no Apple SDK: only the release
+  # arm64mac and x64mac. No checkout, no Xcode, no Swift, no Apple SDK: only the release
   # candidate's files and the compiler. The bundle and the macos.roc tool are
   # served on localhost in place of their release URLs (Roc fetches only
   # https URLs, or http from localhost).
@@ -228,7 +260,7 @@ jobs:
         with:
           name: release-candidate
           path: ${{ runner.temp }}/candidate
-      - name: Build every archived example for arm64mac against the served bundle, and an app made with macos.roc
+      - name: Build every archived example for arm64mac and x64mac against the served bundle, and an app made with macos.roc
         env:
           SYSTEM: ${{ matrix.system }}
         run: |
@@ -249,7 +281,13 @@ jobs:
           tool=$(basename "${tools[0]}")
           work="$tmp/cross"
           apps="$tmp/apps"
-          mkdir -p "$work" "$apps"
+          mkdir -p "$work" "$apps/arm64mac" "$apps/x64mac"
+          # A thin Mach-O executable's first 8 bytes: magic cf fa ed fe and
+          # its CPU type, arm64 0x0100000c or x86_64 0x01000007. A universal
+          # one: ca fe ba be and two slices.
+          magic() { od -An -tx1 -N8 "$1" | tr -d ' \n'; }
+          expected() { case "$1" in arm64mac) echo cffaedfe0c000001 ;; x64mac) echo cffaedfe07000001 ;; esac; }
+          universal=cafebabe00000002
           if [ "$RUNNER_OS" = Windows ]; then
             # Windows has no unzip; its own tar reads ZIP.
             "$(cygpath "$SYSTEMROOT")/System32/tar.exe" -xf "$(cygpath -w "${archives[0]}")" -C "$(cygpath -w "$work")"
@@ -272,12 +310,13 @@ jobs:
             if [ -f "$dir/src/main.roc" ]; then entry=src/main.roc; fi
             sed -i "s#platform \"https://[^\"]*/$bundle\"#platform \"$url\"#" "$dir/$entry"
             grep -q "platform \"$url\"" "$dir/$entry" || { echo "::error::$name does not name the release URL of $bundle"; exit 1; }
-            echo "::group::$name"
-            (cd "$dir" && roc build "$entry" --target=arm64mac --output="$apps/$name")
-            echo "::endgroup::"
-            # A Mach-O arm64 executable: magic cf fa ed fe, CPU type 0x0100000c.
-            test "$(od -An -tx1 -N8 "$apps/$name" | tr -d ' \n')" = cffaedfe0c000001 \
-              || { echo "::error::$apps/$name is not an arm64 Mach-O executable"; exit 1; }
+            for target in arm64mac x64mac; do
+              echo "::group::$name for $target"
+              (cd "$dir" && roc build "$entry" --target="$target" --output="$apps/$target/$name")
+              echo "::endgroup::"
+              test "$(magic "$apps/$target/$name")" = "$(expected "$target")" \
+                || { echo "::error::$apps/$target/$name is not a $target Mach-O executable"; exit 1; }
+            done
           done
           # An author's first steps with the release's macos.roc: init an
           # app, which is the starter example, then build starter.app.
@@ -291,8 +330,8 @@ jobs:
           grep -q "platform \"$url\"" "$beginner/starter/src/main.roc" || { echo "::error::init wrote a src/main.roc that does not name the release URL of $bundle"; exit 1; }
           (cd "$beginner/starter" && roc macos.roc build)
           test -f "$beginner/starter/starter.app/Contents/Info.plist"
-          test "$(od -An -tx1 -N8 "$beginner/starter/starter.app/Contents/MacOS/starter" | tr -d ' \n')" = cffaedfe0c000001 \
-            || { echo "::error::macos.roc build wrote no arm64 Mach-O executable"; exit 1; }
+          test "$(magic "$beginner/starter/starter.app/Contents/MacOS/starter")" = "$universal" \
+            || { echo "::error::macos.roc build wrote no universal Mach-O executable"; exit 1; }
           cp -R "$beginner/starter/starter.app" "$apps/starter.app"
           # Each other archived example with assets/ is built through
           # macos.roc too, which copies them into <name>.app and makes its
@@ -307,6 +346,8 @@ jobs:
             (cd "$dir" && roc macos.roc build)
             test -d "$dir/$name.app/Contents/Resources/assets" \
               || { echo "::error::macos.roc build put no assets in $name.app"; exit 1; }
+            test "$(magic "$dir/$name.app/Contents/MacOS/$name")" = "$universal" \
+              || { echo "::error::macos.roc build wrote no universal Mach-O executable for $name.app"; exit 1; }
             if [ -f "$dir/assets/icon.png" ]; then
               test "$(od -An -c -N4 "$dir/$name.app/Contents/Resources/AppIcon.icns" | tr -d ' \n')" = icns \
                 || { echo "::error::macos.roc build made no AppIcon.icns for $name.app"; exit 1; }
@@ -314,9 +355,10 @@ jobs:
             cp -R "$dir/$name.app" "$apps/$name.app"
           done
           ls -l "$apps"
-          # Record what a plain `roc build` does here. macos.roc always passes
-          # --target=arm64mac because the compiler defaults to the machine's
-          # own target, which the platform does not declare. This step
+          # Record what a plain `roc build` does here. macos.roc always names
+          # its targets (--target=arm64mac, --target=x64mac) because the
+          # compiler defaults to the machine's own target, which the platform
+          # does not declare. This step
           # reports, and never fails on, that behaviour.
           counter="$top/examples/counter"
           if (cd "$counter" && roc build main.roc --output="$tmp/probe") > "$tmp/probe.log" 2>&1; then
@@ -332,24 +374,31 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
-  # The cross-compiled apps on the Mac they are for: every recorded case of
-  # every example, against the binaries built elsewhere.
+  # The cross-compiled apps on the Macs they are for: every recorded case of
+  # every example, against the binaries built elsewhere, each Mac running its
+  # own programs and its half of the universal .apps. Both run the scripts
+  # with roc-stable directly, since Blueprint's environment is Apple silicon
+  # only.
   cross-run:
-    name: Run the cross-compiled apps on macOS
+    name: Run the cross-compiled apps on ${{ matrix.target }}
     needs: [validate, build, cross]
-    runs-on: macos-15
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 30
     permissions:
       contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { runner: macos-15, target: arm64mac }
+          - { runner: macos-15-intel, target: x64mac }
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
-      - uses: lukewilliamboswell/roc-automation/actions/setup-blueprint@acc5efdcd929b38e665cd3ae6e694d1c4887f9c7
-      - uses: lukewilliamboswell/roc-automation/actions/setup-roc-nightly@acc5efdcd929b38e665cd3ae6e694d1c4887f9c7
+      - uses: ./.github/actions/setup-roc-tooling
         with:
           nightly-tag: ${{ needs.validate.outputs.nightly-tag }}
-          cache: 'false'
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
         with:
           name: release-candidate
@@ -359,12 +408,14 @@ jobs:
           pattern: cross-*
           path: build/cross
       - name: Run every recorded case against each system's apps
-        run: blueprint run release -- cross-run build/release build/cross
+        env:
+          TARGET: ${{ matrix.target }}
+        run: roc-stable scripts/release.roc -- cross-run build/release build/cross "$TARGET"
 
   attest:
     name: Attest the tested files
     if: github.event_name == 'workflow_dispatch'
-    needs: [validate, build, cross-run]
+    needs: [validate, build, intel, cross-run]
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
@@ -430,7 +481,7 @@ jobs:
   publish:
     name: Publish the tested release
     if: github.event_name == 'workflow_dispatch'
-    needs: [validate, build, cross-run, attest]
+    needs: [validate, build, intel, cross-run, attest]
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     environment: release
@@ -467,7 +518,7 @@ jobs:
   required:
     name: Release dry run
     if: always() && github.event_name == 'pull_request'
-    needs: [validate, build, cross, cross-run]
+    needs: [validate, build, intel, cross, cross-run]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions: {}

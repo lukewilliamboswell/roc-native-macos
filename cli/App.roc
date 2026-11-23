@@ -6,13 +6,16 @@ import cli.Stdout
 import cli.System
 import Icon
 import Meta
+import Universal
 
 ## Build an app with Roc into `<name>.app`, and start it.
 ##
-## `roc build --target=arm64mac` writes the program to `.macos/<name>`: the
-## platform carries the Swift host and the linker's inputs, and Roc's linker
-## signs the program (ad hoc), so this works the same on macOS, Linux and
-## Windows. The tool then writes `<name>.app` around it: the program in
+## `roc build --target=arm64mac` and `--target=x64mac` write the program for
+## Apple silicon and for Intel Macs, and the tool joins the two into one
+## universal program, `.macos/<name>` (`Universal`): the platform carries the
+## Swift host for each and the linker's inputs, and Roc's linker signs each
+## program (ad hoc), so this works the same on macOS, Linux and Windows. The
+## tool then writes `<name>.app` around it: the program in
 ## `Contents/MacOS/`, a copy of `assets/` in `Contents/Resources/`, the icon,
 ## and an `Info.plist` with its metadata (`Meta`: `macos.json` and the
 ## flags). Only running it needs a Mac.
@@ -46,10 +49,16 @@ App := [].{
 			_ => Err(NoMainRoc)
 		}
 
-	## Build the program, `.macos/<name>`, from the app's root module. `test`
-	## runs this program; `build` and `run` put it in `<name>.app`.
-	compile! : () => Try({ name : Str, program : Str }, _)
-	compile! = || {
+	## The Roc targets of the platform: Apple silicon and Intel Macs, in the
+	## order they are built.
+	mac_targets : List(Str)
+	mac_targets = ["arm64mac", "x64mac"]
+
+	## Build the program, `.macos/<name>`, from the app's root module: for
+	## this Mac's own target (`Native`), which `test` runs, or for every Mac
+	## (`Universal`), which `build` and `run` put in `<name>.app`.
+	compile! : [Native(Str), Universal] => Try({ name : Str, program : Str }, _)
+	compile! = |how| {
 		entry = App.entry!()?
 		if !Cmd.check_available!("roc") {
 			return Err(RocMissing)
@@ -61,14 +70,46 @@ App := [].{
 		if Path.exists!(Path.utf8(program))? {
 			Path.delete!(Path.utf8(program))?
 		}
-		Stdout.line!("Building ${entry} for Apple silicon macOS...")?
-		built = Cmd.new("roc").args(["build", entry, "--target=arm64mac", "--output=${program}"].map(OsStr.from_str)).inherit_stdio().run!()?
-		if built.status != Exited(0) {
-			return Err(BuildFailed)
+		match how {
+			Native(target) => App.build_for!(entry, target, program)?
+			Universal => {
+				var $slices = []
+				for target in App.mac_targets {
+					thin = "${App.work}/${name}-${target}"
+					App.build_for!(entry, target, thin)?
+					$slices = $slices.append(thin)
+				}
+				var $bytes = []
+				for thin in $slices {
+					$bytes = $bytes.append(Path.read_bytes!(Path.utf8(thin))?)
+				}
+				universal = Universal.merge($bytes) ? |problem| NotUniversal(problem)
+				# A copy keeps the thin program's execute permission, which
+				# writing over it keeps too.
+				first = $slices.first() ? |_| NotUniversal(NotAProgram)
+				Path.copy!(Path.utf8(first), Path.utf8(program))?
+				Path.write_bytes!(Path.utf8(program), universal)?
+			}
 		}
 		App.place_assets!("${App.work}/assets")?
 		Ok({ name, program })
 	}
+
+	## `roc build` the app's root module, `entry`, for one target into
+	## `program`.
+	build_for! : Str, Str, Str => Try({}, _)
+	build_for! = |entry, target, program| {
+		Stdout.line!("Building ${entry} for ${App.target_name(target)}...")?
+		built = Cmd.new("roc").args(["build", entry, "--target=${target}", "--output=${program}"].map(OsStr.from_str)).inherit_stdio().run!()?
+		if built.status != Exited(0) {
+			return Err(BuildFailed)
+		}
+		Ok({})
+	}
+
+	## A target's name in a sentence.
+	target_name : Str -> Str
+	target_name = |target| if (target == "x64mac") "Intel Macs (x64mac)" else "Apple silicon Macs (arm64mac)"
 
 	## Where an app keeps its images and other files, in its directory.
 	assets : Str
@@ -131,7 +172,7 @@ App := [].{
 		Meta.check(flags, Flag)?
 		written = App.written!()?
 		icon = App.icon!()?
-		{ name, program } = App.compile!()?
+		{ name, program } = App.compile!(Universal)?
 		meta = Meta.resolve(Meta.over(flags, written), name)
 		bundle = "${Meta.bundle_name(meta.name)}.app"
 		if Path.exists!(Path.utf8(bundle))? {
@@ -149,7 +190,7 @@ App := [].{
 			NoIcon => Bool.False
 		}
 		Path.write_utf8!(Path.utf8("${bundle}/Contents/Info.plist"), App.info_plist(meta, name, has_icon))?
-		Stdout.line!("Built ${bundle}: ${meta.name} ${meta.release} (${meta.id}), for Apple silicon Macs with macOS ${meta.minimum_macos} or later.")?
+		Stdout.line!("Built ${bundle}: ${meta.name} ${meta.release} (${meta.id}), for Apple silicon and Intel Macs with macOS ${meta.minimum_macos} or later.")?
 		Ok({ bundle, name, meta })
 	}
 
@@ -159,8 +200,8 @@ App := [].{
 	run! = |flags| {
 		{ bundle, name, .. } = App.build!(flags)?
 		match App.system(System.target!()) {
-			AppleSilicon => {}
-			Other(here) => return Err(NotAppleSilicon({ command: "run", system: here, bundle }))
+			Mac(_) => {}
+			Other(here) => return Err(NotAMac({ command: "run", system: here, bundle }))
 		}
 		Stdout.line!("Running ${bundle}. Quit it (Command-Q) to return here.")?
 		ran = Cmd.new(OsStr.from_str("${bundle}/Contents/MacOS/${name}")).inherit_stdio().run!()?
@@ -181,8 +222,8 @@ App := [].{
 	dev! = || {
 		entry = App.entry!()?
 		match App.system(System.target!()) {
-			AppleSilicon => {}
-			Other(here) => return Err(DevNotAppleSilicon(here))
+			Mac(_) => {}
+			Other(here) => return Err(DevNotAMac(here))
 		}
 		if !Cmd.check_available!("roc") {
 			return Err(RocMissing)
@@ -215,13 +256,14 @@ App := [].{
 		env: if (assets_set) [] else [("ROC_ASSETS", "../${App.assets}")],
 	}
 
-	## Whether the app can run here: only an Apple silicon Mac runs it.
-	## Otherwise, the system's name for a sentence.
-	system : System.Target -> [AppleSilicon, Other(Str)]
+	## Whether the app can run here: a Mac runs it, Apple silicon or Intel,
+	## and its own Roc target is the one `test` builds for. Otherwise, the
+	## system's name for a sentence.
+	system : System.Target -> [Mac(Str), Other(Str)]
 	system = |target|
 		match (target.os(), target.arch()) {
-			(MacOS(_), Arm64) => AppleSilicon
-			(MacOS(_), X64) => Other("an Intel Mac")
+			(MacOS(_), Arm64) => Mac("arm64mac")
+			(MacOS(_), X64) => Mac("x64mac")
 			(Linux(_), _) => Other("Linux")
 			(Windows(_), _) => Other("Windows")
 		}
@@ -301,7 +343,7 @@ expect {
 		and text.contains("<key>CFBundleExecutable</key><string>counter</string>")
 		and text.contains("<key>CFBundleShortVersionString</key><string>0.1</string>")
 		and text.contains("<key>CFBundleVersion</key><string>0.1</string>")
-		and text.contains("<key>LSMinimumSystemVersion</key><string>11.0</string>")
+		and text.contains("<key>LSMinimumSystemVersion</key><string>15.0</string>")
 		and !text.contains("CFBundleIconFile")
 		and !text.contains("NSHumanReadableCopyright")
 }

@@ -48,6 +48,8 @@ platform ""
 	targets: {
 		inputs_dir: "targets/",
 		arm64mac: { inputs: ["libhost.a", app] },
+		x64mac: { inputs: ["libhost.a", app] },
+		x64v1mac: { inputs: ["libhost.a", app] },
 	}
 
 import engine.EngineHost

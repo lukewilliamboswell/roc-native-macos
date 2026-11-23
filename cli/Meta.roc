@@ -11,7 +11,7 @@
 ##   "build": "7",
 ##   "copyright": "© 2026 Jane Doe",
 ##   "category": "public.app-category.utilities",
-##   "minimum_macos": "13.0"
+##   "minimum_macos": "26.0"
 ## }
 ## ```
 ##
@@ -47,9 +47,11 @@ Meta := [].{
 	default_version : Str
 	default_version = "0.1"
 
-	## The oldest macOS the platform runs on: the `minos` Roc's linker writes.
+	## The oldest macOS the platform runs on: the deployment target its Swift
+	## host is compiled for (Roc's linker writes `minos` 11.0, but the host
+	## needs the Swift runtime of macOS 15).
 	oldest_macos : Str
-	oldest_macos = "11.0"
+	oldest_macos = "15.0"
 
 	## Set the field `name` to `text`.
 	set : Fields, Str, Str -> Try(Fields, [UnknownField(Str)])
@@ -124,7 +126,7 @@ Meta := [].{
 			"build" => Meta.version_parts(value).is_ok()
 			"minimum_macos" =>
 				match Meta.version_parts(value) {
-					Ok([major, ..]) => major >= 11
+					Ok([major, ..]) => major >= 15
 					_ => Bool.False
 				}
 			"category" => valid_category(value)
@@ -197,7 +199,7 @@ Meta := [].{
 	## Every field decided, for the app whose directory is named `dir_name`:
 	## the name is `dir_name`, the bundle identifier `com.example.<dir_name>`, the
 	## version 0.1, the build number the version's numbers, and the oldest
-	## macOS 11.0.
+	## macOS 15.0.
 	resolve : Fields, Str -> Resolved
 	resolve = |fields, dir_name| {
 		given_or = |given, default| if (given.is_empty()) default else given
@@ -489,9 +491,9 @@ expect {
 
 expect [Meta.bundle_name("Counter"), Meta.bundle_name("A/B: C")] == ["Counter", "A-B- C"]
 
-## The oldest macOS is 11 or later; a category is one of the App Store's.
+## The oldest macOS is 15 or later; a category is one of the App Store's.
 expect {
-	macos = ["11.0", "13", "14.2.1", "10.15", "eleven"].map(|v| Meta.valid("minimum_macos", v))
+	macos = ["15.0", "26", "15.2.1", "14.7", "eleven"].map(|v| Meta.valid("minimum_macos", v))
 	categories = ["public.app-category.utilities", "public.app-category.developer-tools", "utilities", "public.app-category.", "public.app-category.Games"].map(|v| Meta.valid("category", v))
 	macos == [Bool.True, Bool.True, Bool.True, Bool.False, Bool.False] and categories == [Bool.True, Bool.True, Bool.False, Bool.False, Bool.False]
 }
@@ -513,9 +515,9 @@ expect {
 expect {
 	file = { ..Meta.none, name: "Counter", version: "1.2.0", copyright: "© me" }
 	flags = { ..Meta.none, version: "1.3.0", id: "org.me.counter" }
-	Meta.resolve(Meta.over(flags, file), "counter") == { name: "Counter", id: "org.me.counter", version: "1.3.0", release: "1.3.0", build: "1.3.0", copyright: "© me", category: "", minimum_macos: "11.0" }
+	Meta.resolve(Meta.over(flags, file), "counter") == { name: "Counter", id: "org.me.counter", version: "1.3.0", release: "1.3.0", build: "1.3.0", copyright: "© me", category: "", minimum_macos: "15.0" }
 }
 
-expect Meta.resolve(Meta.none, "counter") == { name: "counter", id: "com.example.counter", version: "0.1", release: "0.1", build: "0.1", copyright: "", category: "", minimum_macos: "11.0" }
+expect Meta.resolve(Meta.none, "counter") == { name: "counter", id: "com.example.counter", version: "0.1", release: "0.1", build: "0.1", copyright: "", category: "", minimum_macos: "15.0" }
 
 expect [Meta.flag_field("--minimum-macos"), Meta.flag_field("--id"), Meta.flag_field("--sign"), Meta.flag_field("name")] == [Ok("minimum_macos"), Ok("id"), Err(NotAField), Err(NotAField)]

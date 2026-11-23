@@ -78,7 +78,7 @@
       "to": "roc-native-macos",
       "relation": "contains",
       "scope": "",
-      "basis": "The platform's own Roc modules, targets/arm64mac/libhost.a (the Swift host compiled from host/ and its generated glue) and targets/macos-sysroot (TAPI stubs generated from host/interfaces.json, no Apple SDK material)"
+      "basis": "The platform's own Roc modules, targets/arm64mac/libhost.a and targets/x64mac/libhost.a (the Swift host compiled from host/ and its generated glue for Apple silicon and for Intel; targets/x64v1mac/libhost.a is a copy of the Intel one) and targets/macos-sysroot (TAPI stubs generated from host/interfaces.json, no Apple SDK material)"
     },
     {
       "from": "Subject",

@@ -13,7 +13,7 @@ import Recorded
 ##
 ## `roc test` on the app's root module runs the `expect`s of every module
 ## the app has, its local packages' (such as `logic/`) included. Those run
-## on any system; the recorded cases need an Apple silicon Mac.
+## on any system; the recorded cases need a Mac, Apple silicon or Intel.
 ##
 ## `tests/<case>.script` holds the steps of a run (`click:+;dump;quit`),
 ## which the platform's host performs when `ROC_SCRIPT` names them, driving
@@ -41,15 +41,16 @@ Cases := [].{
 		if tested.status != Exited(0) {
 			return Err(ExpectsFailed(entry))
 		}
-		match App.system(System.target!()) {
-			AppleSilicon => {}
-			Other(system) => return Err(NotAppleSilicon({ command: "test", system, bundle: "" }))
+		target = match App.system(System.target!()) {
+			Mac(own) => own
+			Other(system) => return Err(NotAMac({ command: "test", system, bundle: "" }))
 		}
 		found = Cases.names(files!(Cases.dir))
 		if found.is_empty() {
 			return Err(NoCases)
 		}
-		{ program, .. } = App.compile!()?
+		# The cases run this Mac's own program: one build, not two.
+		{ program, .. } = App.compile!(Native(target))?
 		root = Env.cwd!()?.display()
 		Stdout.line!("Running ${found.len().to_str()} recorded cases${if (update) ", recording what they print" else ""}...")?
 		var $failed = []

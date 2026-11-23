@@ -25,9 +25,12 @@ Bundle := [].{
 		}
 
 	## The native inputs the bundle carries, relative to `platform/`: the
-	## Swift host and the generated linker stubs (`targets/macos-sysroot`).
-	host_library : Str
-	host_library = "targets/arm64mac/libhost.a"
+	## Swift host for each target the platform declares, Apple silicon and
+	## Intel (`x64v1mac`, Roc's baseline Intel target, has a copy of the
+	## `x64mac` host), and the generated linker stubs
+	## (`targets/macos-sysroot`), which serve them all.
+	host_libraries : List(Str)
+	host_libraries = ["targets/arm64mac/libhost.a", "targets/x64mac/libhost.a", "targets/x64v1mac/libhost.a"]
 
 	sysroot : Str
 	sysroot = "targets/macos-sysroot"
@@ -60,6 +63,12 @@ Bundle := [].{
 		{ args: ["test"], cwd: "my-app" },
 		{ args: ["fuzz", "--check"], cwd: "my-app" },
 	]
+
+	## The first steps on a Mac whose `uname -m` is `machine`: roc-fuzz has
+	## no Intel Mac target (only `arm64mac` and `x64musl`), so on an Intel Mac
+	## the test skips `fuzz`, which would say it cannot run there.
+	first_steps_on : Str -> List({ args : List(Str), cwd : Str })
+	first_steps_on = |machine| if (machine == "x86_64") Bundle.first_steps.drop_if(|step| step.args.first() == Ok("fuzz")) else Bundle.first_steps
 
 	## How the consumer test packages the app `init` made, in its
 	## directory: as the release workflow `init` wrote does, with no secrets,
@@ -197,8 +206,8 @@ expect Bundle.options(["--bogus"]) == Err(Unknown("--bogus"))
 
 ## The root module leads; the notices close.
 expect
-	Bundle.files(["Ui.roc", "main.roc", "Core.roc"], ["targets/macos-sysroot/usr/lib/libSystem.tbd", "targets/arm64mac/libhost.a"])
-		== ["main.roc", "Core.roc", "Ui.roc", "targets/arm64mac/libhost.a", "targets/macos-sysroot/usr/lib/libSystem.tbd", "LICENSE", "THIRD_PARTY_LICENSES.md"]
+	Bundle.files(["Ui.roc", "main.roc", "Core.roc"], ["targets/macos-sysroot/usr/lib/libSystem.tbd", "targets/x64mac/libhost.a", "targets/arm64mac/libhost.a"])
+		== ["main.roc", "Core.roc", "Ui.roc", "targets/arm64mac/libhost.a", "targets/macos-sysroot/usr/lib/libSystem.tbd", "targets/x64mac/libhost.a", "LICENSE", "THIRD_PARTY_LICENSES.md"]
 
 expect
 	Bundle.released_main("app [main] { pf: platform \"../../platform/main.roc\" }\n", "http://localhost:8000/abc.tar.zst")
@@ -215,3 +224,6 @@ expect {
 	end = [0x50, 0x4B, 0x05, 0x06, 0, 0, 0, 0, 1, 0, 1, 0, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 	Bundle.zip_entries(central.concat(end)) == Ok([{ name: "a/", mode: 0o040755 }]) and Bundle.zip_entries([1, 2, 3]) == Err(NotAZip)
 }
+
+## An Intel Mac takes every first step but `fuzz`.
+expect Bundle.first_steps_on("x86_64").map(|step| step.args) == [["init", "my-app"], ["build"], ["test"]] and Bundle.first_steps_on("arm64") == Bundle.first_steps

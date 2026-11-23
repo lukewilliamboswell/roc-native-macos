@@ -79,8 +79,8 @@ Workflow := [].{
 		\\  APP_DIR: .
 		\\
 		\\jobs:
-		\\  # The recorded cases run the app, which needs an Apple silicon Mac;
-		\\  # roc-fuzz runs there too.
+		\\  # The recorded cases run the app, which needs a Mac; roc-fuzz runs on
+		\\  # an Apple silicon Mac, as macos-15 is.
 		\\  test:
 		\\    name: Run the tests
 		\\    runs-on: macos-15

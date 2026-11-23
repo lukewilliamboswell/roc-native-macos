@@ -38,7 +38,8 @@ import src/Repo
 ## - `test`: `roc test` on the platform root and on every example (its
 ##   `main.roc` or `src/main.roc`, which also runs its logic package's
 ##   `expect`s), and for an example with `fuzz/main.roc`, the roc-fuzz build
-##   of it and `check` on each of its targets.
+##   of it and `check` on each of its targets (except on an Intel Mac, which
+##   roc-fuzz has no target for).
 ## - `examples`: every example's recorded scripted runs; `examples --update`
 ##   records what they print now. Then the counter's first case once more
 ##   through Roc's run mode, `roc main.roc`, which links the host with the
@@ -47,7 +48,7 @@ import src/Repo
 ##   built and run at a token size, so it never goes stale.
 ## - `bundle`: the platform bundle from the inputs `build` made, and an
 ##   author's first steps against it with the `macos.roc` tool: `init`,
-##   `build`, `test` and `fuzz --check` the starter app
+##   `build`, `test` and (but on an Intel Mac) `fuzz --check` the starter app
 ##   (`scripts/bundle.roc --prebuilt --test`).
 ##
 ## The package compiler is the `roc` on PATH: the latest nightly in CI.
@@ -197,13 +198,19 @@ scripts! = || {
 test! : () => Try(List(Str), _)
 test! = || {
 	var $problems = run!("roc", ["test", "platform/main.roc"])?
+	intel = (Cmd.new("uname").args(["-m"]).capture!() ?? "").trim() == "x86_64"
 	for example in examples_found!()? {
 		dir = "examples/${example.name}"
 		$problems = $problems.concat(run!("roc", ["test", "${dir}/${example.entry}"])?)
 		# An example's fuzz targets: built with roc-fuzz, and each target's
 		# declared examples checked, as `macos.roc fuzz --check` does.
+		# roc-fuzz has no Intel Mac target, so an Intel Mac skips them.
 		if Path.exists!(Path.utf8("${dir}/fuzz/main.roc"))? {
-			$problems = $problems.concat(fuzz_check!(dir)?)
+			if intel {
+				note!("${dir}: roc-fuzz has no Intel Mac target, so its fuzz targets are not checked here")
+			} else {
+				$problems = $problems.concat(fuzz_check!(dir)?)
+			}
 		}
 	}
 	Ok($problems)

@@ -1,11 +1,12 @@
 {
-  "schema_version": 2,
-  "target": "arm64-macos",
-  "note": "Reviewed catalog of the system interfaces the Swift host links against, and that Roc's run-mode shims import when `roc main.roc` links the host (run_shim). Every library names its install name and every symbol its own public evidence; the generated stubs list only these names, and no Apple SDK file is read or shipped. PROVENANCE.md states the rules.",
+  "schema_version": 3,
+  "tapi_targets": ["arm64-macos", "x86_64-macos"],
+  "note": "Reviewed catalog of the system interfaces the Swift host links against, and that Roc's run-mode shims import when `roc main.roc` links the host (run_shim), for Apple silicon (arm64-macos) and Intel (x86_64-macos) Macs. Every library names its install name and every symbol its own public evidence; a symbol exported for one architecture alone names it in `only`. The generated stubs list only these names, and no Apple SDK file is read or shipped. PROVENANCE.md states the rules.",
   "run_shim": {
     "evidence": "Roc's run mode (`roc main.roc`, `roc run`, `--opt=dev` or `--opt=interpreter`) links the platform host with one of the compiler's own shim archives, libroc_machine_code_shim.a or libroc_interpreter_shim.a, which roc embeds and extracts for every run. Their system imports are the macOS imports roc-lang/roc's src/machine_code_shim/archive_check.zig allows (darwin_imports, c_memory_set, c_math_set). These are the ones the shims of the supported compilers reference (`nm -u`, which scripts/build.roc's audit re-checks against the `roc` it builds with); each is owned by a library below with its own evidence.",
     "symbols": [
       "__NSGetExecutablePath",
+      "___bzero",
       "___error",
       "___ulock_wait",
       "___ulock_wake",
@@ -15,9 +16,13 @@
       "__tlv_bootstrap",
       "_abort",
       "_bzero",
+      "_ceil",
+      "_ceilf",
       "_close",
       "_close$NOCANCEL",
       "_dlsym",
+      "_floor",
+      "_floorf",
       "_fmod",
       "_fmodf",
       "_memcpy",
@@ -35,6 +40,8 @@
       "_read",
       "_strlen",
       "_sys_icache_invalidate",
+      "_trunc",
+      "_truncf",
       "_write"
     ]
   },
@@ -78,8 +85,17 @@
           "evidence": "_NSGetExecutablePath (man 3 dyld), in libSystem's libdyld: Roc's run-mode shims (roc-lang/roc src/machine_code_shim, src/interpreter_shim) find their own executable (src/shim_io.zig)"
         },
         {
+          "name": "____chkstk_darwin",
+          "evidence": "the stack probe Swift-compiled x86-64 code calls for a frame larger than a page on Apple platforms, the global `____chkstk_darwin` that libpthread defines for x86_64, i386 and arm64 beside `thread_chkstk_darwin` (apple-oss-distributions/libpthread, src/pthread_asm.s), in libSystem's libsystem_pthread"
+        },
+        {
+          "name": "___bzero",
+          "evidence": "__bzero, the zeroing entry point LLVM's x86 backend calls on macOS in place of memset with zero (apple-oss-distributions/llvmCore, lib/Target/X86/X86Subtarget.cpp, getBZeroEntry), defined by libplatform (apple-oss-distributions/libplatform, src/string/generic/bzero.c; xcodeconfig/libplatform.aliases, `__platform_bzero ___bzero`), in libSystem's libsystem_platform: the x86-64 host and Roc's x86-64 run shims (roc-lang/roc src/machine_code_shim, src/interpreter_shim) call it"
+        },
+        {
           "name": "___chkstk_darwin",
-          "evidence": "the stack probe the compiler calls for a frame larger than a page on Apple platforms (llvm AArch64FrameLowering, ___chkstk_darwin), in libSystem's libcompiler_rt"
+          "evidence": "the stack probe the compiler calls for a frame larger than a page on Apple platforms (llvm AArch64FrameLowering, ___chkstk_darwin), in libSystem's libcompiler_rt. x86-64 code calls ____chkstk_darwin instead, through a weak private ___chkstk_darwin of its own",
+          "only": ["arm64-macos"]
         },
         {
           "name": "___error",
@@ -134,6 +150,14 @@
           "evidence": "bzero (man 3 bzero; POSIX.1-2001), in libSystem's libsystem_platform"
         },
         {
+          "name": "_ceil",
+          "evidence": "ceil (ISO C 7.12.9.1), in libSystem's libsystem_m: the x86-64 run shims of Roc (roc-lang/roc src/machine_code_shim, src/interpreter_shim) call it, one of the math imports a shim may have (src/builtins/shim_symbols.zig, c_math_set)"
+        },
+        {
+          "name": "_ceilf",
+          "evidence": "ceilf (ISO C 7.12.9.1), in libSystem's libsystem_m: the x86-64 run shims of Roc (roc-lang/roc src/machine_code_shim, src/interpreter_shim) call it, one of the math imports a shim may have (src/builtins/shim_symbols.zig, c_math_set)"
+        },
+        {
           "name": "_close",
           "evidence": "close, POSIX.1 (man 2 close), in libSystem's libsystem_kernel: Roc's run-mode shims (roc-lang/roc src/machine_code_shim, src/interpreter_shim) (src/shim_io.zig, src/ipc/platform.zig)"
         },
@@ -152,6 +176,14 @@
         {
           "name": "_fclose",
           "evidence": "fclose (ISO C 7.21.5.1), in libSystem's libsystem_c"
+        },
+        {
+          "name": "_floor",
+          "evidence": "floor (ISO C 7.12.9.2), in libSystem's libsystem_m: the x86-64 run shims of Roc (roc-lang/roc src/machine_code_shim, src/interpreter_shim) call it, one of the math imports a shim may have (src/builtins/shim_symbols.zig, c_math_set)"
+        },
+        {
+          "name": "_floorf",
+          "evidence": "floorf (ISO C 7.12.9.2), in libSystem's libsystem_m: the x86-64 run shims of Roc (roc-lang/roc src/machine_code_shim, src/interpreter_shim) call it, one of the math imports a shim may have (src/builtins/shim_symbols.zig, c_math_set)"
         },
         {
           "name": "_fmod",
@@ -290,6 +322,11 @@
           "evidence": "stat (POSIX.1-2008), in libSystem's libsystem_kernel"
         },
         {
+          "name": "_stat$INODE64",
+          "evidence": "stat under the name of its 64-bit-inode variant, `stat$INODE64`, which x86-64 code calls (apple-oss-distributions/Libc, include/sys/stat.h, `__DARWIN_INODE64(stat)`, and include/sys/cdefs.h, `__DARWIN_SUF_64_BIT_INO_T`; arm64 has only 64-bit inodes, `__DARWIN_ONLY_64_BIT_INO_T`, so no variant), in libSystem's libsystem_kernel",
+          "only": ["x86_64-macos"]
+        },
+        {
           "name": "_strlen",
           "evidence": "strlen (ISO C 7.24.6.3), in libSystem's libsystem_platform: one of the C memory routines Roc's machine-code run shim imports (roc-lang/roc src/builtins/shim_symbols.zig, c_memory_set)"
         },
@@ -300,6 +337,14 @@
         {
           "name": "_task_info",
           "evidence": "task_info, with MACH_TASK_BASIC_INFO for the current resident size ROC_BENCH reports (apple-oss-distributions/xnu, osfmk/mach/task_info.h), in libSystem's libsystem_kernel"
+        },
+        {
+          "name": "_trunc",
+          "evidence": "trunc (ISO C 7.12.9.8), in libSystem's libsystem_m: the x86-64 run shims of Roc (roc-lang/roc src/machine_code_shim, src/interpreter_shim) call it, one of the math imports a shim may have (src/builtins/shim_symbols.zig, c_math_set)"
+        },
+        {
+          "name": "_truncf",
+          "evidence": "truncf (ISO C 7.12.9.8), in libSystem's libsystem_m: the x86-64 run shims of Roc (roc-lang/roc src/machine_code_shim, src/interpreter_shim) call it, one of the math imports a shim may have (src/builtins/shim_symbols.zig, c_math_set)"
         },
         {
           "name": "_unlink",
@@ -344,6 +389,11 @@
         {
           "name": "_objc_msgSend",
           "evidence": "objc_msgSend (apple-oss-distributions/objc4, runtime/message.h)"
+        },
+        {
+          "name": "_objc_msgSend_stret",
+          "evidence": "objc_msgSend_stret, the message send for a method returning a structure in memory, which x86-64 code calls for such methods (apple-oss-distributions/objc4, runtime/message.h, marked OBJC_ARM64_UNAVAILABLE: arm64 has no such variant)",
+          "only": ["x86_64-macos"]
         },
         {
           "name": "_objc_msgSendSuper2",

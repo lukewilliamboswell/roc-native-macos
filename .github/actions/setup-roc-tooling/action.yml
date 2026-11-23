@@ -1,0 +1,54 @@
+name: Set up the Roc compilers without Blueprint
+description: >-
+  Install the scripts' tooling compiler as `roc-stable` (the release
+  Blueprint.roc's `tooling` names) and a Roc nightly as `roc`, both from
+  roc-lang/nightlies with their published SHA-256 checked, for a job on an
+  Intel Mac. Blueprint's dev environment is Apple silicon only: roc-policy and
+  roc-docs, which it locks, have no x86_64-darwin build. The Intel jobs run the
+  scripts with these two compilers instead; every other program the scripts
+  call (swiftc, libtool, nm, xcodebuild, curl, python3, shasum, git, zip,
+  unzip) is on the runner image.
+
+inputs:
+  nightly-tag:
+    description: The Roc nightly to install as `roc`, resolved once for the run
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - id: tooling
+      name: Read the tooling compiler from Blueprint.roc
+      shell: bash
+      run: |
+        set -euo pipefail
+        tag=$(sed -n 's/^tooling = { compiler: "\([^"]*\)" }$/\1/p' Blueprint.roc)
+        test -n "$tag" || { echo "::error::Blueprint.roc names no tooling compiler"; exit 1; }
+        echo "tag=$tag" >> "$GITHUB_OUTPUT"
+    - id: stable
+      uses: lukewilliamboswell/roc-automation/actions/setup-roc-nightly@acc5efdcd929b38e665cd3ae6e694d1c4887f9c7
+      with:
+        nightly-tag: ${{ steps.tooling.outputs.tag }}
+    - name: Name it roc-stable
+      shell: bash
+      env:
+        STABLE: ${{ steps.stable.outputs.roc }}
+      run: |
+        set -euo pipefail
+        mkdir -p "$RUNNER_TEMP/roc-stable"
+        ln -sf "$STABLE" "$RUNNER_TEMP/roc-stable/roc-stable"
+        echo "$RUNNER_TEMP/roc-stable" >> "$GITHUB_PATH"
+    # Installed last, so its `roc` comes first on PATH.
+    - uses: lukewilliamboswell/roc-automation/actions/setup-roc-nightly@acc5efdcd929b38e665cd3ae6e694d1c4887f9c7
+      with:
+        nightly-tag: ${{ inputs.nightly-tag }}
+    - name: Report the compilers
+      shell: bash
+      run: |
+        set -euo pipefail
+        roc version
+        roc-stable version
+        uname -m
+        # Whether the CPU reports x86-64-v3 (AVX2, BMI2, FMA, MOVBE...)
+        # decides if a native `roc build` targets x64mac or x64v1mac.
+        sysctl machdep.cpu.brand_string machdep.cpu.features machdep.cpu.leaf7_features || true

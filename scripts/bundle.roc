@@ -23,7 +23,8 @@ import src/Recorded
 ##
 ## It builds the platform's native inputs (`scripts/build.roc -- --platform`)
 ## unless `--prebuilt`, stages the tracked `platform/*.roc` modules, the
-## Swift host `targets/arm64mac/libhost.a`, the generated linker stubs
+## Swift hosts `targets/arm64mac/libhost.a` and `targets/x64mac/libhost.a`
+## (Apple silicon and Intel), the generated linker stubs
 ## `targets/macos-sysroot/` and the licence notices under `build/`, and runs
 ## `roc bundle` there. The output directory then holds exactly one
 ## content-addressed `<hash>.tar.zst`.
@@ -68,7 +69,7 @@ main! = |raw_args| {
 	if !options.prebuilt {
 		step!(Cmd.new("roc-stable").args(["scripts/build.roc", "--", "--platform"]).env("ROC", "roc"), "scripts/build.roc -- --platform")?
 	}
-	for input in [Bundle.host_library, Bundle.sysroot] {
+	for input in Bundle.host_libraries.append(Bundle.sysroot) {
 		if !(Path.exists!(Path.utf8("platform/${input}"))?) {
 			warn!("bundle: platform/${input} is not built: run `blueprint run build` (or drop --prebuilt)")
 			return Err(Exit(1))
@@ -83,8 +84,10 @@ main! = |raw_args| {
 	for name in modules {
 		Path.copy!(Path.utf8("platform/${name}"), Path.utf8("${stage}/${name}"))?
 	}
-	Path.create_all!(Path.utf8("${stage}/targets/arm64mac"))?
-	Path.copy!(Path.utf8("platform/${Bundle.host_library}"), Path.utf8("${stage}/${Bundle.host_library}"))?
+	for library in Bundle.host_libraries {
+		Path.create_all!(Path.utf8("${stage}/${Str.join_with(library.split_on("/").drop_last(1), "/")}"))?
+		Path.copy!(Path.utf8("platform/${library}"), Path.utf8("${stage}/${library}"))?
+	}
 	Path.copy_dir!(Path.utf8("platform/${Bundle.sysroot}"), Path.utf8("${stage}/${Bundle.sysroot}"))?
 	for notice in Bundle.notices {
 		Path.copy!(Path.utf8(notice), Path.utf8("${stage}/${notice}"))?
@@ -161,9 +164,9 @@ served! = |server|
 		Err(error) => Err("the local server did not start: ${Str.inspect(error)}")
 	}
 
-## `roc macos.roc init my-app`, then `build`, `test` and `fuzz --check`, as
-## an author takes them, with the tool and the platform fetched from
-## `base_url`.
+## `roc macos.roc init my-app`, then `build`, `test` and `fuzz --check`
+## (not on an Intel Mac, which roc-fuzz does not run on), as an author takes
+## them, with the tool and the platform fetched from `base_url`.
 first_steps! : Str, Str, Str => Try({}, Str)
 first_steps! = |root, dir, base_url| {
 	served_dir = "${dir}/served"
@@ -172,7 +175,11 @@ first_steps! = |root, dir, base_url| {
 	Path.copy!(Path.utf8("${served_dir}/macos.roc"), Path.utf8("${dir}/macos.roc")) ? |error| "could not copy macos.roc: ${Str.inspect(error)}"
 	Path.create_all!(Path.utf8(cache)) ? |error| "could not create ${cache}: ${Str.inspect(error)}"
 	note!("bundle: an author's first steps in ${dir}, package cache ${cache}")
-	for { args, cwd } in Bundle.first_steps {
+	machine = Cmd.new("uname").args(["-m"]).capture!() ?? ""
+	if machine.trim() == "x86_64" {
+		note!("bundle: roc-fuzz has no Intel Mac target, so this Intel Mac skips `roc macos.roc fuzz --check`")
+	}
+	for { args, cwd } in Bundle.first_steps_on(machine.trim()) {
 		shown = "roc macos.roc ${Str.join_with(args, " ")}${if (cwd.is_empty()) "" else " (in ${cwd}/)"}"
 		step!(Cmd.new("roc").args(["macos.roc"].concat(args).map(OsStr.from_str)).cwd(Path.utf8(if (cwd.is_empty()) dir else "${dir}/${cwd}")).env("XDG_CACHE_HOME", OsStr.from_str(cache)), shown) ? |_| "${shown} failed against the bundle"
 	}

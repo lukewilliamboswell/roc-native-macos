@@ -22,8 +22,8 @@ You need Roc as `roc` on your PATH: a current
 [nightly](https://github.com/roc-lang/nightlies/releases) or 0.1.0 RC1. That
 is all, on any system: macOS, Linux or Windows. The platform carries the
 prebuilt Swift host and its linker inputs, so no Xcode, Swift or Apple SDK is
-involved. The app runs on Apple silicon Macs with macOS 11 or later; Intel
-Macs are not supported.
+involved. The app is universal: it runs on Apple silicon and Intel Macs with
+macOS 15 or later.
 
 Download `macos.roc`, the tool for creating, building, running and testing an
 app, and create one:
