@@ -1,7 +1,7 @@
 = Engine patches
 
 The engine modules in `platform/` are roc-signals' at the revision
-`docs/architecture.adoc` names (xref:../../docs/architecture.adoc#engine-revision[Engine]),
+`docs/architecture.adoc` names (the Engine entry of xref:../../docs/architecture.adoc#how-it-fits-together[How it fits together]),
 plus the patches below, applied in order. This list is the series: one line
 per patch, with its upstream status. Each patch file is a `git diff` against
 the files as they stand after the patches before it, with a header saying

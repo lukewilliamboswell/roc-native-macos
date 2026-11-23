@@ -309,7 +309,8 @@ or a redirected output leaves them plain, and the word is always printed.
 == Engine patches
 
 The engine modules are roc-signals' at the revision
-xref:architecture.adoc#engine-revision[Engine] names, plus the patches in
+the Engine entry of
+xref:architecture.adoc#how-it-fits-together[How it fits together] names, plus the patches in
 `patches/roc-signals/`. Its `README.adoc` is the series, one line per patch
 with its upstream status, and says how to make a patch. Each patch carries
 a header: what it changes, why, what it measured before and after, and

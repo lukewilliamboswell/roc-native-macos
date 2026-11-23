@@ -16,7 +16,6 @@ flowchart TB
     Host -- "AppKit events, effect results: one engine turn each" --> Engine
 ....
 
-[#engine-revision]
 Engine:: `Core.roc`, `Engine.roc` and the modules they import (`Web`,
 `EntryRoutes`, `Url`, `ReadyIndex`, `Spelling`, `Layout`, `TableCore`, `View`,
 `Seq`, `MarkupAdvice`, `SignalCore`), and the worker layer (`Worker`,
