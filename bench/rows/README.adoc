@@ -25,6 +25,10 @@ each phase ran and the list holds all 200 rows again once the filter is
 cleared, and then a write-scaling check: the tick's engine p50 at 200,000
 rows must be at most 5 times its p50 at 2,000 (it is about 1; before
 engine patches 0004 and 0005 it was 38).
+cleared. It then builds 2,000 and 18,000 rows with `Table.insert` in a
+loop (`-rows-build insert`, the faster of two runs each) and fails if the
+larger mount's engine time is 25 times the smaller's or more: linear is
+about 9, and before engine patch 0004 it was about 96.
 
 == Running it
 
@@ -38,7 +42,8 @@ bench/rows/run.sh --smoke        # what the gate runs
 
 Each N is a fresh process. N reaches the app as the local storage key
 `rows-n` (`-rows-n 1000000`, as `bench/grid` passes `grid-n`), so the mount
-itself builds the table. `ROC_BENCH=1` turns on the host's timings, and a
+itself builds the table (keyed once from a list; `-rows-build insert`
+inserts the rows one at a time instead). `ROC_BENCH=1` turns on the host's timings, and a
 script runs one phase after another, each named with `phase:NAME` so
 `stats` reports its operations apart (`event/select`, `scroll/scroll`, …):
 
@@ -106,14 +111,17 @@ Proportional to what changed (good)::
   columns (marks, a hole column, the shown column: 196 MB at a million
   rows) on every turn. The reader was never the cost. See
   xref:../../patches/roc-compiler/README.adoc#destructure-sharing[destructure-sharing].
+* *Building a table by inserting rows one at a time.* Inserting the rows
+  in a `var` loop with `Table.insert`, as `examples/contacts` does, was
+  quadratic: the mount's engine time was 0.3 s at 10,000 rows, 4.6–5.4 s
+  at 30,000 and 53 s at 100,000, because every insert copied the table's
+  change record (`Dict.update`, a compiler issue:
+  xref:../../patches/roc-compiler/README.adoc#dict-update-sharing[dict-update-sharing]).
+  Since engine patch 0004 it is 19 ms, 48 ms, 0.15 s and 1.8 s at a
+  million (`-rows-build insert`), against 13 ms, 0.11 s and 1.45 s for
+  `Table.from_list`, which the harness still uses by default.
 
 Proportional to N, in the engine (reported for roc-signals)::
-* *Building a table by inserting rows one at a time.* `generated`
-  originally inserted the rows in a `var` loop with `Table.insert`, as
-  `examples/contacts` does: the mount's engine time was 0.42 s at 10,000
-  rows, 13.7 s at 30,000 and 55 s at 100,000 (quadratic: each insert copies
-  the table). Building the list of rows and keying it once with
-  `Table.from_list` takes 0.11 s at 100,000, so the harness does that.
 * *A filter keystroke*: a new query rebuilds the view in the size of the
   table, as the engine documents (`table_view`): 1.1 ms at 10,000, 11 ms at
   100,000, 143 ms (p95 0.7 s) at a million.
@@ -160,8 +168,10 @@ each row's index by a scan of the list's rows, up to 64 scans of N.
   new event and attribute in the vocabulary, the host mapping table row
   `i` to node `i - window.start`, and placeholder rows while the engine
   catches up.
-. *Make `Table.insert` in a loop linear* (roc-signals or the compiler):
-  apps build tables that way, and it is quadratic.
+. *Make a table write cost the rows written.* Done: engine patches 0004
+  and 0005, see the writing bullet above.
+. *Make `Table.insert` in a loop linear.* Done: engine patch 0004 (a
+  table write records its key without `Dict.update`).
 . *A `Ui.grid` over `NSCollectionView`* (not built; evaluated here). The
   native virtualised grid: `NSCollectionView` with a flow or grid layout
   makes item views only for the visible items and reuses them as they

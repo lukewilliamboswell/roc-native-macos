@@ -39,9 +39,12 @@ Why
     value increfed for the call (lldb: an incref of the rows just before
     the modifier's call, and the copy in the modifier's first insert).
   The change record's `Dict.update` copies a record it shares when the
-  record grows (patch 0006's finding, folded in here because it is the
-  same lines): it costs a turn that writes many keys, not the turn of a
-  few writes measured below.
+  record grows (a compiler issue of its own: patches/roc-compiler,
+  dict-update-sharing; folded in here because it is the same lines): it
+  costs a turn that writes many keys, not the turn of a few writes
+  measured below, and it made building a table with `Table.insert` in a
+  loop quadratic (bench/rows `-rows-build insert`, mount engine time:
+  0.3 s to 19 ms at 10,000 rows, 53 s to 0.15 s at 100,000).
 
 Measured (engine ms p50 of a turn that writes 3 rows with `Table.update`,
 reproducer app: a table cell of N rows, a button whose handler updates 3
