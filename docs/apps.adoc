@@ -281,7 +281,7 @@ The README shows each example running. What each one uses:
 | `counter` | Local state (`Engine.state`), icon buttons, a large monospaced readout
 | `todos` | A store with a table, `table_view` rows (row templates) in a `Ui.scroll` inside a `box`, a form with Return-to-submit, a segmented filter, a Command-N shortcut, done rows greyed by `text_s`, an empty state, a shared `Theme`, saving to local storage and reading it back at boot, and `expect` tests
 | `gallery` | `tabs` over labelled sections: a dropdown, a slider and progress bar, a text area, text styles, semantic and adaptive colours, SF Symbols, Command-N/Command-K shortcuts
-| `contacts` | 10,000 generated rows in a sidebar `Ui.list` (`NSTableView`), a search field filtering through the `table_view` query, a detail pane for the selected row
+| `contacts` | 10,000 generated rows in a sidebar `Ui.table_list` (`NSTableView`, drawing only the rows near those in sight), a search field filtering through the list's query, a detail pane for the selected row
 | `stopwatch` | Store cells, an interval effect owned by `watch_latest` (Stop cancels it), a default button, and an `each` list of laps with splits, the fastest and slowest coloured
 | `http-fetch` | `Engine.http` under `watch_latest`: Fetch, Cancel (a pure cancel), a second Fetch superseding the first, an optional 2 s timeout, transfer progress (`with_progress`), and a status badge whose colour follows the answer (`box_s`)
 | `about` | Images from the app's `assets/` (`Ui.asset_image`): a PNG that is also the app's icon, and a PDF drawn as vectors
@@ -378,7 +378,7 @@ Steps are separated by `;` and run every 100 ms.
 | `enter` | submits the text field's form
 | `toggle:<title>` | toggles the checkbox with that title
 | `choose:<title>` | chooses a dropdown item or a segment
-| `select:<text>`, `select:#<k>` | selects the list row holding that text, or the k-th row (from 1) of the first list
+| `select:<text>`, `select:#<k>` | selects the list row holding that text (in a `table_list`, among the rows drawn), or the k-th row (from 1) of the first list
 | `scroll:<k>` | scrolls the first list so that its row `k` (from 0) is at the top
 | `key:cmd+shift+n` | presses a key, delivered as if nothing had focus; the modifiers are `cmd`, `shift`, `ctrl` and `alt` (or `opt`)
 | `files:<path>,<path>…` | gives files as if picked on the first file button or drop zone, with no panel
