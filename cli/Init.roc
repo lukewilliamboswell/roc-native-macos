@@ -85,7 +85,7 @@ Init :: [].{
 	summary : Str -> Str
 	summary = |dir| {
 		next = if (dir == ".") "  roc macos.roc run" else "  cd ${dir}\n  roc macos.roc run"
-		"Created a counter app on roc-native-macos ${Bundle.version}:\n\n  main.roc     the app: its state, view and program\n  tests/       recorded runs of it, which `roc macos.roc test` checks\n  macos.json   its name, bundle identifier and version\n  macos.roc    the tool, which builds, runs, tests and packages it\n  .gitignore   keeps build output out of version control\n  .github/     a workflow that packages it when you push a tag such as v1.0.0\n\nNext, run the app (on an Apple silicon Mac; `build` and `package` work anywhere):\n\n${next}"
+		"Created a counter app on roc-native-macos ${Bundle.version}:\n\n  main.roc     the app: its state, view and program\n  tests/       recorded runs of it, which `roc macos.roc test` checks\n  macos.json   its name, bundle identifier and version\n  macos.roc    the tool, which builds, runs, tests and packages it\n  .gitignore   keeps build output out of version control\n  .github/     a workflow that packages it when you push a tag such as v1.0.0\n\nNext, run the app (on an Apple silicon Mac; `build` and `package` work anywhere):\n\n${next}\n\nWhile you edit main.roc, `roc macos.roc dev` runs it with hot reloading."
 	}
 }
 
