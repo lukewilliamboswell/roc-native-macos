@@ -77,7 +77,17 @@ enum Stroke {
 /// appearance, so a semantic or adaptive colour follows light and dark mode.
 class Surface: NSView {
     var fill: NSColor = .clear { didSet { needsDisplay = true } }
-    var border: Stroke = .none { didSet { needsDisplay = true } }
+    var border: Stroke = .none {
+        didSet {
+            // Drawn from here on: the layer stops drawing its own fill.
+            if case .dashed = border, let layer {
+                layer.backgroundColor = nil
+                layer.borderWidth = 0
+                layer.cornerRadius = 0
+            }
+            needsDisplay = true
+        }
+    }
     var radius: Double = 8 { didSet { needsDisplay = true } }
     private(set) var child: NSView?
     private var pins: [NSLayoutConstraint] = []
@@ -89,6 +99,8 @@ class Surface: NSView {
 
     init() {
         super.init(frame: .zero)
+        wantsLayer = true
+        layerContentsRedrawPolicy = .onSetNeedsDisplay
     }
 
     required init?(coder: NSCoder) { fatal("Surface is not archived") }
@@ -114,6 +126,36 @@ class Surface: NSView {
             bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: insets[2]),
         ]
         NSLayoutConstraint.activate(pins)
+    }
+
+    /// A fill and a solid border are the layer's own properties: no
+    /// backing store to draw into, which at 100,000 boxes was 1.5 GB of
+    /// Core Animation memory and most of the first frame's time. A dashed
+    /// border is drawn (`draw(_:)`).
+    override var wantsUpdateLayer: Bool {
+        if case .dashed = border { return false }
+        return true
+    }
+
+    override func updateLayer() {
+        guard let layer else { return }
+        var lineWidth: Double = 0
+        var stroke = NSColor.clear
+        if case let .solid(color, width) = border {
+            lineWidth = width
+            stroke = color
+        }
+        // As `draw(_:)` strokes a path inset by half the line: the outer
+        // corner radius is the radius plus half the line.
+        layer.cornerRadius = radius + lineWidth / 2
+        layer.backgroundColor = fill.cgColor
+        layer.borderWidth = lineWidth
+        layer.borderColor = stroke.cgColor
+    }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        needsDisplay = true
     }
 
     override func draw(_ dirtyRect: NSRect) {
