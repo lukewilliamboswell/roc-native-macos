@@ -6,7 +6,7 @@ import Bundle
 import Meta
 import Workflow
 
-## `init [DIR]`: create an app, a counter with two recorded cases, in `DIR`
+## `init [DIR]`: create an app, a counter with two specs, in `DIR`
 ## (by default, this directory). It writes only files that are not there
 ## yet, and copies this directory's `macos.roc` into a new directory so the
 ## app can run the tool from its own.
@@ -85,7 +85,7 @@ Init :: [].{
 	summary : Str -> Str
 	summary = |dir| {
 		next = if (dir == ".") "  roc macos.roc run" else "  cd ${dir}\n  roc macos.roc run"
-		"Created a counter app on roc-native-macos ${Bundle.version}:\n\n  main.roc     the app: its state, view and program\n  tests/       recorded runs of it, which `roc macos.roc test` checks\n  macos.json   its name, bundle identifier and version\n  macos.roc    the tool, which builds, runs, tests and packages it\n  .gitignore   keeps build output out of version control\n  .github/     a workflow that packages it when you push a tag such as v1.0.0\n\nNext, run the app (on an Apple silicon Mac; `build` and `package` work anywhere):\n\n${next}\n\nWhile you edit main.roc, `roc macos.roc dev` runs it with hot reloading."
+		"Created a counter app on roc-native-macos ${Bundle.version}:\n\n  main.roc     the app: its state, view and program\n  specs/       specs of what it does, which `roc macos.roc test` checks\n  macos.json   its name, bundle identifier and version\n  macos.roc    the tool, which builds, runs, tests and packages it\n  .gitignore   keeps build output out of version control\n  .github/     a workflow that packages it when you push a tag such as v1.0.0\n\nNext, run the app (on an Apple silicon Mac; `build` and `package` work anywhere):\n\n${next}\n\nWhile you edit main.roc, `roc macos.roc dev` runs it with hot reloading."
 	}
 }
 
@@ -103,7 +103,7 @@ expect {
 }
 
 ## A new directory gets a copy of the tool; this directory already has it.
-## Every plan writes the app, its recorded cases and the `.gitignore`.
+## Every plan writes the app, its specs and the `.gitignore`.
 expect {
 	new = Init.plan("my-app", "my-app").map(|step| step.path)
 	here = Init.plan(".", "my-app").map(|step| step.path)
@@ -111,7 +111,7 @@ expect {
 		and here.first() == Ok("main.roc")
 		and new.drop_first(1) == here
 		and [".gitignore", "macos.json", ".github/workflows/release.yml"].all(|path| here.contains(path))
-		and here.any(|path| path.starts_with("tests/") and path.ends_with(".script"))
+		and here.any(|path| path.starts_with("specs/") and path.ends_with(".scm"))
 }
 
 ## The starter metadata names the app.
@@ -120,4 +120,4 @@ expect {
 	starter == Ok(Text(Meta.starter("my-app"))) and Meta.starter("my-app").contains("\"id\": \"com.example.my-app\"")
 }
 
-expect [Init.place("my-app/", "main.roc"), Init.place(".", "tests/a.script")] == ["my-app/main.roc", "tests/a.script"]
+expect [Init.place("my-app/", "main.roc"), Init.place(".", "specs/a.scm")] == ["my-app/main.roc", "specs/a.scm"]

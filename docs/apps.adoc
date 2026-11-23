@@ -27,7 +27,7 @@ roc macos.roc run
 ----
 
 `init` writes a counter app, `main.roc`, whose header names the platform
-release, two recorded runs of it in `tests/`, its metadata in `macos.json`,
+release, two specs of it in `specs/`, its metadata in `macos.json`,
 a `.gitignore`, a release workflow in `.github/workflows/release.yml` (see
 xref:apps.adoc#ship-your-app[Ship your app]) and a copy of `macos.roc`.
 `run` builds `counter.app` and starts it, with its output (`dbg`, a crash
@@ -205,7 +205,7 @@ my-app/
     icon.png        the app's icon
     logo.png
     icons/star.pdf
-  tests/
+  specs/
 ----
 
 Images:: `Ui.asset_image(name, props)` draws `assets/<name>`: a PNG, JPEG,

@@ -1,4 +1,5 @@
-## Recorded cases: `<case>.script` holds the `ROC_SCRIPT` steps of a run and
+## Dumps, as specs expect them and recorded cases printed them, and the
+## legacy recorded cases: `<case>.script` holds the `ROC_SCRIPT` steps of a run and
 ## `<case>.expected` what the run prints. `macos.roc test` checks an app's
 ## cases with these rules, and the repository's scripts its examples' cases.
 ##
@@ -43,7 +44,14 @@ Recorded := [].{
 		} else {
 			lines = Str.join_with(printed.split_on(root), placeholder)
 				.split_on("\n")
-				.map(|line| if (line.starts_with("--- ") and line.drop_prefix("--- ").contains("x")) "--- <size>" else line)
+				.map(
+					|line| {
+						# A dump's window line, alone or as a spec run's observation (`|--- WxH`).
+						bar = if (line.starts_with("|")) "|" else ""
+						size = line.drop_prefix(bar)
+						if (size.starts_with("--- ") and size.drop_prefix("--- ").contains("x")) "${bar}--- <size>" else line
+					},
+				)
 			Str.join_with(lines, "\n")
 		}
 }
@@ -97,6 +105,9 @@ expect Recorded.portable("--- 360x145\nui-label \"1\"\n", "/home/ci/repo", "<rep
 
 ## Output that printed the path loses its window size, which depended on it.
 expect Recorded.portable("--- 570x351\nURL: file:///Users/me/counter/a.txt\n", "/Users/me/counter", "<app>") == "--- <size>\nURL: file://<app>/a.txt\n"
+
+## So does a spec run's dump, an observation's `|` lines.
+expect Recorded.portable("@2 obs\n|--- 570x351\n|ui-text \"file:///Users/me/counter/a.txt\"\n", "/Users/me/counter", "<app>") == "@2 obs\n|--- <size>\n|ui-text \"file://<app>/a.txt\"\n"
 
 ## A window one point wider on another system still matches.
 expect Recorded.matches("--- 406x493\nui-title \"Contacts\"\n", "--- 405x493\nui-title \"Contacts\"\n")

@@ -171,13 +171,13 @@ fmt! = |colour| {
 tool! : Bool => Try(List(Str), _)
 tool! = |update| {
 	var $problems = []
-	cases = Path.list!(Path.utf8("examples/counter/tests"))?.keep_oks(|path| Path.filename(path).map_ok(Path.display))
+	cases = names_in!("examples/counter/specs")
 	generated = Release.development_bundle(cases)
 	if update {
 		Path.write_utf8!(Path.utf8("cli/Bundle.roc"), generated)?
 		note!("wrote cli/Bundle.roc")
 	} else if Path.read_utf8!(Path.utf8("cli/Bundle.roc"))? != generated {
-		$problems = $problems.append("cli/Bundle.roc is not what scripts/src/Release.roc generates for this checkout (the counter's recorded cases may have changed): run `blueprint run check -- tool --update` and review the diff")
+		$problems = $problems.append("cli/Bundle.roc is not what scripts/src/Release.roc generates for this checkout (the counter's specs may have changed): run `blueprint run check -- tool --update` and review the diff")
 	}
 	for name in Repo.shared_modules {
 		if Path.read_utf8!(Path.utf8("cli/${name}"))? != Path.read_utf8!(Path.utf8("scripts/src/${name}"))? {

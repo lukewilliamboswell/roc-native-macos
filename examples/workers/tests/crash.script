@@ -1,1 +1,0 @@
-pool:2;choose:Lab;click:Crash a job;wait:600;click:Run 24 jobs;wait:1500;workers;dump;quit

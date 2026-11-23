@@ -373,7 +373,7 @@ the next launch (`Engine.boot_storage`, `Engine.watch_changes`).
 Quitting, or closing the window, cancels every effect in flight and calls
 `roc_engine_drop` once; no turn runs after it. A Roc crash or a host fatal
 error prints the message, shows it in an alert, then exits with status 1.
-Under `ROC_SCRIPT` it never shows the alert. The modal loop runs no turns, so
+Under `ROC_SPEC` or `ROC_SCRIPT` it never shows the alert. The modal loop runs no turns, so
 a timer cannot re-enter Roc after a crash. `dbg` still prints to stderr.
 
 [#effects-and-threads]
@@ -759,7 +759,7 @@ their `nm -u` less their own definitions and the `_roc_*` symbols the host
 and the compiler's generated objects supply, and fails on an import the
 catalog does not own or `run_shim` does not list; a `run_shim` name the
 shims no longer import is only noted, as another supported compiler's may.
-The check's `examples` stage then runs the counter's first recorded case
+The check's `examples` stage then runs the counter's first spec
 through `roc main.roc`, so a run mode the stubs cannot link fails the gate.
 
 Swift is compiled with `-disable-autolink-frameworks` and

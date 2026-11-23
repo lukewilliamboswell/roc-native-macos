@@ -211,10 +211,15 @@ extension Host {
                 emit("|heard \(heard)")
             }
         case "files", "drop":
-            let zone = line.verb == "drop"
-            var controls: [Node] = []
-            root.walk { if $0.name == "ui-drop-zone" || (!zone && $0.name == "ui-file-button") { controls.append($0) } }
-            guard controls.count == 1, let n = controls.first else { return .failed("found \(controls.count) \(zone ? "drop zones" : "file buttons or drop zones"); \(line.verb) needs exactly one", nil) }
+            // `files` picks on the one file button (or, with none, the one
+            // drop zone); `drop` drops on the one drop zone.
+            var buttons: [Node] = [], zones: [Node] = []
+            root.walk { n in
+                if n.name == "ui-file-button" { buttons.append(n) }
+                if n.name == "ui-drop-zone" { zones.append(n) }
+            }
+            let controls = line.verb == "files" && !buttons.isEmpty ? buttons : zones
+            guard controls.count == 1, let n = controls.first else { return .failed("found \(controls.count) \(line.verb == "files" && !buttons.isEmpty ? "file buttons" : "drop zones"); \(line.verb) needs exactly one", nil) }
             deliverFiles(f, type: n.name == "ui-drop-zone" ? "drop" : "change", at: n)
         case "move":
             guard f.count == 2, let x = Double(f[0]), let y = Double(f[1]) else { return .failed("move needs x and y", nil) }
@@ -253,7 +258,7 @@ extension Host {
             let size = window.contentView?.frame.size ?? .zero
             emit("@\(line.k) obs")
             emit("|--- \(Int(size.width))x\(Int(size.height))")
-            dump(root, 0) { print("|" + $0) }
+            dump(root, 0) { print("|" + $0.replacingOccurrences(of: "\n", with: "\n|")) }
         case "find":
             let (parts, _) = Host.locator(f)
             let found = locate(parts)

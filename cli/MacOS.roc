@@ -133,12 +133,12 @@ MacOS :: [].{
 	command_usage = |command| {
 		description = match command {
 			"init" =>
-				\\Create a counter app, with two recorded cases of it.
+				\\Create a counter app, with two specs of it.
 				\\
 				\\Usage: roc macos.roc init [DIR]
 				\\
-				\\DIR defaults to the current directory. init writes main.roc, tests/*.script
-				\\and tests/*.expected, macos.json (the app's name, identifier and version),
+				\\DIR defaults to the current directory. init writes main.roc, specs/*.scm,
+				\\macos.json (the app's name, identifier and version),
 				\\.gitignore, and .github/workflows/release.yml, which packages the app on
 				\\GitHub when you push a tag such as v1.0.0. It never overwrites a file. Keep
 				\\macos.roc in the directory you run init from; a new app gets a copy.

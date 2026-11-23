@@ -12,7 +12,7 @@ import cli.Path
 import cli.Stderr
 import cli.Stdout
 import src/Bundle
-import src/Recorded
+import src/SpecRun
 import src/Release
 
 ## The `release` task: the steps of `.github/workflows/release.yml` after the
@@ -39,12 +39,12 @@ import src/Release
 ##
 ## `archive` writes the examples archive: every example with its header
 ## naming the bundle's release URL (`GITHUB_REPOSITORY`, the version and the
-## bundle's file name), with their recorded cases and the files those use.
+## bundle's file name), with their specs and the files those use.
 ##
 ## `test` checks those exact files as an app author meets them. It unpacks
 ## the archive, serves DIR on localhost in place of the release URL (the
 ## compiler accepts `http` only for localhost), builds every example with an
-## empty package cache and runs every recorded case against it. Then it
+## empty package cache and runs every spec against it. Then it
 ## takes an author's first steps with the release's `macos.roc`: `init` a
 ## counter, `build` it and `test` it, each through the tool. With
 ## `--binaries BIN` it builds nothing and runs the cases against `BIN/<example>`,
@@ -145,7 +145,7 @@ tool! = |root, version, dir, base| {
 	for name in modules {
 		write!("${stage}/${name}", read!("cli/${name}")?)?
 	}
-	case_files = names_in!("examples/counter/tests")?
+	case_files = names_in!("examples/counter/specs")?
 	for file in Release.scaffold(case_files) {
 		write!("${stage}/scaffold/${file.path}", read!(file.source)?)?
 	}
@@ -176,8 +176,8 @@ tool! = |root, version, dir, base| {
 }
 
 ## The examples archive: `roc-native-macos-examples-VERSION/` holding each
-## example's `main.roc` with the release URL in its header, the recorded
-## cases and fixtures, and a README.
+## example's `main.roc` with the release URL in its header, the
+## specs and fixtures, and a README.
 archive! : Str, Str, Str => Try({}, Str)
 archive! = |root, version, dir| {
 	if !Release.version_ok(version) {
@@ -199,8 +199,8 @@ archive! = |root, version, dir| {
 	for path in tracked!(["examples"])?.keep_if(|path| path.contains("/assets/")) {
 		copy!(path, "${top}/${path}")?
 	}
-	# Each example's recorded cases and the files they use, byte for byte.
-	for path in tracked!(["examples"])?.keep_if(|path| path.contains("/tests/")) {
+	# Each example's specs and the files they use, byte for byte.
+	for path in tracked!(["examples"])?.keep_if(|path| path.contains("/specs/")) {
 		copy!(path, "${top}/${path}")?
 	}
 	write!("${top}/README.md", readme(version, url, examples.len()))?
@@ -235,20 +235,21 @@ readme = |version, url, count|
 			"",
 			"    roc build main.roc --target=arm64mac",
 			"",
-			"Each example's `tests/<case>.script` holds the steps of a recorded run and",
-			"`<case>.expected` what the app prints. Run them from the example's directory:",
+			"Each example's `specs/<name>.scm` holds a spec of what it does: steps that",
+			"drive its controls and what it should then show. Run them from the",
+			"example's directory:",
 			"",
 			"    roc ../../../macos.roc test",
 			"",
-			"The window's size is written `--- <size>`, and the example's directory",
-			"`<app>`, where the output printed the path.",
+			"A dump's window size is written `--- <size>`, and the example's directory",
+			"`<app>`, where the dump shows the path.",
 			"",
 		],
 		"\n",
 	)
 
 ## Build every archived example against the served bundle and run its
-## recorded cases, or run them against prebuilt apps.
+## specs, or run them against prebuilt apps.
 test! : Str, Str, Try(Str, [NoBinaries]) => Try({}, Str)
 test! = |root, dir, binaries| {
 	bundle = bundle_in!(dir)?
@@ -283,9 +284,9 @@ test! = |root, dir, binaries| {
 		# A bare program is run away from its assets, so ROC_ASSETS names
 		# them; a bundled one finds its own in Contents/Resources.
 		bundled = if (Path.exists!(Path.utf8(in_app)) ?? Bool.False) [{ exe: in_app, label: "${example}.app", assets: "" }] else []
-		cases = names_in!("${top}/examples/${example}/tests")?.keep_oks(Recorded.case_name)
+		cases = SpecRun.names(names_in!("${top}/examples/${example}/specs") ?? [])
 		if cases.is_empty() {
-			$failed = $failed.append("${example} has no recorded case")
+			$failed = $failed.append("${example} has no spec")
 		}
 		for { exe, label, assets } in [{ exe: "${apps}/${example}", label: example, assets: "${top}/examples/${example}/assets" }].concat(bundled) {
 			for name in cases {
@@ -303,7 +304,7 @@ test! = |root, dir, binaries| {
 		}
 	}
 	if $failed.is_empty() {
-		note!("release: ${$passed.to_str()} cases passed against ${bundle}")
+		note!("release: ${$passed.to_str()} specs passed against ${bundle}")
 		Ok({})
 	} else {
 		Err("${$failed.len().to_str()} failed: ${Str.join_with($failed, ", ")}")
@@ -386,30 +387,19 @@ served! = |server|
 		Err(error) => Err("the local server did not start: ${Str.inspect(error)}")
 	}
 
-## One recorded case, `tests/<name>` of the example in `app_dir`, run from that
-## directory as `macos.roc test` and `blueprint run examples` run it: exit 0,
-## and print exactly the recorded output with the directory written `<app>`.
+## One spec, `specs/<name>` of the example in `app_dir`, run from that
+## directory as `macos.roc test` and `blueprint run examples` run it.
 run_case! : Str, { exe : Str, assets : Str }, Str => Try({}, Str)
 run_case! = |app_dir, { exe, assets }, name| {
-	base = "tests/${name}"
 	if !(Path.exists!(Path.utf8(exe)) ?? Bool.False) {
 		return Err("${exe} does not exist")
 	}
-	steps = read!("${app_dir}/${base}.script")?.trim()
-	expected = read!("${app_dir}/${base}.expected")?
-	program = Cmd.new(OsStr.from_str(exe)).cwd(Path.utf8(app_dir)).env("ROC_SCRIPT", OsStr.from_str(steps))
-	output = (if (assets.is_empty()) program else program.env("ROC_ASSETS", OsStr.from_str(assets)))
-		.stdin(Null)
-		.stderr(MergeWithStdout)
-		.timeout(Duration.seconds(60))
-		.run!() ? |error| "${exe} did not finish: ${Str.inspect(error)}"
-	printed = Recorded.portable(Str.from_utf8_lossy(output.stdout_bytes), app_dir, "<app>")
-	if output.status != Exited(0) {
-		Err("exited with ${Str.inspect(output.status)}; it printed:\n${printed}")
-	} else if printed != expected {
-		Err("printed something other than ${base}.expected:\n--- expected\n${expected}--- printed\n${printed}")
-	} else {
-		Ok({})
+	spec = "specs/${name}"
+	env = if (assets.is_empty()) [] else [("ROC_ASSETS", assets)]
+	match SpecRun.run!({ program: exe, dir: app_dir, spec, update: Bool.False, args: [], env }) {
+		Ok(Passed) | Ok(Updated) => Ok({})
+		Ok(Failed(problems)) => Err(Str.join_with(problems, "\n  "))
+		Err(error) => Err("${exe} could not run ${spec}: ${Str.inspect(error)}")
 	}
 }
 
@@ -521,7 +511,7 @@ bump! = |version, latest, url| {
 cross_systems : List(Str)
 cross_systems = ["x86_64-linux", "aarch64-linux", "x86_64-windows"]
 
-## Every recorded case against each system's cross-compiled apps, which the
+## Every spec against each system's cross-compiled apps, which the
 ## artifact download leaves without their executable bits.
 cross_run! : Str, Str, Str => Try({}, Str)
 cross_run! = |root, dir, cross| {

@@ -81,13 +81,16 @@ Release := [].{
 
 	## The counter scaffold `macos.roc init` writes, by its path in the new
 	## app, and where it comes from in the checkout: the counter example and
-	## its recorded cases (`case_files`, the file names in
-	## `examples/counter/tests/`).
+	## its specs (`case_files`, the file names in `examples/counter/specs/`).
 	scaffold : List(Str) -> List({ path : Str, source : Str })
 	scaffold = |case_files| {
-		cases = case_files.keep_if(|name| name.ends_with(".script") or name.ends_with(".expected")).sort_with(Release.compare_text)
-		[{ path: "main.roc", source: "examples/counter/main.roc" }].concat(cases.map(|name| { path: "tests/${name}", source: "examples/counter/tests/${name}" }))
+		cases = case_files.keep_if(|name| name.ends_with(".scm")).sort_with(Release.compare_text)
+		[{ path: "main.roc", source: "examples/counter/main.roc" }].concat(cases.map(|name| { path: "${Release.specs}/${name}", source: "examples/counter/${Release.specs}/${name}" }))
 	}
+
+	## Where an app keeps its specs.
+	specs : Str
+	specs = "specs"
 
 	## The checked-in `cli/Bundle.roc`: the tool in a checkout, importing the
 	## scaffold from the working tree.
@@ -134,7 +137,7 @@ Release := [].{
 			\\	roc_version = "${roc_version}"
 			\\
 			\\	## The files `init` writes, `main.roc` first: the counter example and
-			\\	## its recorded cases.
+			\\	## its specs.
 			\\	scaffold : List(File)
 			\\	scaffold = [
 		Str.join_with([header].concat(import_lines).concat(["", body]).concat(entries).concat(["\t]", "}", ""]), "\n")
@@ -175,7 +178,7 @@ Release := [].{
 		\\#     roc macos.roc run            build it and start it
 		\\#     roc macos.roc dev            start it, reloading it as you save
 		\\#     roc macos.roc build          build my-app.app, on any system
-		\\#     roc macos.roc test           run its recorded cases, tests/*.script
+		\\#     roc macos.roc test           run its specs, specs/*.scm
 		\\#
 		\\# To move to another release, download that release's macos.roc over
 		\\# this one and change the platform in main.roc to match.
@@ -382,28 +385,27 @@ expect Release.render_notes({ source: "= roc-native-macos 0.0.1\n{platform-url}\
 ## The tool's bundle is told apart from the platform's by its prefix.
 expect Release.tool_bundle("Abc.tar.zst") == "macos-Abc.tar.zst" and Release.is_tool_bundle("macos-Abc.tar.zst") and !Release.is_tool_bundle("Abc.tar.zst")
 
-## The scaffold is the counter, then its recorded cases in order.
+## The scaffold is the counter, then its specs in order.
 expect
-	Release.scaffold(["reset.script", "increment.expected", "notes.txt", "increment.script"])
+	Release.scaffold(["reset.scm", "notes.txt", "increment.scm"])
 		== [
 			{ path: "main.roc", source: "examples/counter/main.roc" },
-			{ path: "tests/increment.expected", source: "examples/counter/tests/increment.expected" },
-			{ path: "tests/increment.script", source: "examples/counter/tests/increment.script" },
-			{ path: "tests/reset.script", source: "examples/counter/tests/reset.script" },
+			{ path: "specs/increment.scm", source: "examples/counter/specs/increment.scm" },
+			{ path: "specs/reset.scm", source: "examples/counter/specs/reset.scm" },
 		]
 
 ## A checkout's Bundle.roc imports the working tree; a release's, its copies.
 expect {
-	dev = Release.development_bundle(["a.script"])
-	rel = Release.release_bundle({ version: "0.0.1", platform_url: "https://u/B.tar.zst", roc_version: "r" }, ["a.script"])
-	dev.contains("import \"../examples/counter/tests/a.script\" as scaffold_tests_a_script : Str\n")
+	dev = Release.development_bundle(["a.scm"])
+	rel = Release.release_bundle({ version: "0.0.1", platform_url: "https://u/B.tar.zst", roc_version: "r" }, ["a.scm"])
+	dev.contains("import \"../examples/counter/specs/a.scm\" as scaffold_specs_a_scm : Str\n")
 		and dev.contains("\tversion = \"development\"\n")
-		and rel.contains("import \"scaffold/tests/a.script\" as scaffold_tests_a_script : Str\n")
+		and rel.contains("import \"scaffold/specs/a.scm\" as scaffold_specs_a_scm : Str\n")
 		and rel.contains("\tplatform_url = \"https://u/B.tar.zst\"\n")
 		and rel.contains("\t\t{ path: \"main.roc\", text: scaffold_main_roc },\n")
 }
 
-expect Release.tool_files(["MacOS.roc", "main.roc", "Bundle.roc", "App.roc"], ["a.script"]) == ["main.roc", "App.roc", "MacOS.roc", "Bundle.roc", "scaffold/main.roc", "scaffold/tests/a.script", "LICENSE", "THIRD_PARTY_LICENSES.md"]
+expect Release.tool_files(["MacOS.roc", "main.roc", "Bundle.roc", "App.roc"], ["a.scm"]) == ["main.roc", "App.roc", "MacOS.roc", "Bundle.roc", "scaffold/main.roc", "scaffold/specs/a.scm", "LICENSE", "THIRD_PARTY_LICENSES.md"]
 
 expect Release.platform_of("package\n\t[MacOS]\n\t{\n\t\tcli: platform \"https://b/c.tar.zst\",\n\t}\n") == Ok("https://b/c.tar.zst")
 
