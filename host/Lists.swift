@@ -18,7 +18,7 @@ final class ListBox: Box, NSTableViewDataSource, NSTableViewDelegate {
     let table = NSTableView()
     unowned let host: Host
     private(set) var rows: [Node] = []
-    private var cells: [ObjectIdentifier: NSTableCellView] = [:]
+    private var cells: [ObjectIdentifier: (row: Node, cell: NSTableCellView)] = [:]
     private var updating = false
     private var bulk = false
     private var changes = 0
@@ -104,8 +104,8 @@ final class ListBox: Box, NSTableViewDataSource, NSTableViewDelegate {
         if bulk {
             quiet = true
             rows = owner.children.filter { $0.name != nil }
-            let live = Set(rows.map(ObjectIdentifier.init))
-            cells = cells.filter { live.contains($0.key) }
+            // Only the rows that were shown have cells: keep those still here.
+            cells = cells.filter { $0.value.row.parent === owner }
             table.reloadData()
         }
         bulk = false
@@ -119,7 +119,7 @@ final class ListBox: Box, NSTableViewDataSource, NSTableViewDelegate {
 
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
         let n = rows[row]
-        if let cell = cells[ObjectIdentifier(n)] { return cell }
+        if let held = cells[ObjectIdentifier(n)] { return held.cell }
         if n.view == nil { host.realize(n) }
         let cell = NSTableCellView()
         if let view = n.view {
@@ -132,7 +132,7 @@ final class ListBox: Box, NSTableViewDataSource, NSTableViewDelegate {
                 view.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -4),
             ])
         }
-        cells[ObjectIdentifier(n)] = cell
+        cells[ObjectIdentifier(n)] = (n, cell)
         return cell
     }
 
@@ -140,6 +140,13 @@ final class ListBox: Box, NSTableViewDataSource, NSTableViewDelegate {
         guard !quiet, !host.applying else { return }
         let at = table.selectedRow
         if at >= 0, at < rows.count { host.dispatch("select", at: rows[at]) }
+    }
+
+    /// Scroll so that row `k` is at the top of the visible rows.
+    func scroll(toRow k: Int) {
+        let y = table.rect(ofRow: k).origin.y
+        contentView.scroll(to: NSPoint(x: 0, y: y))
+        reflectScrolledClipView(contentView)
     }
 
     /// Select the row `n` as the user would.
@@ -154,6 +161,7 @@ extension Host {
     /// Give a list row that has none its views, with every attribute and
     /// text the engine has set on it so far.
     func realize(_ row: Node) {
+        materialize(row)
         row.walk { n in
             makeView(n)
             n.attrs.forEach { applyAttr(n, $0.key, $0.value) }

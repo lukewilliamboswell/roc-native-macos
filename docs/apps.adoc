@@ -323,7 +323,8 @@ Steps are separated by `;` and run every 100 ms.
 | `enter` | submits the text field's form
 | `toggle:<title>` | toggles the checkbox with that title
 | `choose:<title>` | chooses a dropdown item or a segment
-| `select:<text>` | selects the list row holding that text
+| `select:<text>`, `select:#<k>` | selects the list row holding that text, or the k-th row (from 1) of the first list
+| `scroll:<k>` | scrolls the first list so that its row `k` (from 0) is at the top
 | `key:cmd+shift+n` | presses a key, delivered as if nothing had focus; the modifiers are `cmd`, `shift`, `ctrl` and `alt` (or `opt`)
 | `files:<path>,<path>…` | gives files as if picked on the first file button or drop zone, with no panel
 | `drop:<path>,…` | gives files as if dropped on the first drop zone
@@ -332,6 +333,7 @@ Steps are separated by `;` and run every 100 ms.
 | `leave` | moves the pointer out of the window
 | `sweep:<x0>,<y0>,<x1>,<y1>,<moves>,<ms>` | moves the pointer along a line in `moves` steps, one every `ms`; the next step follows the last move, and it prints how long the sweep took
 | `stats` | with `ROC_BENCH=1`, prints the timings so far to standard output
+| `phase:<name>` | with `ROC_BENCH=1`, makes `stats` report the operations from here on apart, as `event/<name>`, `timer/<name>` and so on
 | `pool:<n>` | at most `n` worker threads, so a case runs alike on any machine; before the first job
 | `workers` | prints the worker pool's counts: its size, live, running and queued jobs, and the jobs answered, lost, stopped, timed out and dropped so far
 | `wait:<ms>` | waits
@@ -345,7 +347,7 @@ ignores the real mouse, so where your pointer happens to be never changes a
 run.
 
 A case reads `files:` and `drop:` paths relative to the app's directory. An
-unknown step, or a `click:`, `toggle:`, `choose:` or `select:` that finds no
+unknown step, or a `click:`, `toggle:`, `choose:`, `select:` or `scroll:` that finds no
 such control, stops the app with an error naming the step, so the case
 fails.
 
@@ -362,7 +364,7 @@ as in `ROC_APPEARANCE=dark roc macos.roc run`.
 | `ROC_SCRIPT` | runs these steps, as a recorded case does: `ROC_SCRIPT="click:+;dump;quit" .macos/counter`
 | `ROC_APPEARANCE=dark` (or `light`) | draws the app in that appearance whatever the system's, to check both looks
 | `ROC_TRACE=1` | logs effect requests, cancellations, minted and released file handles, worker jobs (queued, placed, answered, stopped, timed out, dropped) and worker threads (started, unwound, ended), the teardown (`DROP`), and each turn's engine and host time
-| `ROC_BENCH=1` | times each operation (a mount, an event, a pointer move, a timer) in four phases: engine, applying the commands, layout and a forced display, and shows them live in the window; `stats` prints them with the view count and RSS
+| `ROC_BENCH=1` | times each operation (a mount, an event, a pointer move, a timer, a scripted scroll) in four phases: engine, applying the commands, layout and a forced display, and shows them live in a panel over the window; `stats` prints them with the view count and RSS
 | `ROC_POISON=1` | fills every new allocation with `Z`, to expose reads of uninitialised memory
 | `ROC_SAVE_DIR` | where a scripted save writes; without it a scripted save is skipped
 | `ROC_MAX_FILE_BYTES` | lowers the file ceiling, to check `TooLarge`

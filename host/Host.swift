@@ -48,6 +48,9 @@ final class Host: NSObject, NSTextFieldDelegate {
     var documentKeys: [Node] = []
     /// Layout constraints the host made for a view, by view and purpose.
     var constraints: [ObjectIdentifier: [String: NSLayoutConstraint]] = [:]
+    /// Views a framed stack places by frame (Frames.swift): their size
+    /// constraints are kept but inactive.
+    var framedViews = Set<ObjectIdentifier>()
     /// Whether the last sync found a scroll area or list (the window then
     /// stops growing to fit its content).
     var flexible = false
@@ -187,41 +190,72 @@ final class Host: NSObject, NSTextFieldDelegate {
             case 1: // INST node parent before tpl holes...
                 let id = r.u32(), parent = r.u32(), before = r.u32(), tpl = r.u32()
                 guard let template = templates[tpl] else { fatal("INST of unknown template \(tpl)") }
-                let row = template.root.clone()
-                row.id = id
-                nodes[id] = row
-                for hole in template.holes {
-                    var target = row
-                    for index in hole.path { target = target.children[index] }
-                    row.holes.append((target, hole.attr))
-                    switch hole.kind {
-                    case 1: target.text = r.str()
-                    case 2: setAttr(target, hole.attr!, r.presence())
-                    case 3: break
-                    case 4: let pid = r.u32(); target.id = pid; nodes[pid] = target
-                    case 5: refs[r.u32()] = target
-                    case 6: setAttr(target, hole.attr!, r.str())
-                    default: fatal("unknown hole kind \(hole.kind)")
+                let into = before == 0 ? node(parent) : (node(before).parent ?? node(parent))
+                let row: Node
+                if into.view is ListBox, template.deferrable {
+                    // A list row is only its hole values until the table
+                    // first shows it (`materialize`), so a list of a million
+                    // rows holds a million small nodes, not their trees.
+                    row = Node(template.root.kind)
+                    row.attrs = template.root.attrs
+                    row.listeners = template.root.listeners
+                    var values: [String?] = []
+                    for hole in template.holes {
+                        switch hole.kind {
+                        case 1, 6: values.append(r.str())
+                        case 2: values.append(r.presence())
+                        default: values.append(nil)
+                        }
+                    }
+                    row.lazy = LazyRow(template: template, values: values)
+                    row.id = id
+                    nodes[id] = row
+                } else {
+                    row = template.root.clone()
+                    row.id = id
+                    nodes[id] = row
+                    for hole in template.holes {
+                        var target = row
+                        for index in hole.path { target = target.children[index] }
+                        row.holes.append((target, hole.attr))
+                        switch hole.kind {
+                        case 1: target.text = r.str()
+                        case 2: setAttr(target, hole.attr!, r.presence())
+                        case 3: break
+                        case 4: let pid = r.u32(); target.id = pid; nodes[pid] = target
+                        case 5: refs[r.u32()] = target
+                        case 6: setAttr(target, hole.attr!, r.str())
+                        default: fatal("unknown hole kind \(hole.kind)")
+                        }
                     }
                 }
                 // A list's row gets its views when the table first shows it.
-                let into = before == 0 ? node(parent) : (node(before).parent ?? node(parent))
                 if !(into.view is ListBox) {
                     row.walk { n in
                         self.makeView(n)
                         n.attrs.forEach { self.applyAttr(n, $0.key, $0.value) }
-                        self.dirty.append(n)
+                        self.markChildren(n)
                     }
                 }
                 insert(row, parent: parent, before: before)
             case 2: // TEXT node hole str
                 let row = node(r.u32()), hole = Int(r.u8())
-                let target = row.holes[hole].node
-                target.text = r.str()
-                markText(target)
+                if let lazy = row.lazy {
+                    lazy.values[hole] = r.str()
+                } else {
+                    let target = row.holes[hole].node
+                    target.text = r.str()
+                    markText(target)
+                }
             case 3: // HATTR node hole presence [value]
-                let row = node(r.u32()), hole = row.holes[Int(r.u8())]
-                setAttr(hole.node, hole.attr!, r.presence())
+                let row = node(r.u32()), index = Int(r.u8())
+                if let lazy = row.lazy, lazy.template.holes[index].kind == 2 {
+                    lazy.values[index] = r.presence()
+                } else {
+                    materialize(row)
+                    let hole = row.holes[index]
+                    setAttr(hole.node, hole.attr!, r.presence())
+                }
             case 4: // MOVE node before
                 let n = node(r.u32()), before = r.u32()
                 guard let parent = n.parent else { break }
@@ -303,8 +337,14 @@ final class Host: NSObject, NSTextFieldDelegate {
                 let n = node(r.u32()), prop = r.u8(), value = r.str()
                 setAttr(n, Host.propertyName(prop), value)
             case 22: // HPROP node hole value
-                let row = node(r.u32()), hole = row.holes[Int(r.u8())]
-                setAttr(hole.node, hole.attr ?? "value", r.str())
+                let row = node(r.u32()), index = Int(r.u8())
+                if let lazy = row.lazy, lazy.template.holes[index].kind == 6 {
+                    lazy.values[index] = r.str()
+                } else {
+                    materialize(row)
+                    let hole = row.holes[index]
+                    setAttr(hole.node, hole.attr ?? "value", r.str())
+                }
             case 23: // RELEASE node
                 _ = r.u32()
             case 24: // TRANSITION n types
@@ -381,14 +421,39 @@ final class Host: NSObject, NSTextFieldDelegate {
         if let parent { markChildren(parent) }
     }
 
-    /// Drop a removed subtree's ids and views from the host's indexes.
+    /// Build a deferred list row's nodes from its template and hole
+    /// values, as `INST` builds any other row's.
+    func materialize(_ row: Node) {
+        guard let lazy = row.lazy else { return }
+        row.lazy = nil
+        let template = lazy.template
+        for child in template.root.children { row.append(child.clone()) }
+        for (i, hole) in template.holes.enumerated() {
+            var target = row
+            for index in hole.path { target = target.children[index] }
+            row.holes.append((target, hole.attr))
+            let value = lazy.values[i]
+            switch hole.kind {
+            case 1: target.text = value ?? ""
+            case 2, 6:
+                // No views yet: `realize` applies every attribute.
+                if let value { target.attrs[hole.attr!] = value } else { target.attrs.removeValue(forKey: hole.attr!) }
+            default: break
+            }
+        }
+    }
+
+    /// Drop a removed subtree's ids and views from the host's indexes. Its
+    /// nodes let go of their parents, which they hold strongly.
     func forget(_ n: Node) {
         n.walk { d in
+            d.parent = nil
             if let id = d.id, nodes[id] === d { nodes.removeValue(forKey: id) }
             if let v = d.view {
                 byView.removeValue(forKey: ObjectIdentifier(v))
                 if let inner = (v as? NSScrollView)?.documentView { byView.removeValue(forKey: ObjectIdentifier(inner)) }
                 constraints.removeValue(forKey: ObjectIdentifier(v))
+                framedViews.remove(ObjectIdentifier(v))
                 v.removeFromSuperview()
             }
             if !documentKeys.isEmpty { documentKeys.removeAll { $0 === d } }

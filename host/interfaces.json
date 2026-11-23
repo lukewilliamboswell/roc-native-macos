@@ -1066,6 +1066,10 @@
           "evidence": "`swift_isUniquelyReferenced_nonNull_native`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
         },
         {
+          "name": "_swift_isUniquelyReferenced_native",
+          "evidence": "`swift_isUniquelyReferenced_native`, a declaration of the Swift runtime (swiftlang/swift, include/swift/Runtime/HeapObject.h and stdlib/public/runtime), which a class's synthesized deinit calls when the class holds an optional strong reference to its own type (the host's Node.parent)"
+        },
+        {
           "name": "_swift_isaMask",
           "evidence": "`swift_isaMask`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
         },
@@ -1768,6 +1772,10 @@
         {
           "name": "_OBJC_METACLASS_$_NSScrollView",
           "evidence": "the metaclass of the Objective-C class NSScrollView, which a Swift subclass of NSScrollView references (https://developer.apple.com/documentation/appkit/nsscrollview)"
+        },
+        {
+          "name": "_OBJC_METACLASS_$_NSStackView",
+          "evidence": "the metaclass of the Objective-C class NSStackView, which a Swift subclass of NSStackView references (https://developer.apple.com/documentation/appkit/nsstackview)"
         },
         {
           "name": "_OBJC_METACLASS_$_NSTextField",
