@@ -25,15 +25,15 @@ header (xref:../roc-signals/README.adoc[patches/roc-signals]).
   grows, so each update copies it. Standalone reproducer. Engine impact:
   building a table with `Table.insert` in a loop was quadratic; worked
   around by engine patch 0004 (see <<dict-update-sharing>>). Upstream:
-  not yet reported (draft below).
+  https://github.com/roc-lang/roc/issues/13377[roc-lang/roc#13377].
 . `destructure-sharing/`: a record taken apart by a destructuring
   statement or a parameter pattern keeps its refcounted fields shared
   until the function returns, so an update of one of them copies it.
   Standalone reproducer. Engine impact: every table write copied the
   table's rows, and the root's pass read its block shared, so a
   `table_view` copied its columns on every turn; worked around by engine
-  patches 0004 and 0005 (see <<destructure-sharing>>). Upstream: not yet
-  reported (draft below).
+  patches 0004 and 0005 (see <<destructure-sharing>>). Upstream:
+  https://github.com/roc-lang/roc/issues/13376[roc-lang/roc#13376].
 
 The first two reproduce with Roc 0.1.0 RC1 (`roc`) and nightly-2026-11-14-a87808d
 (`roc-stable`), with `roc build` (LLVM, `--opt=speed`); `erased-captures`
@@ -187,7 +187,7 @@ under `ROC_BENCH=1`, as in
 [#destructure-sharing]
 == Destructuring leaves the parts shared
 
-Draft for roc-lang/roc, not yet filed (the text from "Title" to the end
+Reported as https://github.com/roc-lang/roc/issues/13376[roc-lang/roc#13376] (the text from "Title" to the end
 of "Notes", with `destructure-sharing/main.roc` as the program). It may be
 what the engine's `TODO https://github.com/roc-lang/roc/issues/12957`
 in `store_inst` describes ("an optimized build still copies a table's
@@ -269,8 +269,8 @@ million rows; bench/rows' `--smoke` guards it.
 [#dict-update-sharing]
 == Dict.update copies a dictionary the loop owns
 
-Not yet reported. Draft, from "Title" to the end of "Suspected
-mechanism", with `dict-update-sharing/main.roc` as the program:
+Reported as https://github.com/roc-lang/roc/issues/13377[roc-lang/roc#13377] (from "Title" to the end of "Suspected
+mechanism", with `dict-update-sharing/main.roc` as the program):
 
 Title:: `Dict.update` copies the dictionary on every call when a nominal
 record holding it is built in a `var` loop
