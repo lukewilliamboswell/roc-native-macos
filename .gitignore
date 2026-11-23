@@ -27,3 +27,6 @@ build/
 
 # roc-docs output, from building the manual locally
 .docs-out/
+
+# macOS Finder metadata
+.DS_Store
