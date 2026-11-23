@@ -41,6 +41,8 @@ descriptions of install names and symbol names, taken only from the reviewed
 catalog `host/interfaces.json`. The generator reads no Apple SDK header, `.tbd`
 file or framework binary, and the stubs contain no Apple SDK material.
 
-`platform/targets/arm64mac/libhost.a` is this repository's Swift host,
-compiled with Xcode's `swiftc`. It holds only the host's own object code, and
-links the Swift runtime from the system.
+`platform/targets/arm64mac/libhost.a` and `platform/targets/x64mac/libhost.a`
+are this repository's Swift host, compiled with Xcode's `swiftc` for Apple
+silicon and for Intel Macs (`platform/targets/x64v1mac/libhost.a` is a copy of
+the Intel one). Each holds only the host's own object code, and links the
+Swift runtime from the system.

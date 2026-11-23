@@ -1,6 +1,9 @@
 # Built by scripts/build.roc (the glue in host/ is committed)
 platform/targets/arm64mac/libhost.a
 platform/targets/arm64mac/libhost.fingerprint
+platform/targets/x64mac/libhost.a
+platform/targets/x64mac/libhost.fingerprint
+platform/targets/x64v1mac/libhost.a
 platform/targets/macos-sysroot/
 # Example binaries and their .app bundles (examples/<name>/<name>.app); their
 # sources and assets/ stay tracked

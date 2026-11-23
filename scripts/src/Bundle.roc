@@ -25,9 +25,12 @@ Bundle := [].{
 		}
 
 	## The native inputs the bundle carries, relative to `platform/`: the
-	## Swift host and the generated linker stubs (`targets/macos-sysroot`).
-	host_library : Str
-	host_library = "targets/arm64mac/libhost.a"
+	## Swift host for each target the platform declares, Apple silicon and
+	## Intel (`x64v1mac`, Roc's baseline Intel target, has a copy of the
+	## `x64mac` host), and the generated linker stubs
+	## (`targets/macos-sysroot`), which serve them all.
+	host_libraries : List(Str)
+	host_libraries = ["targets/arm64mac/libhost.a", "targets/x64mac/libhost.a", "targets/x64v1mac/libhost.a"]
 
 	sysroot : Str
 	sysroot = "targets/macos-sysroot"
@@ -191,8 +194,8 @@ expect Bundle.options(["--bogus"]) == Err(Unknown("--bogus"))
 
 ## The root module leads; the notices close.
 expect
-	Bundle.files(["Ui.roc", "main.roc", "Core.roc"], ["targets/macos-sysroot/usr/lib/libSystem.tbd", "targets/arm64mac/libhost.a"])
-		== ["main.roc", "Core.roc", "Ui.roc", "targets/arm64mac/libhost.a", "targets/macos-sysroot/usr/lib/libSystem.tbd", "LICENSE", "THIRD_PARTY_LICENSES.md"]
+	Bundle.files(["Ui.roc", "main.roc", "Core.roc"], ["targets/macos-sysroot/usr/lib/libSystem.tbd", "targets/x64mac/libhost.a", "targets/arm64mac/libhost.a"])
+		== ["main.roc", "Core.roc", "Ui.roc", "targets/arm64mac/libhost.a", "targets/macos-sysroot/usr/lib/libSystem.tbd", "targets/x64mac/libhost.a", "LICENSE", "THIRD_PARTY_LICENSES.md"]
 
 expect
 	Bundle.released_main("app [main] { pf: platform \"../../platform/main.roc\" }\n", "http://localhost:8000/abc.tar.zst")

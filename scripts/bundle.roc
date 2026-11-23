@@ -23,7 +23,8 @@ import src/Recorded
 ##
 ## It builds the platform's native inputs (`scripts/build.roc -- --platform`)
 ## unless `--prebuilt`, stages the tracked `platform/*.roc` modules, the
-## Swift host `targets/arm64mac/libhost.a`, the generated linker stubs
+## Swift hosts `targets/arm64mac/libhost.a` and `targets/x64mac/libhost.a`
+## (Apple silicon and Intel), the generated linker stubs
 ## `targets/macos-sysroot/` and the licence notices under `build/`, and runs
 ## `roc bundle` there. The output directory then holds exactly one
 ## content-addressed `<hash>.tar.zst`.
@@ -66,7 +67,7 @@ main! = |raw_args| {
 	if !options.prebuilt {
 		step!(Cmd.new("roc-stable").args(["scripts/build.roc", "--", "--platform"]).env("ROC", "roc"), "scripts/build.roc -- --platform")?
 	}
-	for input in [Bundle.host_library, Bundle.sysroot] {
+	for input in Bundle.host_libraries.append(Bundle.sysroot) {
 		if !(Path.exists!(Path.utf8("platform/${input}"))?) {
 			warn!("bundle: platform/${input} is not built: run `blueprint run build` (or drop --prebuilt)")
 			return Err(Exit(1))
@@ -81,8 +82,10 @@ main! = |raw_args| {
 	for name in modules {
 		Path.copy!(Path.utf8("platform/${name}"), Path.utf8("${stage}/${name}"))?
 	}
-	Path.create_all!(Path.utf8("${stage}/targets/arm64mac"))?
-	Path.copy!(Path.utf8("platform/${Bundle.host_library}"), Path.utf8("${stage}/${Bundle.host_library}"))?
+	for library in Bundle.host_libraries {
+		Path.create_all!(Path.utf8("${stage}/${Str.join_with(library.split_on("/").drop_last(1), "/")}"))?
+		Path.copy!(Path.utf8("platform/${library}"), Path.utf8("${stage}/${library}"))?
+	}
 	Path.copy_dir!(Path.utf8("platform/${Bundle.sysroot}"), Path.utf8("${stage}/${Bundle.sysroot}"))?
 	for notice in Bundle.notices {
 		Path.copy!(Path.utf8(notice), Path.utf8("${stage}/${notice}"))?

@@ -9,11 +9,14 @@ host's references to libraries that macOS supplies at run time.
 
 ## What the stubs contain
 
-Each stub names its target (`arm64-macos`), one library's install name, and
-the symbols the reviewed catalog `host/interfaces.json` assigns to that
-library. Nothing else: no reexports, no versions, no implementation. macOS
-supplies every implementation when an app runs. The TAPI text format is
-openly implemented by LLVM's TextAPI reader and writer.
+Each stub names its targets (`arm64-macos` and `x86_64-macos`, for Apple
+silicon and Intel Macs, which link against the one sysroot), one library's
+install name, and the symbols the reviewed catalog `host/interfaces.json`
+assigns to that library: those of both architectures, then any the catalog
+says only one architecture exports (`only`). Nothing else: no reexports, no
+versions, no implementation. macOS supplies every implementation when an app
+runs. The TAPI text format is openly implemented by LLVM's TextAPI reader and
+writer.
 
 ## Where the catalog's facts come from
 
@@ -43,12 +46,15 @@ no Apple SDK file and no framework implementation.
 
 ## How the host is used
 
-The project-built `libhost.a` is only inventoried: its unresolved references
-(`nm -u`, less what it defines itself) are checked against the catalog, and a
-reference the catalog does not own fails the build. That check never adds
-to the catalog. A new symbol is a reviewed catalog edit that names its
+The project-built `libhost.a`, one for each architecture, is only
+inventoried: its unresolved references (`nm -u`, less what it defines itself)
+are checked against what the catalog exports for its architecture, and a
+reference the catalog does not own there fails the build. That check never
+adds to the catalog. A new symbol is a reviewed catalog edit that names its
 library and its evidence, and a link error is never silenced by widening the
-catalog.
+catalog. A symbol only one architecture has, such as x86-64's
+`objc_msgSend_stret` or `stat$INODE64`, names that architecture in `only`,
+with the evidence that it is that architecture's alone.
 
 ## Roc's run-mode shims
 
@@ -68,8 +74,9 @@ calls. `_tlv_bootstrap` is the thread-local initializer of
 apple-oss-distributions/dyld that every Mach-O thread-local variable names.
 
 The shims are inventoried like the host: the build carves them out of the
-`roc` binary, where they are embedded, and checks their `nm -u` against the
-catalog. Roc's own source bounds what a macOS shim may import
+`roc` binary, where they are embedded, and checks their `nm -u` against what
+the catalog exports for the architecture that `roc` is built for (CI audits
+the shims of the Apple silicon and the Intel `roc`). Roc's own source bounds what a macOS shim may import
 (`src/machine_code_shim/archive_check.zig`). The shims are Roc's, not Apple
 material, and nothing of them is read beyond their symbol tables.
 
@@ -78,7 +85,8 @@ material, and nothing of them is read beyond their symbol tables.
 The producer (`.github/workflows/link-inputs.yml`, running
 `scripts/link_inputs.roc`) reads only the catalog, this statement and its own
 source. It writes the stubs twice and requires identical archives, links and
-runs every example against them with a host built from the same commit, and
+runs every example against them with the hosts built from the same commit, on
+an Apple silicon and on an Intel Mac, and
 writes `build-input-release.json`, which binds the archive's SHA-256 and size
 to the source commit and to an input fingerprint over those files and the
 tooling compiler. A trusted publisher on the default branch
