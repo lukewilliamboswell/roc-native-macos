@@ -54,6 +54,14 @@
           "evidence": "Darwin's stderr, the FILE * that stdio.h's stderr names (apple-oss-distributions/Libc, include/stdio.h), in libSystem's libsystem_c"
         },
         {
+          "name": "__longjmp",
+          "evidence": "_longjmp, POSIX.1 (man 3 setjmp), in libSystem's libsystem_platform: unwinding a worker instance's call to its jump point on a crash, fault or stop (roc_guard_unwind; docs/architecture.adoc, \"Workers\")"
+        },
+        {
+          "name": "__setjmp",
+          "evidence": "_setjmp, POSIX.1 (man 3 setjmp), in libSystem's libsystem_platform: the jump point a guarded call into a worker instance takes (the roc_guarded_* trampolines glue/SwiftGlue.roc generates; docs/architecture.adoc, \"Workers\")"
+        },
+        {
           "name": "_arc4random_buf",
           "evidence": "arc4random_buf, random bytes (man 3 arc4random), in libSystem's libsystem_c"
         },
@@ -146,8 +154,20 @@
           "evidence": "posix_memalign (POSIX.1-2001), in libSystem's libsystem_malloc"
         },
         {
+          "name": "_pthread_getspecific",
+          "evidence": "pthread_getspecific, POSIX.1 (man 3 pthread_getspecific), in libSystem's libsystem_pthread: the runtime symbols find the worker instance running on their thread"
+        },
+        {
+          "name": "_pthread_key_create",
+          "evidence": "pthread_key_create, POSIX.1 (man 3 pthread_key_create), in libSystem's libsystem_pthread: the key of each worker thread's context, which the runtime symbols look up"
+        },
+        {
           "name": "_pthread_main_np",
           "evidence": "pthread_main_np (man 3 pthread_main_np), in libSystem's libsystem_pthread"
+        },
+        {
+          "name": "_pthread_setspecific",
+          "evidence": "pthread_setspecific, POSIX.1 (man 3 pthread_setspecific), in libSystem's libsystem_pthread: a worker thread sets its context"
         },
         {
           "name": "_realloc",
@@ -164,6 +184,10 @@
         {
           "name": "_task_info",
           "evidence": "task_info, with MACH_TASK_BASIC_INFO for the current resident size ROC_BENCH reports (apple-oss-distributions/xnu, osfmk/mach/task_info.h), in libSystem's libsystem_kernel"
+        },
+        {
+          "name": "_unlink",
+          "evidence": "unlink, POSIX.1 (man 2 unlink), in libSystem's libsystem_kernel: removing the temporary file a worker job's builder wrote (Files.build!)"
         },
         {
           "name": "dyld_stub_binder",
@@ -1768,6 +1792,10 @@
         {
           "name": "_OBJC_CLASS_$_NSBundle",
           "evidence": "the Objective-C class NSBundle (https://developer.apple.com/documentation/foundation/nsbundle)"
+        },
+        {
+          "name": "_OBJC_CLASS_$_NSCondition",
+          "evidence": "NSCondition (developer.apple.com/documentation/foundation/nscondition): each worker thread's mailbox"
         },
         {
           "name": "_OBJC_CLASS_$_NSHTTPURLResponse",

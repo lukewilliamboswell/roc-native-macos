@@ -24,7 +24,9 @@ names ("Engine"), plus the patches in `patches/roc-signals/`, applied in the
 order its `README.adoc` lists them. `tests/engine-modules.sha256` records the
 pristine roc-signals digests, and the `engine` stage reverse-applies the series
 to copies of the modules and requires those digests back, so an edit outside a
-patch fails the gate.
+patch fails the gate. The worker layer,
+`platform/{Worker,WorkerCodec,Wire,Files,Hosted,Effects}.roc`, is copied from
+the same revision under the same rules.
 
 - Change an engine module only through a patch: make the change in the
   engine's own style, keep it minimal and behaviour-preserving, then add
@@ -62,13 +64,22 @@ catalog change is a new linker-input release. Keep Swift's
 the host reproducible: every path relative, objects at fixed paths,
 `libtool -D`.
 
-## Roc runs on the main thread only
+## Where Roc runs
 
-Every call into a Roc entry point (`roc_engine_init`, `roc_engine_event`,
+The page's instance runs on the main thread only: every call into its entry
+points (`roc_engine_init`, `roc_engine_event`, `roc_engine_files`,
 `roc_engine_drop`) happens on the AppKit main thread, one engine turn at a
-time. Work done elsewhere, such as a timer, a network request or a file read,
-hops back with `DispatchQueue.main.async` before it calls the engine. Never
-re-enter the engine from inside a turn.
+time. Work done elsewhere, such as a timer, a network request, a file read
+or a worker's answer, hops back with `DispatchQueue.main.async` before it
+calls the engine. Never re-enter the engine from inside a turn.
+
+A worker instance runs only on its own worker thread: the worker entry
+points (`roc_engine_work`, `_prepare`, `_ask`, `_forget`) are called only
+there, through their guarded calls (`Roc.*Guarded`), with that thread's
+`WorkerContext` set. Nothing crosses between instances but bytes and
+`FileEntry` values: never a Roc list, box or handle. Unwind
+(`roc_guard_unwind`) only from a runtime symbol or hosted function inside a
+guarded call, holding no lock, and then discard the instance's heap.
 
 ## The ABI and the glue
 

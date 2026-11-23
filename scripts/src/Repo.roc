@@ -28,7 +28,7 @@ Repo := [].{
 	## reformatted; `tests/engine-modules.sha256` holds their pristine
 	## digests.
 	engine_modules : List(Str)
-	engine_modules = ["Core", "Engine", "Web", "EntryRoutes", "Url", "ReadyIndex", "Spelling", "Layout", "TableCore", "View", "Seq", "MarkupAdvice", "SignalCore"].map(|name| "platform/${name}.roc")
+	engine_modules = ["Core", "Engine", "Web", "EntryRoutes", "Url", "ReadyIndex", "Spelling", "Layout", "TableCore", "View", "Seq", "MarkupAdvice", "SignalCore", "Worker", "WorkerCodec", "Wire", "Files", "Hosted", "Effects"].map(|name| "platform/${name}.roc")
 
 	## The directory of the engine's patch series, and the README that
 	## lists it in order.
@@ -166,7 +166,7 @@ expect Repo.selection(["--", "examples", "--update"]) == Ok({ stages: ["examples
 expect Repo.selection(["test", "build"]) == Ok({ stages: ["build", "test"], update: Bool.False })
 expect Repo.selection(["bogus"]) == Err(Unknown("bogus"))
 
-expect Repo.engine_modules.len() == 13
+expect Repo.engine_modules.len() == 19
 
 series_readme : Str
 series_readme = "= Engine patches\n\n. `0001-first.patch`: one. Upstream: not yet sent.\n. `0002-second.patch`: two. Upstream: https://example.invalid/1\n\nText naming `0003-other.patch` is no item.\n"

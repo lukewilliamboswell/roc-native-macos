@@ -6,6 +6,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <stdbool.h>
+#include <setjmp.h>
 
 #if UINTPTR_MAX != UINT64_MAX
 #error "SwiftGlue emits layouts for 64-bit hosts only"
@@ -42,6 +43,15 @@ _Static_assert(ROC_BOX_U64_HEADER_BYTES >= sizeof(intptr_t), "Box(U64) header ho
 _Static_assert(ROC_BOX_U64_LIST_HEADER_BYTES >= (ROC_BOX_U64_LIST_ELEMENTS_REFCOUNTED + 1) * sizeof(intptr_t), "List(Box(U64)) header holds its count and refcount words");
 
 typedef struct {
+    RocBox held;
+    RocList out;
+} AskForHost;
+_Static_assert(sizeof(AskForHost) == 32, "AskForHost size");
+_Static_assert(_Alignof(AskForHost) == 8, "AskForHost alignment");
+_Static_assert(offsetof(AskForHost, held) == 0, "AskForHost.held offset");
+_Static_assert(offsetof(AskForHost, out) == 8, "AskForHost.out offset");
+
+typedef struct {
     RocList cmds;
     RocBox state;
     RocList work;
@@ -66,10 +76,92 @@ void roc_expect_failed(const uint8_t *_Nullable bytes, size_t len);
 void roc_crashed(const uint8_t *_Nullable bytes, size_t len);
 
 // Provided symbols.
+AskForHost roc_engine_ask(RocBox, RocList, RocList);
 void roc_engine_drop(RocBox, RocList, RocList);
 EventForHost roc_engine_event(RocBox, RocList, RocList, uint32_t, uint32_t, RocList);
 FilesForHost roc_engine_files(RocBox, RocList, RocList, uint32_t, uint32_t, RocList, RocList);
+void roc_engine_forget(RocBox);
 InitForHost roc_engine_init(RocList);
 RocList roc_engine_keys(void);
+RocBox roc_engine_prepare(RocList, RocList);
 uint32_t roc_engine_version(void);
+RocList roc_engine_work(RocList, RocList);
+
+// Hosted symbols: the host defines them (RocGlue.swift exports each one
+// and forwards it to the host's `RocHosted`); compiled Roc calls them.
+uint8_t roc_task_append(uint64_t arg0, RocList arg1); // Hosted.append! : U64, List(U8) => U8
+uint8_t roc_task_append_file(uint64_t arg0, uint64_t arg1, uint64_t arg2, uint64_t arg3); // Hosted.append_file! : U64, U64, U64, U64 => U8
+uint8_t roc_task_finish(uint64_t arg0, uint64_t arg1); // Hosted.finish! : U64, U64 => U8
+void *_Nonnull roc_task_mint(void); // Hosted.mint! : {} => Box(U64)
+uint8_t roc_task_open(uint64_t arg0, RocList arg1, RocList arg2, uint64_t arg3, uint64_t arg4, uint64_t arg5); // Hosted.open! : U64, List(U8), List(U8), U64, U64, U64 => U8
+RocList roc_task_read(uint64_t arg0, uint64_t arg1, uint64_t arg2); // Hosted.read! : U64, U64, U64 => List(U8)
+uint64_t roc_task_size(uint64_t arg0); // Hosted.size! : U64 => U64
+
+// Guarded calls. `roc_guarded_<symbol>` takes a jump point and calls the
+// provided symbol; `roc_guard_unwind`, called on the same thread from a
+// runtime symbol or a hosted function while that call runs, returns to
+// it, abandoning the Roc frames between. Only a host that then discards
+// everything the abandoned call held (its whole heap) may unwind.
+static inline _Noreturn void roc_guard_unwind(jmp_buf *_Nonnull jump) { _longjmp(*jump, 1); }
+
+static __attribute__((noinline)) bool roc_guarded_roc_engine_ask(jmp_buf *_Nonnull jump, AskForHost *_Nonnull out, RocBox arg0, RocList arg1, RocList arg2) {
+    if (_setjmp(*jump) != 0) return false;
+    *out = roc_engine_ask(arg0, arg1, arg2);
+    return true;
+}
+
+static __attribute__((noinline)) bool roc_guarded_roc_engine_drop(jmp_buf *_Nonnull jump, RocBox arg0, RocList arg1, RocList arg2) {
+    if (_setjmp(*jump) != 0) return false;
+    roc_engine_drop(arg0, arg1, arg2);
+    return true;
+}
+
+static __attribute__((noinline)) bool roc_guarded_roc_engine_event(jmp_buf *_Nonnull jump, EventForHost *_Nonnull out, RocBox arg0, RocList arg1, RocList arg2, uint32_t arg3, uint32_t arg4, RocList arg5) {
+    if (_setjmp(*jump) != 0) return false;
+    *out = roc_engine_event(arg0, arg1, arg2, arg3, arg4, arg5);
+    return true;
+}
+
+static __attribute__((noinline)) bool roc_guarded_roc_engine_files(jmp_buf *_Nonnull jump, FilesForHost *_Nonnull out, RocBox arg0, RocList arg1, RocList arg2, uint32_t arg3, uint32_t arg4, RocList arg5, RocList arg6) {
+    if (_setjmp(*jump) != 0) return false;
+    *out = roc_engine_files(arg0, arg1, arg2, arg3, arg4, arg5, arg6);
+    return true;
+}
+
+static __attribute__((noinline)) bool roc_guarded_roc_engine_forget(jmp_buf *_Nonnull jump, RocBox arg0) {
+    if (_setjmp(*jump) != 0) return false;
+    roc_engine_forget(arg0);
+    return true;
+}
+
+static __attribute__((noinline)) bool roc_guarded_roc_engine_init(jmp_buf *_Nonnull jump, InitForHost *_Nonnull out, RocList arg0) {
+    if (_setjmp(*jump) != 0) return false;
+    *out = roc_engine_init(arg0);
+    return true;
+}
+
+static __attribute__((noinline)) bool roc_guarded_roc_engine_keys(jmp_buf *_Nonnull jump, RocList *_Nonnull out) {
+    if (_setjmp(*jump) != 0) return false;
+    *out = roc_engine_keys();
+    return true;
+}
+
+static __attribute__((noinline)) bool roc_guarded_roc_engine_prepare(jmp_buf *_Nonnull jump, RocBox *_Nonnull out, RocList arg0, RocList arg1) {
+    if (_setjmp(*jump) != 0) return false;
+    *out = roc_engine_prepare(arg0, arg1);
+    return true;
+}
+
+static __attribute__((noinline)) bool roc_guarded_roc_engine_version(jmp_buf *_Nonnull jump, uint32_t *_Nonnull out) {
+    if (_setjmp(*jump) != 0) return false;
+    *out = roc_engine_version();
+    return true;
+}
+
+static __attribute__((noinline)) bool roc_guarded_roc_engine_work(jmp_buf *_Nonnull jump, RocList *_Nonnull out, RocList arg0, RocList arg1) {
+    if (_setjmp(*jump) != 0) return false;
+    *out = roc_engine_work(arg0, arg1);
+    return true;
+}
+
 #endif

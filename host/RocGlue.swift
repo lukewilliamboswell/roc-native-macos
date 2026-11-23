@@ -29,6 +29,29 @@ extension RocList {
 
     /// Whether this list is a seamless slice into another allocation.
     var isSeamlessSlice: Bool { capacity_or_alloc_ptr & 1 != 0 }
+
+    /// Release the host's one reference to a `List(U8)` it owns (a hosted
+    /// function's list argument, or a list a provided procedure returned).
+    /// The refcount word sits just before the allocation's elements (a
+    /// seamless slice keeps that address, tagged in the low bit, in place
+    /// of its capacity); 0 marks static data, never freed. When the last
+    /// reference goes the allocation is freed with `roc_dealloc`. Do not
+    /// use the list afterwards.
+    func releaseBytes() {
+        let data: UnsafeMutableRawPointer
+        if isSeamlessSlice {
+            guard let at = UnsafeMutableRawPointer(bitPattern: UInt(capacity_or_alloc_ptr & ~1)) else { return }
+            data = at
+        } else {
+            guard let elements else { return }
+            data = elements
+        }
+        let word = MemoryLayout<Int>.size
+        let count = (data - word).load(as: Int.self)
+        if count == 0 { return }
+        (data - word).storeBytes(of: count - 1, as: Int.self)
+        if count == 1 { roc_dealloc(data - word, word) }
+    }
 }
 
 /// `Box(U64)` as the compiler lays it out (`ROC_BOX_U64_*` in the header):
@@ -82,12 +105,39 @@ extension RocList {
 
 /// The platform's provided procedures.
 enum Roc {
+    /// `ask_for_host!` (`roc_engine_ask`). Every refcounted argument (list or box)
+    /// moves into Roc: do not use or release it after the call. The
+    /// result is owned by the caller; an opaque box in it can only be
+    /// released by passing it back to Roc.
+    static func askForHost(_ arg0: RocBox?, _ arg1: RocList, _ arg2: RocList) -> AskForHost {
+        roc_engine_ask(arg0, arg1, arg2)
+    }
+
+    /// `ask_for_host!` under the jump point `jump` (`roc_guarded_roc_engine_ask`):
+    /// as `askForHost`, except that `roc_guard_unwind(jump)` from
+    /// inside the call comes back here with no result (nil, or false),
+    /// abandoning everything the call held. The arguments move into
+    /// Roc either way.
+    static func askForHostGuarded(_ jump: UnsafeMutablePointer<jmp_buf>, _ arg0: RocBox?, _ arg1: RocList, _ arg2: RocList) -> AskForHost? {
+        var out: AskForHost = AskForHost()
+        return roc_guarded_roc_engine_ask(jump, &out, arg0, arg1, arg2) ? out : nil
+    }
+
     /// `drop_for_host` (`roc_engine_drop`). Every refcounted argument (list or box)
     /// moves into Roc: do not use or release it after the call. The
     /// result is owned by the caller; an opaque box in it can only be
     /// released by passing it back to Roc.
     static func dropForHost(_ arg0: RocBox?, _ arg1: RocList, _ arg2: RocList) -> Void {
         roc_engine_drop(arg0, arg1, arg2)
+    }
+
+    /// `drop_for_host` under the jump point `jump` (`roc_guarded_roc_engine_drop`):
+    /// as `dropForHost`, except that `roc_guard_unwind(jump)` from
+    /// inside the call comes back here with no result (nil, or false),
+    /// abandoning everything the call held. The arguments move into
+    /// Roc either way.
+    static func dropForHostGuarded(_ jump: UnsafeMutablePointer<jmp_buf>, _ arg0: RocBox?, _ arg1: RocList, _ arg2: RocList) -> Bool {
+        roc_guarded_roc_engine_drop(jump, arg0, arg1, arg2)
     }
 
     /// `event_for_host` (`roc_engine_event`). Every refcounted argument (list or box)
@@ -98,12 +148,49 @@ enum Roc {
         roc_engine_event(arg0, arg1, arg2, arg3, arg4, arg5)
     }
 
+    /// `event_for_host` under the jump point `jump` (`roc_guarded_roc_engine_event`):
+    /// as `eventForHost`, except that `roc_guard_unwind(jump)` from
+    /// inside the call comes back here with no result (nil, or false),
+    /// abandoning everything the call held. The arguments move into
+    /// Roc either way.
+    static func eventForHostGuarded(_ jump: UnsafeMutablePointer<jmp_buf>, _ arg0: RocBox?, _ arg1: RocList, _ arg2: RocList, _ arg3: UInt32, _ arg4: UInt32, _ arg5: RocList) -> EventForHost? {
+        var out: EventForHost = EventForHost()
+        return roc_guarded_roc_engine_event(jump, &out, arg0, arg1, arg2, arg3, arg4, arg5) ? out : nil
+    }
+
     /// `files_for_host` (`roc_engine_files`). Every refcounted argument (list or box)
     /// moves into Roc: do not use or release it after the call. The
     /// result is owned by the caller; an opaque box in it can only be
     /// released by passing it back to Roc.
     static func filesForHost(_ arg0: RocBox?, _ arg1: RocList, _ arg2: RocList, _ arg3: UInt32, _ arg4: UInt32, _ arg5: RocList, _ arg6: RocList) -> FilesForHost {
         roc_engine_files(arg0, arg1, arg2, arg3, arg4, arg5, arg6)
+    }
+
+    /// `files_for_host` under the jump point `jump` (`roc_guarded_roc_engine_files`):
+    /// as `filesForHost`, except that `roc_guard_unwind(jump)` from
+    /// inside the call comes back here with no result (nil, or false),
+    /// abandoning everything the call held. The arguments move into
+    /// Roc either way.
+    static func filesForHostGuarded(_ jump: UnsafeMutablePointer<jmp_buf>, _ arg0: RocBox?, _ arg1: RocList, _ arg2: RocList, _ arg3: UInt32, _ arg4: UInt32, _ arg5: RocList, _ arg6: RocList) -> FilesForHost? {
+        var out: FilesForHost = FilesForHost()
+        return roc_guarded_roc_engine_files(jump, &out, arg0, arg1, arg2, arg3, arg4, arg5, arg6) ? out : nil
+    }
+
+    /// `forget_for_host` (`roc_engine_forget`). Every refcounted argument (list or box)
+    /// moves into Roc: do not use or release it after the call. The
+    /// result is owned by the caller; an opaque box in it can only be
+    /// released by passing it back to Roc.
+    static func forgetForHost(_ arg0: RocBox?) -> Void {
+        roc_engine_forget(arg0)
+    }
+
+    /// `forget_for_host` under the jump point `jump` (`roc_guarded_roc_engine_forget`):
+    /// as `forgetForHost`, except that `roc_guard_unwind(jump)` from
+    /// inside the call comes back here with no result (nil, or false),
+    /// abandoning everything the call held. The arguments move into
+    /// Roc either way.
+    static func forgetForHostGuarded(_ jump: UnsafeMutablePointer<jmp_buf>, _ arg0: RocBox?) -> Bool {
+        roc_guarded_roc_engine_forget(jump, arg0)
     }
 
     /// `init_for_host` (`roc_engine_init`). Every refcounted argument (list or box)
@@ -114,12 +201,50 @@ enum Roc {
         roc_engine_init(arg0)
     }
 
+    /// `init_for_host` under the jump point `jump` (`roc_guarded_roc_engine_init`):
+    /// as `initForHost`, except that `roc_guard_unwind(jump)` from
+    /// inside the call comes back here with no result (nil, or false),
+    /// abandoning everything the call held. The arguments move into
+    /// Roc either way.
+    static func initForHostGuarded(_ jump: UnsafeMutablePointer<jmp_buf>, _ arg0: RocList) -> InitForHost? {
+        var out: InitForHost = InitForHost()
+        return roc_guarded_roc_engine_init(jump, &out, arg0) ? out : nil
+    }
+
     /// `keys_for_host` (`roc_engine_keys`). Every refcounted argument (list or box)
     /// moves into Roc: do not use or release it after the call. The
     /// result is owned by the caller; an opaque box in it can only be
     /// released by passing it back to Roc.
     static func keysForHost() -> RocList {
         roc_engine_keys()
+    }
+
+    /// `keys_for_host` under the jump point `jump` (`roc_guarded_roc_engine_keys`):
+    /// as `keysForHost`, except that `roc_guard_unwind(jump)` from
+    /// inside the call comes back here with no result (nil, or false),
+    /// abandoning everything the call held. The arguments move into
+    /// Roc either way.
+    static func keysForHostGuarded(_ jump: UnsafeMutablePointer<jmp_buf>) -> RocList? {
+        var out: RocList = RocList()
+        return roc_guarded_roc_engine_keys(jump, &out) ? out : nil
+    }
+
+    /// `prepare_for_host!` (`roc_engine_prepare`). Every refcounted argument (list or box)
+    /// moves into Roc: do not use or release it after the call. The
+    /// result is owned by the caller; an opaque box in it can only be
+    /// released by passing it back to Roc.
+    static func prepareForHost(_ arg0: RocList, _ arg1: RocList) -> RocBox? {
+        roc_engine_prepare(arg0, arg1)
+    }
+
+    /// `prepare_for_host!` under the jump point `jump` (`roc_guarded_roc_engine_prepare`):
+    /// as `prepareForHost`, except that `roc_guard_unwind(jump)` from
+    /// inside the call comes back here with no result (nil, or false),
+    /// abandoning everything the call held. The arguments move into
+    /// Roc either way.
+    static func prepareForHostGuarded(_ jump: UnsafeMutablePointer<jmp_buf>, _ arg0: RocList, _ arg1: RocList) -> RocBox?? {
+        var out: RocBox? = nil
+        return roc_guarded_roc_engine_prepare(jump, &out, arg0, arg1) ? out : nil
     }
 
     /// `version_for_host` (`roc_engine_version`). Every refcounted argument (list or box)
@@ -130,4 +255,112 @@ enum Roc {
         roc_engine_version()
     }
 
+    /// `version_for_host` under the jump point `jump` (`roc_guarded_roc_engine_version`):
+    /// as `versionForHost`, except that `roc_guard_unwind(jump)` from
+    /// inside the call comes back here with no result (nil, or false),
+    /// abandoning everything the call held. The arguments move into
+    /// Roc either way.
+    static func versionForHostGuarded(_ jump: UnsafeMutablePointer<jmp_buf>) -> UInt32? {
+        var out: UInt32 = UInt32()
+        return roc_guarded_roc_engine_version(jump, &out) ? out : nil
+    }
+
+    /// `work_for_host!` (`roc_engine_work`). Every refcounted argument (list or box)
+    /// moves into Roc: do not use or release it after the call. The
+    /// result is owned by the caller; an opaque box in it can only be
+    /// released by passing it back to Roc.
+    static func workForHost(_ arg0: RocList, _ arg1: RocList) -> RocList {
+        roc_engine_work(arg0, arg1)
+    }
+
+    /// `work_for_host!` under the jump point `jump` (`roc_guarded_roc_engine_work`):
+    /// as `workForHost`, except that `roc_guard_unwind(jump)` from
+    /// inside the call comes back here with no result (nil, or false),
+    /// abandoning everything the call held. The arguments move into
+    /// Roc either way.
+    static func workForHostGuarded(_ jump: UnsafeMutablePointer<jmp_buf>, _ arg0: RocList, _ arg1: RocList) -> RocList? {
+        var out: RocList = RocList()
+        return roc_guarded_roc_engine_work(jump, &out, arg0, arg1) ? out : nil
+    }
+
 }
+
+/// The platform's hosted functions, each a static requirement the host
+/// meets in its `RocHosted` type; the exports below are the symbols
+/// compiled Roc calls, and each forwards to it.
+protocol RocHostedFunctions {
+    /// `Hosted.append! : U64, List(U8) => U8` (`roc_task_append`). A list argument is the
+    /// host's to release (`releaseBytes`); a list or box it returns
+    /// moves to Roc.
+    static func hostedAppend(_ arg0: UInt64, _ arg1: RocList) -> UInt8
+
+    /// `Hosted.append_file! : U64, U64, U64, U64 => U8` (`roc_task_append_file`). A list argument is the
+    /// host's to release (`releaseBytes`); a list or box it returns
+    /// moves to Roc.
+    static func hostedAppendFile(_ arg0: UInt64, _ arg1: UInt64, _ arg2: UInt64, _ arg3: UInt64) -> UInt8
+
+    /// `Hosted.finish! : U64, U64 => U8` (`roc_task_finish`). A list argument is the
+    /// host's to release (`releaseBytes`); a list or box it returns
+    /// moves to Roc.
+    static func hostedFinish(_ arg0: UInt64, _ arg1: UInt64) -> UInt8
+
+    /// `Hosted.mint! : {} => Box(U64)` (`roc_task_mint`). A list argument is the
+    /// host's to release (`releaseBytes`); a list or box it returns
+    /// moves to Roc.
+    static func hostedMint() -> UnsafeMutableRawPointer
+
+    /// `Hosted.open! : U64, List(U8), List(U8), U64, U64, U64 => U8` (`roc_task_open`). A list argument is the
+    /// host's to release (`releaseBytes`); a list or box it returns
+    /// moves to Roc.
+    static func hostedOpen(_ arg0: UInt64, _ arg1: RocList, _ arg2: RocList, _ arg3: UInt64, _ arg4: UInt64, _ arg5: UInt64) -> UInt8
+
+    /// `Hosted.read! : U64, U64, U64 => List(U8)` (`roc_task_read`). A list argument is the
+    /// host's to release (`releaseBytes`); a list or box it returns
+    /// moves to Roc.
+    static func hostedRead(_ arg0: UInt64, _ arg1: UInt64, _ arg2: UInt64) -> RocList
+
+    /// `Hosted.size! : U64 => U64` (`roc_task_size`). A list argument is the
+    /// host's to release (`releaseBytes`); a list or box it returns
+    /// moves to Roc.
+    static func hostedSize(_ arg0: UInt64) -> UInt64
+
+}
+
+/// The host's implementation must meet every requirement.
+private let rocHostedConformance: RocHostedFunctions.Type = RocHosted.self
+
+@_cdecl("roc_task_append")
+public func roc_task_append_export(_ arg0: UInt64, _ arg1: RocList) -> UInt8 {
+    RocHosted.hostedAppend(arg0, arg1)
+}
+
+@_cdecl("roc_task_append_file")
+public func roc_task_append_file_export(_ arg0: UInt64, _ arg1: UInt64, _ arg2: UInt64, _ arg3: UInt64) -> UInt8 {
+    RocHosted.hostedAppendFile(arg0, arg1, arg2, arg3)
+}
+
+@_cdecl("roc_task_finish")
+public func roc_task_finish_export(_ arg0: UInt64, _ arg1: UInt64) -> UInt8 {
+    RocHosted.hostedFinish(arg0, arg1)
+}
+
+@_cdecl("roc_task_mint")
+public func roc_task_mint_export() -> UnsafeMutableRawPointer {
+    RocHosted.hostedMint()
+}
+
+@_cdecl("roc_task_open")
+public func roc_task_open_export(_ arg0: UInt64, _ arg1: RocList, _ arg2: RocList, _ arg3: UInt64, _ arg4: UInt64, _ arg5: UInt64) -> UInt8 {
+    RocHosted.hostedOpen(arg0, arg1, arg2, arg3, arg4, arg5)
+}
+
+@_cdecl("roc_task_read")
+public func roc_task_read_export(_ arg0: UInt64, _ arg1: UInt64, _ arg2: UInt64) -> RocList {
+    RocHosted.hostedRead(arg0, arg1, arg2)
+}
+
+@_cdecl("roc_task_size")
+public func roc_task_size_export(_ arg0: UInt64) -> UInt64 {
+    RocHosted.hostedSize(arg0)
+}
+

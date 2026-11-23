@@ -32,6 +32,8 @@ final class Host: NSObject, NSTextFieldDelegate {
     lazy var http: HttpTransport = makeHttpTransport()
     /// File reads, digests and saves in flight (Files.swift).
     let files = Files()
+    /// Worker threads and the jobs they run (Workers.swift).
+    let work = WorkPool()
     var byView: [ObjectIdentifier: Node] = [:]
     /// Nodes whose view needs its children or text refreshed after a batch.
     var dirty: [Node] = []
