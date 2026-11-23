@@ -118,7 +118,7 @@ wide for the PDF page, so a manual change is checked by building it.
 glue, the examples and the `macos.roc` tool (`cli/`). It is never pinned: CI
 installs the nightly of the day, and a contributor installs a current nightly
 (or RC1) as `roc`.
-`roc-stable`, which `Blueprint.roc` pins to `nightly-2026-11-14-a87808d`,
+`roc-stable`, which `Blueprint.roc` pins to `nightly-2026-11-22-3350b1c`,
 runs the scripts under `scripts/`, and only those scripts name it in their
 headers (`roc: "<tag>"`). Format the scripts with `roc-stable fmt`.
 

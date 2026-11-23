@@ -3,11 +3,11 @@
 		(name "roc-stable")
 		(obtained Both)
 		(served ("release-assets.githubusercontent.com"))
-		(sha256 "cad09543f51266a0f3d0cb5822d0884e62360defa5bb2d793a137f0d69bf92a8")
-		(size 77216295)
+		(sha256 "cd2e82e40ebde3a9e1c1c70fece73b061ec0f995fdf7a17d0dd1b4c39de95ce8")
+		(size 92626832)
 		(system "aarch64-darwin")
-		(urls ("https://github.com/roc-lang/nightlies/releases/download/nightly-2026-11-14-a87808d/roc_nightly-macos_apple_silicon-2026-11-14-a87808d.tar.gz"))
-		(witness "https://api.github.com/repos/roc-lang/nightlies/releases/tags/nightly-2026-11-14-a87808d")) (
+		(urls ("https://github.com/roc-lang/nightlies/releases/download/nightly-2026-11-22-3350b1c/roc_nightly-macos_apple_silicon-2026-11-22-3350b1c.tar.gz"))
+		(witness "https://api.github.com/repos/roc-lang/nightlies/releases/tags/nightly-2026-11-22-3350b1c")) (
 		(name "roc-policy")
 		(obtained Both)
 		(served ("release-assets.githubusercontent.com"))

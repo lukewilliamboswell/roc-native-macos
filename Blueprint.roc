@@ -28,7 +28,7 @@ import pf.Recipes
 # The scripts' tooling compiler (`roc-stable`): every script's `roc` header
 # field names this release, and `check` fails until they match. It is the
 # same release roc-signals' scripts use.
-tooling = { compiler: "nightly-2026-11-14-a87808d" }
+tooling = { compiler: "nightly-2026-11-22-3350b1c" }
 
 roc_stable_program = Fetch("roc-stable", Recipes.roc_nightly(tooling.compiler))
 
