@@ -14,11 +14,11 @@ name: Release
 #              whole check gate, then the bundle from the very
 #              host the gate built and tested, the macos.roc tool, the
 #              examples archive, every archived example built against the
-#              served bundle and run, a counter created, built and tested with
+#              served bundle and run, an app created, built and tested with
 #              macos.roc, the bundle's SBOM sidecars and the notes
 #   cross      Linux x64, Linux arm64 and Windows, with nothing but Roc: every
 #              archived example cross-compiled for arm64mac from the bundle,
-#              a counter created and built with macos.roc, and each example
+#              an app created and built with macos.roc, and each example
 #              with assets/ built with it into a .app
 #   cross-run  macos-15: those cross-compiled apps run their recorded cases
 #   attest     build provenance for every published file
@@ -129,7 +129,7 @@ jobs:
         env:
           VERSION: ${{ needs.validate.outputs.version }}
         run: blueprint run release -- archive "$VERSION" build/release
-      - name: Build every archived example against the served bundle and run its cases, then init, build and test a counter with macos.roc
+      - name: Build every archived example against the served bundle and run its cases, then init, build and test an app with macos.roc
         run: blueprint run release -- test build/release
       - id: bundle
         name: Name the files the release publishes
@@ -228,7 +228,7 @@ jobs:
         with:
           name: release-candidate
           path: ${{ runner.temp }}/candidate
-      - name: Build every archived example for arm64mac against the served bundle, and a counter with macos.roc
+      - name: Build every archived example for arm64mac against the served bundle, and an app made with macos.roc
         env:
           SYSTEM: ${{ matrix.system }}
         run: |
@@ -267,36 +267,42 @@ jobs:
           export XDG_CACHE_HOME="$tmp/roc-cache"
           for dir in "$top"/examples/*/; do
             name=$(basename "$dir")
-            sed -i "s#platform \"https://[^\"]*/$bundle\"#platform \"$url\"#" "$dir/main.roc"
-            grep -q "platform \"$url\"" "$dir/main.roc" || { echo "::error::$name does not name the release URL of $bundle"; exit 1; }
+            # An app's entry is src/main.roc, or main.roc at its top.
+            entry=main.roc
+            if [ -f "$dir/src/main.roc" ]; then entry=src/main.roc; fi
+            sed -i "s#platform \"https://[^\"]*/$bundle\"#platform \"$url\"#" "$dir/$entry"
+            grep -q "platform \"$url\"" "$dir/$entry" || { echo "::error::$name does not name the release URL of $bundle"; exit 1; }
             echo "::group::$name"
-            (cd "$dir" && roc build main.roc --target=arm64mac --output="$apps/$name")
+            (cd "$dir" && roc build "$entry" --target=arm64mac --output="$apps/$name")
             echo "::endgroup::"
             # A Mach-O arm64 executable: magic cf fa ed fe, CPU type 0x0100000c.
             test "$(od -An -tx1 -N8 "$apps/$name" | tr -d ' \n')" = cffaedfe0c000001 \
               || { echo "::error::$apps/$name is not an arm64 Mach-O executable"; exit 1; }
           done
-          # An author's first steps with the release's macos.roc: init a
-          # counter, then build counter.app. cross-run runs its cases.
+          # An author's first steps with the release's macos.roc: init an
+          # app, which is the starter example, then build starter.app.
+          # cross-run runs the starter's cases on it.
           beginner="$tmp/beginner"
           mkdir -p "$beginner"
           sed "s#macos: \"https://[^\"]*/$tool\"#macos: \"http://localhost:8765/$tool\"#" "$candidate/macos.roc" > "$beginner/macos.roc"
           grep -q "macos: \"http://localhost:8765/$tool\"" "$beginner/macos.roc" || { echo "::error::macos.roc does not name the release URL of $tool"; exit 1; }
-          (cd "$beginner" && roc macos.roc init counter)
-          sed -i "s#platform \"https://[^\"]*/$bundle\"#platform \"$url\"#" "$beginner/counter/main.roc"
-          grep -q "platform \"$url\"" "$beginner/counter/main.roc" || { echo "::error::init wrote a main.roc that does not name the release URL of $bundle"; exit 1; }
-          (cd "$beginner/counter" && roc macos.roc build)
-          test -f "$beginner/counter/counter.app/Contents/Info.plist"
-          test "$(od -An -tx1 -N8 "$beginner/counter/counter.app/Contents/MacOS/counter" | tr -d ' \n')" = cffaedfe0c000001 \
+          (cd "$beginner" && roc macos.roc init starter)
+          sed -i "s#platform \"https://[^\"]*/$bundle\"#platform \"$url\"#" "$beginner/starter/src/main.roc"
+          grep -q "platform \"$url\"" "$beginner/starter/src/main.roc" || { echo "::error::init wrote a src/main.roc that does not name the release URL of $bundle"; exit 1; }
+          (cd "$beginner/starter" && roc macos.roc build)
+          test -f "$beginner/starter/starter.app/Contents/Info.plist"
+          test "$(od -An -tx1 -N8 "$beginner/starter/starter.app/Contents/MacOS/starter" | tr -d ' \n')" = cffaedfe0c000001 \
             || { echo "::error::macos.roc build wrote no arm64 Mach-O executable"; exit 1; }
-          cp -R "$beginner/counter/counter.app" "$apps/counter.app"
-          # Each archived example with assets/ is built through macos.roc too,
-          # which copies them into <name>.app and makes its icon from
-          # assets/icon.png with no Apple tool. cross-run runs its cases on the
-          # program inside the bundle, which finds its images there.
+          cp -R "$beginner/starter/starter.app" "$apps/starter.app"
+          # Each other archived example with assets/ is built through
+          # macos.roc too, which copies them into <name>.app and makes its
+          # icon from assets/icon.png with no Apple tool. cross-run runs its
+          # cases on the program inside the bundle, which finds its images
+          # there.
           for dir in "$top"/examples/*/; do
             name=$(basename "$dir")
             [ -d "$dir/assets" ] || continue
+            if [ -e "$apps/$name.app" ]; then continue; fi
             cp "$beginner/macos.roc" "$dir/macos.roc"
             (cd "$dir" && roc macos.roc build)
             test -d "$dir/$name.app/Contents/Resources/assets" \

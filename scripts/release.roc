@@ -31,8 +31,8 @@ import src/Release
 ##
 ## `tool` writes `macos.roc`, the app author's tool: it stages the tool's
 ## package (`cli/`) with a generated `Bundle.roc` naming the release (its
-## version, the platform's URL and the Roc that tested it) and the counter
-## scaffold, runs its `expect`s, and `roc bundle`s it as
+## version, the platform's URL and the Roc that tested it) and the starter
+## scaffold (`examples/starter`), runs its `expect`s, and `roc bundle`s it as
 ## `macos-<hash>.tar.zst`. Then it writes `macos.roc`, the small app an
 ## author downloads, naming that bundle. Both are named by their URLs under
 ## `--base-url`, by default the release's download URL.
@@ -45,8 +45,8 @@ import src/Release
 ## the archive, serves DIR on localhost in place of the release URL (the
 ## compiler accepts `http` only for localhost), builds every example with an
 ## empty package cache and runs every recorded case against it. Then it
-## takes an author's first steps with the release's `macos.roc`: `init` a
-## counter, `build` it and `test` it, each through the tool. With
+## takes an author's first steps with the release's `macos.roc`: `init` an
+## app, `build` it and `test` it, each through the tool. With
 ## `--binaries BIN` it builds nothing and runs the cases against `BIN/<example>`,
 ## apps cross-compiled on another system from the same archive and bundle,
 ## and against `BIN/<example>.app` where `macos.roc build` made one there.
@@ -145,19 +145,20 @@ tool! = |root, version, dir, base| {
 	for name in modules {
 		write!("${stage}/${name}", read!("cli/${name}")?)?
 	}
-	case_files = names_in!("examples/counter/tests")?
-	for file in Release.scaffold(case_files) {
-		write!("${stage}/scaffold/${file.path}", read!(file.source)?)?
+	# The starter example, byte for byte: its icon is not text.
+	scaffold_files = tracked!([Release.starter])?.map(|path| path.drop_prefix("${Release.starter}/"))
+	for file in Release.scaffold(scaffold_files) {
+		copy!(file.source, "${stage}/scaffold/${file.path}")?
 	}
 	for notice in ["LICENSE", "THIRD_PARTY_LICENSES.md"] {
 		write!("${stage}/${notice}", read!(notice)?)?
 	}
 	roc_version = capture!("roc", ["version"])?.trim().drop_prefix("Roc compiler version ")
-	write!("${stage}/Bundle.roc", Release.release_bundle({ version, platform_url: "${base_url}/${bundle}", roc_version }, case_files))?
+	write!("${stage}/Bundle.roc", Release.release_bundle({ version, platform_url: "${base_url}/${bundle}", roc_version }, scaffold_files))?
 	step!(Cmd.new("roc").args(["test", "main.roc"]).cwd(Path.utf8(stage)), "roc test (the tool, with the release's Bundle.roc)")?
 	packed = "${root}/build/tool-bundle"
 	fresh!(packed) ? |error| "could not empty ${packed}: ${Str.inspect(error)}"
-	files = Release.tool_files(modules, case_files)
+	files = Release.tool_files(modules, scaffold_files)
 	step!(Cmd.new("roc").args(["bundle"].concat(files).concat(["--output-dir", packed]).map(OsStr.from_str)).cwd(Path.utf8(stage)), "roc bundle (the tool, ${files.len().to_str()} files)")?
 	hashed = match names_in!(packed)?.keep_if(|name| name.ends_with(".tar.zst")) {
 		[one] => one
@@ -189,18 +190,18 @@ archive! = |root, version, dir| {
 	stage = "${root}/build/examples-archive"
 	fresh!(stage) ? |error| "could not empty ${stage}: ${Str.inspect(error)}"
 	top = "${stage}/${name}"
-	examples = tracked!(["examples"])?.keep_if(|path| path.ends_with("/main.roc"))
-	for path in examples {
+	files = tracked!(["examples"])?
+	examples = Release.examples(files)
+	entries = examples.map(|example| "examples/${example.name}/${example.entry}")
+	for path in entries {
 		source = read!(path)?
-		released = Bundle.released_main(source, url) ? |_| "${path} does not name ../../platform/main.roc"
+		released = Bundle.released_main(source, url) ? |_| "${path} does not name the platform by its path in the checkout"
 		write!("${top}/${path}", released)?
 	}
-	# Each example's assets/, byte for byte: images are not text.
-	for path in tracked!(["examples"])?.keep_if(|path| path.contains("/assets/")) {
-		copy!(path, "${top}/${path}")?
-	}
-	# Each example's recorded cases and the files they use, byte for byte.
-	for path in tracked!(["examples"])?.keep_if(|path| path.contains("/tests/")) {
+	# Every other file of each example, byte for byte (images are not
+	# text): its modules, logic package and fuzz targets, assets/, and the
+	# recorded cases with the files they use. A demo's steps stay here.
+	for path in files.drop_if(|path| entries.contains(path) or path.ends_with("/demo.script")) {
 		copy!(path, "${top}/${path}")?
 	}
 	write!("${top}/README.md", readme(version, url, examples.len()))?
@@ -342,18 +343,24 @@ build_each! = |work, top, url, bundle, examples| {
 	Path.create_all!(Path.utf8(cache)) ? |error| "could not create ${cache}: ${Str.inspect(error)}"
 	for example in examples {
 		app_dir = "${top}/examples/${example}"
-		source = read!("${app_dir}/main.roc")?
-		served = Release.served_main(source, bundle, url) ? |_| "examples/${example}/main.roc does not name the release URL of ${bundle}"
-		write!("${app_dir}/main.roc", served)?
+		entry = entry_in!(app_dir)
+		source = read!("${app_dir}/${entry}")?
+		served = Release.served_main(source, bundle, url) ? |_| "examples/${example}/${entry} does not name the release URL of ${bundle}"
+		write!("${app_dir}/${entry}", served)?
 		out = "${work}/apps/${example}"
 		Path.create_all!(Path.utf8("${work}/apps")) ? |error| "could not create ${work}/apps: ${Str.inspect(error)}"
-		step!(Cmd.new("roc").args(["build", "main.roc", OsStr.from_str("--output=${out}")]).cwd(Path.utf8(app_dir)).env("XDG_CACHE_HOME", OsStr.from_str(cache)), "roc build examples/${example}/main.roc against ${url}")?
+		step!(Cmd.new("roc").args(["build", OsStr.from_str(entry), OsStr.from_str("--output=${out}")]).cwd(Path.utf8(app_dir)).env("XDG_CACHE_HOME", OsStr.from_str(cache)), "roc build examples/${example}/${entry} against ${url}")?
 	}
 	Ok({})
 }
 
+## An app's entry in its directory: `src/main.roc`, or `main.roc` at its
+## top, as `macos.roc` looks for it.
+entry_in! : Str => Str
+entry_in! = |app_dir| if (Path.exists!(Path.utf8("${app_dir}/src/main.roc")) ?? Bool.False) "src/main.roc" else "main.roc"
+
 ## An author's first steps, through the release's `macos.roc` served from
-## localhost, with an empty package cache: `init` a counter, then `build`
+## localhost, with an empty package cache: `init` an app, then `build`
 ## and `test` it. `init` names the platform by its release URL, which is
 ## served from localhost too.
 beginner! : Str, Str, Str, { bundle : Str, tool : Str } => Try({}, Str)
@@ -364,16 +371,18 @@ beginner! = |work, dir, served, { bundle, tool }| {
 	launcher = Release.served_launcher(read!("${dir}/macos.roc")?, tool, "${served}/${tool}") ? |_| "${dir}/macos.roc does not name the release URL of ${tool}"
 	write!("${home}/macos.roc", launcher)?
 	tool_step! = |args, cwd| step!(Cmd.new("roc").args(["macos.roc"].concat(args).map(OsStr.from_str)).cwd(Path.utf8(cwd)).env("XDG_CACHE_HOME", OsStr.from_str(cache)), "roc macos.roc ${Str.join_with(args, " ")} (in ${cwd.drop_prefix("${work}/")})")
-	tool_step!(["init", "counter"], home)?
-	app_dir = "${home}/counter"
-	source = read!("${app_dir}/main.roc")?
-	write!("${app_dir}/main.roc", Release.served_main(source, bundle, "${served}/${bundle}") ? |_| "init wrote a main.roc that does not name the release URL of ${bundle}")?
+	tool_step!(["init", "my-app"], home)?
+	app_dir = "${home}/my-app"
+	# 0.0.1's tool writes the app's main.roc at its top, not in src/.
+	entry = entry_in!(app_dir)
+	source = read!("${app_dir}/${entry}")?
+	write!("${app_dir}/${entry}", Release.served_main(source, bundle, "${served}/${bundle}") ? |_| "init wrote a ${entry} that does not name the release URL of ${bundle}")?
 	tool_step!(["build"], app_dir)?
-	if !(Path.exists!(Path.utf8("${app_dir}/counter.app/Contents/Info.plist")) ?? Bool.False) {
-		return Err("roc macos.roc build wrote no counter.app/Contents/Info.plist")
+	if !(Path.exists!(Path.utf8("${app_dir}/my-app.app/Contents/Info.plist")) ?? Bool.False) {
+		return Err("roc macos.roc build wrote no my-app.app/Contents/Info.plist")
 	}
 	tool_step!(["test"], app_dir)?
-	note!("release: macos.roc created, built and tested a counter against ${bundle}")
+	note!("release: macos.roc created, built and tested an app against ${bundle}")
 	Ok({})
 }
 

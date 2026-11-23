@@ -8,7 +8,12 @@ import cli.System
 import App
 import Recorded
 
-## `test [--update]`: build the app and run its recorded cases.
+## `test [--update]`: run the app's `expect` tests, then build the app and
+## run its recorded cases.
+##
+## `roc test` on the app's root module runs the `expect`s of every module
+## the app has, its local packages' (such as `logic/`) included. Those run
+## on any system; the recorded cases need an Apple silicon Mac.
 ##
 ## `tests/<case>.script` holds the steps of a run (`click:+;dump;quit`),
 ## which the platform's host performs when `ROC_SCRIPT` names them, driving
@@ -27,8 +32,14 @@ Cases := [].{
 
 	run! : Bool => Try({}, _)
 	run! = |update| {
-		if !(Path.exists!(Path.utf8("main.roc"))?) {
-			return Err(NoMainRoc)
+		entry = App.entry!()?
+		if !Cmd.check_available!("roc") {
+			return Err(RocMissing)
+		}
+		Stdout.line!("Running the expect tests: roc test ${entry}")?
+		tested = Cmd.new("roc").args(["test", entry].map(OsStr.from_str)).inherit_stdio().run!()?
+		if tested.status != Exited(0) {
+			return Err(ExpectsFailed(entry))
 		}
 		match App.system(System.target!()) {
 			AppleSilicon => {}

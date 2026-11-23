@@ -423,7 +423,7 @@ examples! = |roc, named| {
 		Err(All) => {
 			var $found = []
 			for name in list!("examples")? {
-				if Path.exists!(Path.utf8("examples/${name}/main.roc")) ?? Bool.False {
+				if Path.exists!(Path.utf8("examples/${name}/${entry!("examples/${name}")}")) ?? Bool.False {
 					$found = $found.append(name)
 				}
 			}
@@ -436,12 +436,18 @@ examples! = |roc, named| {
 	Ok({})
 }
 
+## An example's entry, as `macos.roc` finds an app's: `src/main.roc`, or
+## `main.roc` at its top.
+entry! : Str => Str
+entry! = |dir| if (Path.exists!(Path.utf8("${dir}/src/main.roc")) ?? Bool.False) "src/main.roc" else "main.roc"
+
 ## One example's binary and its `.app`.
 example! : Str, Str => Try({}, Str)
 example! = |roc, name| {
 	dir = "examples/${name}"
+	main = entry!(dir)
 	note!("building ${dir}")
-	step!(Cmd.new(OsStr.from_str(roc)).args(["build", "main.roc", "--output=${name}"].map(OsStr.from_str)).cwd(Path.utf8(dir)), "${roc} build ${dir}/main.roc")?
+	step!(Cmd.new(OsStr.from_str(roc)).args(["build", main, "--output=${name}"].map(OsStr.from_str)).cwd(Path.utf8(dir)), "${roc} build ${dir}/${main}")?
 	bundle_dir = "${dir}/${name}.app"
 	if Path.exists!(Path.utf8(bundle_dir)) ?? Bool.False {
 		Path.delete_all!(Path.utf8(bundle_dir)) ? |error| "could not replace ${bundle_dir}: ${Str.inspect(error)}"

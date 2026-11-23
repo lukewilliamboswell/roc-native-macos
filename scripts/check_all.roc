@@ -35,7 +35,10 @@ import src/Repo
 ## - `build`: `scripts/build.roc`, with the latest nightly as `roc`: the host
 ##   (reused when its fingerprint matches), the linker inputs and every
 ##   example.
-## - `test`: `roc test` on the platform root and on every example.
+## - `test`: `roc test` on the platform root and on every example (its
+##   `main.roc` or `src/main.roc`, which also runs its logic package's
+##   `expect`s), and for an example with `fuzz/main.roc`, the roc-fuzz build
+##   of it and `check` on each of its targets.
 ## - `examples`: every example's recorded scripted runs; `examples --update`
 ##   records what they print now. Then the counter's first case once more
 ##   through Roc's run mode, `roc main.roc`, which links the host with the
@@ -44,7 +47,8 @@ import src/Repo
 ##   built and run at a token size, so it never goes stale.
 ## - `bundle`: the platform bundle from the inputs `build` made, and an
 ##   author's first steps against it with the `macos.roc` tool: `init`,
-##   `build` and `test` a counter (`scripts/bundle.roc --prebuilt --test`).
+##   `build`, `test` and `fuzz --check` the starter app
+##   (`scripts/bundle.roc --prebuilt --test`).
 ##
 ## The package compiler is the `roc` on PATH: the latest nightly in CI.
 main! : List(OsStr) => Try({}, _)
@@ -163,13 +167,13 @@ fmt! = |colour| {
 tool! : Bool => Try(List(Str), _)
 tool! = |update| {
 	var $problems = []
-	cases = Path.list!(Path.utf8("examples/counter/tests"))?.keep_oks(|path| Path.filename(path).map_ok(Path.display))
-	generated = Release.development_bundle(cases)
+	files = tracked!([Release.starter])?.map(|path| path.drop_prefix("${Release.starter}/"))
+	generated = Release.development_bundle(files)
 	if update {
 		Path.write_utf8!(Path.utf8("cli/Bundle.roc"), generated)?
 		note!("wrote cli/Bundle.roc")
 	} else if Path.read_utf8!(Path.utf8("cli/Bundle.roc"))? != generated {
-		$problems = $problems.append("cli/Bundle.roc is not what scripts/src/Release.roc generates for this checkout (the counter's recorded cases may have changed): run `blueprint run check -- tool --update` and review the diff")
+		$problems = $problems.append("cli/Bundle.roc is not what scripts/src/Release.roc generates for this checkout (a file of ${Release.starter} may have been added or removed): run `blueprint run check -- tool --update` and review the diff")
 	}
 	if Path.read_utf8!(Path.utf8("cli/Recorded.roc"))? != Path.read_utf8!(Path.utf8("scripts/src/Recorded.roc"))? {
 		$problems = $problems.append("scripts/src/Recorded.roc differs from cli/Recorded.roc, which it must copy byte for byte: change cli/Recorded.roc, then copy it over")
@@ -193,8 +197,33 @@ scripts! = || {
 test! : () => Try(List(Str), _)
 test! = || {
 	var $problems = run!("roc", ["test", "platform/main.roc"])?
-	for example in examples_present!()? {
-		$problems = $problems.concat(run!("roc", ["test", "examples/${example}/main.roc"])?)
+	for example in examples_found!()? {
+		dir = "examples/${example.name}"
+		$problems = $problems.concat(run!("roc", ["test", "${dir}/${example.entry}"])?)
+		# An example's fuzz targets: built with roc-fuzz, and each target's
+		# declared examples checked, as `macos.roc fuzz --check` does.
+		if Path.exists!(Path.utf8("${dir}/fuzz/main.roc"))? {
+			$problems = $problems.concat(fuzz_check!(dir)?)
+		}
+	}
+	Ok($problems)
+}
+
+## Build an example's `fuzz/main.roc` with roc-fuzz and run `check` on
+## every target it lists, from the example's directory.
+fuzz_check! : Str => Try(List(Str), _)
+fuzz_check! = |dir| {
+	root = Env.cwd!()?.display()
+	program = "${root}/build/fuzz/${dir.drop_prefix("examples/")}"
+	Path.create_all!(Path.utf8("build/fuzz"))?
+	built = run_with!(Cmd.new("roc").args(["build", "--fuzz", "fuzz/main.roc", "--output=${program}"].map(OsStr.from_str)).cwd(Path.utf8(dir)), "roc build --fuzz ${dir}/fuzz/main.roc")?
+	if !built.is_empty() {
+		return Ok(built)
+	}
+	listed = Cmd.new(OsStr.from_str(program)).args(["--list-targets"]).capture!()?
+	var $problems = []
+	for name in listed.split_on("\n").map(Str.trim).drop_if(Str.is_empty) {
+		$problems = $problems.concat(run_with!(Cmd.new(OsStr.from_str(program)).args([OsStr.from_str("--target=${name}"), "check"]).cwd(Path.utf8(dir)), "${dir} fuzz target ${name} check")?)
 	}
 	Ok($problems)
 }
@@ -211,12 +240,14 @@ bench! = || {
 	Ok($problems)
 }
 
-## The examples: every directory under `examples/` with a `main.roc`.
+## The examples: every directory under `examples/` with a `main.roc`, or a
+## `src/main.roc`, and that entry.
+examples_found! : () => Try(List({ name : Str, entry : Str }), _)
+examples_found! = || Ok(Release.examples(tracked!(["examples"])?))
+
+## The examples' names.
 examples_present! : () => Try(List(Str), _)
-examples_present! = || {
-	roots = tracked!(["examples"])?.keep_if(|path| path.ends_with("/main.roc"))
-	Ok(roots.keep_oks(|path| path.drop_prefix("examples/").split_on("/").first()))
-}
+examples_present! = || Ok(examples_found!()?.map(|example| example.name))
 
 ## Every recorded case of every example: the built app, run with the case's
 ## `ROC_SCRIPT` steps, must exit 0 having printed exactly the recorded output.

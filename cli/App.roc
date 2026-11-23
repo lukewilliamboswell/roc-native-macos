@@ -18,17 +18,39 @@ import Meta
 ## flags). Only running it needs a Mac.
 App := [].{
 
-	## The build directory, beside `main.roc`.
+	## The build directory, in the app's directory.
 	work : Str
 	work = ".macos"
 
-	## Build the program, `.macos/<name>`, from `main.roc`. `test` runs this
-	## program; `build` and `run` put it in `<name>.app`.
+	## Where `init` puts the app's root module.
+	nested_entry : Str
+	nested_entry = "src/main.roc"
+
+	## Where apps made by 0.0.1's `init` keep it, which the tool still reads.
+	top_entry : Str
+	top_entry = "main.roc"
+
+	## The app's root module: `src/main.roc`, or `main.roc` at the top of the
+	## app's directory. Everything else the tool reads (`assets/`,
+	## `macos.json`, `tests/`, `fuzz/`) is at the top in either layout.
+	entry! : () => Try(Str, _)
+	entry! = || App.entry_of(Path.exists!(Path.utf8(App.nested_entry))?, Path.exists!(Path.utf8(App.top_entry))?)
+
+	## Which root module there is, given whether each exists.
+	entry_of : Bool, Bool -> Try(Str, [NoMainRoc, TwoEntries])
+	entry_of = |nested, top|
+		match (nested, top) {
+			(Bool.True, Bool.True) => Err(TwoEntries)
+			(Bool.True, _) => Ok(App.nested_entry)
+			(_, Bool.True) => Ok(App.top_entry)
+			_ => Err(NoMainRoc)
+		}
+
+	## Build the program, `.macos/<name>`, from the app's root module. `test`
+	## runs this program; `build` and `run` put it in `<name>.app`.
 	compile! : () => Try({ name : Str, program : Str }, _)
 	compile! = || {
-		if !(Path.exists!(Path.utf8("main.roc"))?) {
-			return Err(NoMainRoc)
-		}
+		entry = App.entry!()?
 		if !Cmd.check_available!("roc") {
 			return Err(RocMissing)
 		}
@@ -39,8 +61,8 @@ App := [].{
 		if Path.exists!(Path.utf8(program))? {
 			Path.delete!(Path.utf8(program))?
 		}
-		Stdout.line!("Building main.roc for Apple silicon macOS...")?
-		built = Cmd.new("roc").args(["build", "main.roc", "--target=arm64mac", "--output=${program}"].map(OsStr.from_str)).inherit_stdio().run!()?
+		Stdout.line!("Building ${entry} for Apple silicon macOS...")?
+		built = Cmd.new("roc").args(["build", entry, "--target=arm64mac", "--output=${program}"].map(OsStr.from_str)).inherit_stdio().run!()?
 		if built.status != Exited(0) {
 			return Err(BuildFailed)
 		}
@@ -48,7 +70,7 @@ App := [].{
 		Ok({ name, program })
 	}
 
-	## Where an app keeps its images and other files, beside `main.roc`.
+	## Where an app keeps its images and other files, in its directory.
 	assets : Str
 	assets = "assets"
 
@@ -102,7 +124,7 @@ App := [].{
 		Ok(fields)
 	}
 
-	## Build `<name>.app` from `main.roc`, with the metadata `macos.json`
+	## Build `<name>.app` from the app, with the metadata `macos.json`
 	## gives and `flags` override, and say what it is.
 	build! : Meta.Fields => Try({ bundle : Str, name : Str, meta : Meta.Resolved }, _)
 	build! = |flags| {
@@ -149,16 +171,15 @@ App := [].{
 		}
 	}
 
-	## Start `roc main.roc` in this directory, with this terminal, until it
-	## ends: Roc's run mode, which rebuilds the app when a file it reads is
-	## saved and swaps the new code in, for Command-R (*Reload*) to remount.
-	## The bare program finds `assets/` here; `macos.json` and the icon
-	## belong to the `.app`, which this does not make.
+	## Start `roc src/main.roc` (or `roc main.roc`) in this directory, with
+	## this terminal, until it ends: Roc's run mode, which rebuilds the app
+	## when a file it reads is saved and swaps the new code in, for
+	## Command-R (*Reload*) to remount. The bare program finds `assets/`
+	## here; `macos.json` and the icon belong to the `.app`, which this does
+	## not make.
 	dev! : () => Try({}, _)
 	dev! = || {
-		if !(Path.exists!(Path.utf8("main.roc"))?) {
-			return Err(NoMainRoc)
-		}
+		entry = App.entry!()?
 		match App.system(System.target!()) {
 			AppleSilicon => {}
 			Other(here) => return Err(DevNotAppleSilicon(here))
@@ -166,12 +187,12 @@ App := [].{
 		if !Cmd.check_available!("roc") {
 			return Err(RocMissing)
 		}
-		Stdout.line!("Running main.roc with `roc main.roc`: it rebuilds when you save, and Command-R in the app shows the new code.")?
-		ran = Cmd.new("roc").args(["main.roc"].map(OsStr.from_str)).inherit_stdio().run!()?
+		Stdout.line!("Running ${entry} with `roc ${entry}`: it rebuilds when you save, and Command-R in the app shows the new code.")?
+		ran = Cmd.new("roc").args([entry].map(OsStr.from_str)).inherit_stdio().run!()?
 		match ran.status {
 			Exited(0) => Ok({})
-			Exited(code) => Err(DevFailed({ how: "exited with code ${code.to_str()}", code }))
-			Signaled(signal) => Err(DevFailed({ how: "stopped on signal ${signal.to_str()}", code: 128 + signal }))
+			Exited(code) => Err(DevFailed({ how: "exited with code ${code.to_str()}", code, entry }))
+			Signaled(signal) => Err(DevFailed({ how: "stopped on signal ${signal.to_str()}", code: 128 + signal, entry }))
 		}
 	}
 
@@ -246,6 +267,10 @@ App := [].{
 }
 
 expect [App.app_name("My App"), App.app_name("counter"), App.app_name("todo_list"), App.app_name("..")] == ["my-app", "counter", "todo-list", "app"]
+
+## An app made by `init` has `src/main.roc`; one made before has `main.roc`
+## at its top; both at once is ambiguous.
+expect [App.entry_of(Bool.True, Bool.False), App.entry_of(Bool.False, Bool.True), App.entry_of(Bool.True, Bool.True), App.entry_of(Bool.False, Bool.False)] == [Ok("src/main.roc"), Ok("main.roc"), Err(TwoEntries), Err(NoMainRoc)]
 
 expect [App.last_part("/Users/me/counter"), App.last_part("C:\\Users\\me\\counter"), App.last_part("counter")] == ["counter", "counter", "counter"]
 

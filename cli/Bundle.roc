@@ -2,24 +2,42 @@
 # copies of the files it imports, and as cli/Bundle.roc for a checkout, where
 # it imports them from the working tree. `check` fails when cli/Bundle.roc
 # differs from what the script generates for a checkout.
-import "../examples/counter/main.roc" as scaffold_main_roc : Str
-import "../examples/counter/tests/increment.expected" as scaffold_tests_increment_expected : Str
-import "../examples/counter/tests/increment.script" as scaffold_tests_increment_script : Str
-import "../examples/counter/tests/reset.expected" as scaffold_tests_reset_expected : Str
-import "../examples/counter/tests/reset.script" as scaffold_tests_reset_script : Str
+import "../examples/starter/AGENTS.md" as scaffold_agents_md : Str
+import "../examples/starter/CLAUDE.md" as scaffold_claude_md : Str
+import "../examples/starter/assets/icon.png" as scaffold_assets_icon_png : List(U8)
+import "../examples/starter/fuzz/main.roc" as scaffold_fuzz_main_roc : Str
+import "../examples/starter/logic/Ledger.roc" as scaffold_logic_ledger_roc : Str
+import "../examples/starter/logic/Money.roc" as scaffold_logic_money_roc : Str
+import "../examples/starter/logic/main.roc" as scaffold_logic_main_roc : Str
+import "../examples/starter/src/Home.roc" as scaffold_src_home_roc : Str
+import "../examples/starter/src/Import.roc" as scaffold_src_import_roc : Str
+import "../examples/starter/src/Store.roc" as scaffold_src_store_roc : Str
+import "../examples/starter/src/Widgets.roc" as scaffold_src_widgets_roc : Str
+import "../examples/starter/src/main.roc" as scaffold_src_main_roc : Str
+import "../examples/starter/tests/add.expected" as scaffold_tests_add_expected : Str
+import "../examples/starter/tests/add.script" as scaffold_tests_add_script : Str
+import "../examples/starter/tests/cards.expected" as scaffold_tests_cards_expected : Str
+import "../examples/starter/tests/cards.script" as scaffold_tests_cards_script : Str
+import "../examples/starter/tests/fixtures/expenses.csv" as scaffold_tests_fixtures_expenses_csv : Str
+import "../examples/starter/tests/import.expected" as scaffold_tests_import_expected : Str
+import "../examples/starter/tests/import.script" as scaffold_tests_import_script : Str
+import "../examples/starter/tests/problem.expected" as scaffold_tests_problem_expected : Str
+import "../examples/starter/tests/problem.script" as scaffold_tests_problem_script : Str
 
 ## What this copy of the tool ships with: the release it belongs to, that
 ## release's platform, the Roc it was tested with, and the app `init` writes.
 Bundle := [].{
 
-	## A file `init` writes, by its path in the app.
-	File : { path : Str, text : Str }
+	## A file `init` writes, by its path in the app: text, or bytes such
+	## as an image.
+	File : { path : Str, contents : [Text(Str), Bytes(List(U8))] }
 
 	## The roc-native-macos release this copy of the tool belongs to.
 	version : Str
 	version = "development"
 
-	## The release's platform bundle, which `init` names in `main.roc`.
+	## The release's platform bundle, which `init` names in the app's
+	## `src/main.roc`.
 	platform_url : Str
 	platform_url = "../platform/main.roc"
 
@@ -27,14 +45,30 @@ Bundle := [].{
 	roc_version : Str
 	roc_version = "development"
 
-	## The files `init` writes, `main.roc` first: the counter example and
-	## its recorded cases.
+	## The files `init` writes: the starter example (`examples/starter`),
+	## with its logic package, fuzz targets, assets and recorded cases.
 	scaffold : List(File)
 	scaffold = [
-		{ path: "main.roc", text: scaffold_main_roc },
-		{ path: "tests/increment.expected", text: scaffold_tests_increment_expected },
-		{ path: "tests/increment.script", text: scaffold_tests_increment_script },
-		{ path: "tests/reset.expected", text: scaffold_tests_reset_expected },
-		{ path: "tests/reset.script", text: scaffold_tests_reset_script },
+		{ path: "AGENTS.md", contents: Text(scaffold_agents_md) },
+		{ path: "CLAUDE.md", contents: Text(scaffold_claude_md) },
+		{ path: "assets/icon.png", contents: Bytes(scaffold_assets_icon_png) },
+		{ path: "fuzz/main.roc", contents: Text(scaffold_fuzz_main_roc) },
+		{ path: "logic/Ledger.roc", contents: Text(scaffold_logic_ledger_roc) },
+		{ path: "logic/Money.roc", contents: Text(scaffold_logic_money_roc) },
+		{ path: "logic/main.roc", contents: Text(scaffold_logic_main_roc) },
+		{ path: "src/Home.roc", contents: Text(scaffold_src_home_roc) },
+		{ path: "src/Import.roc", contents: Text(scaffold_src_import_roc) },
+		{ path: "src/Store.roc", contents: Text(scaffold_src_store_roc) },
+		{ path: "src/Widgets.roc", contents: Text(scaffold_src_widgets_roc) },
+		{ path: "src/main.roc", contents: Text(scaffold_src_main_roc) },
+		{ path: "tests/add.expected", contents: Text(scaffold_tests_add_expected) },
+		{ path: "tests/add.script", contents: Text(scaffold_tests_add_script) },
+		{ path: "tests/cards.expected", contents: Text(scaffold_tests_cards_expected) },
+		{ path: "tests/cards.script", contents: Text(scaffold_tests_cards_script) },
+		{ path: "tests/fixtures/expenses.csv", contents: Text(scaffold_tests_fixtures_expenses_csv) },
+		{ path: "tests/import.expected", contents: Text(scaffold_tests_import_expected) },
+		{ path: "tests/import.script", contents: Text(scaffold_tests_import_script) },
+		{ path: "tests/problem.expected", contents: Text(scaffold_tests_problem_expected) },
+		{ path: "tests/problem.script", contents: Text(scaffold_tests_problem_script) },
 	]
 }
