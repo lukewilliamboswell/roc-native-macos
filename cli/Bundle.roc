@@ -5,6 +5,7 @@
 import "../examples/counter/main.roc" as scaffold_main_roc : Str
 import "../examples/counter/specs/increment.scm" as scaffold_specs_increment_scm : Str
 import "../examples/counter/specs/reset.scm" as scaffold_specs_reset_scm : Str
+import "../examples/counter/specs/work.scm" as scaffold_specs_work_scm : Str
 
 ## What this copy of the tool ships with: the release it belongs to, that
 ## release's platform, the Roc it was tested with, and the app `init` writes.
@@ -32,5 +33,6 @@ Bundle := [].{
 		{ path: "main.roc", text: scaffold_main_roc },
 		{ path: "specs/increment.scm", text: scaffold_specs_increment_scm },
 		{ path: "specs/reset.scm", text: scaffold_specs_reset_scm },
+		{ path: "specs/work.scm", text: scaffold_specs_work_scm },
 	]
 }

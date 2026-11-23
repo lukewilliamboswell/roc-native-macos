@@ -1,20 +1,21 @@
-; Converted from tests/cancel.script by scripts/convert_cases.roc.
+; Cancelling a drawing stops its jobs: the running one is stopped with its
+; worker, the queued ones never start.
 (test "cancel"
   (setup
-    (worker-pool 2))
+    (worker-pool 1))
   (steps
     (choose "Fast")
     (click (button "Zoom In"))
-    (wait 300)
+    (await-work)
     (click (button "Zoom In"))
-    (wait 300)
+    (await-work)
+    (expect-workers :answered 16 :running 0)
     (choose "Extreme")
     (click (button "Draw"))
-    (wait 250)
-    (expect-workers :limit 2 :live 2 :running 2 :queued 6 :started 2 :answered 16 :lost 0 :stopped 0 :timed-out 0 :dropped 0)
+    (expect-workers :limit 1 :live 1 :running 1 :queued 7 :answered 16)
     (click (button "Cancel"))
-    (wait 300)
-    (expect-workers :limit 2 :live 0 :running 0 :queued 0 :started 2 :answered 16 :lost 0 :stopped 2 :timed-out 0 :dropped 0)
+    (await-work)
+    (expect-workers :limit 1 :live 0 :running 0 :queued 0 :answered 16 :stopped 1 :lost 0 :timed-out 0 :dropped 0)
     (expect-dump """
       --- 600x504
       ui-vstack [1 views]

@@ -53,6 +53,11 @@ enum LocalStorage {
 
     static func get(_ key: String) -> String? { defaults.map { $0.string(forKey: key) } ?? memory[key] }
 
+    /// A spec's `(local-storage KEY VALUE)`, before mount.
+    static func seed(_ key: String, _ value: String) {
+        if let defaults { defaults.set(value, forKey: key) } else { memory[key] = value }
+    }
+
     static func set(_ key: String, _ value: String) {
         if let defaults { defaults.set(value, forKey: key) } else { memory[key] = value }
     }

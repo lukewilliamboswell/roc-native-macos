@@ -1,14 +1,14 @@
-; Converted from tests/quit.script by scripts/convert_cases.roc.
+; Quitting while jobs run stops them through teardown: the spec ends with
+; a drawing under way, and the app must still exit normally.
 (test "quit"
   (setup
-    (worker-pool 2))
+    (worker-pool 1))
   (steps
     (choose "Fast")
     (click (button "Zoom In"))
-    (wait 300)
+    (await-work)
     (click (button "Zoom In"))
-    (wait 300)
+    (await-work)
     (choose "Extreme")
     (click (button "Draw"))
-    (wait 250)
-    (expect-workers :limit 2 :live 2 :running 2 :queued 6 :started 2 :answered 16 :lost 0 :stopped 0 :timed-out 0 :dropped 0)))
+    (expect-workers :limit 1 :live 1 :running 1 :queued 7 :answered 16)))

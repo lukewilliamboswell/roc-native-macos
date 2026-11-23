@@ -1,17 +1,16 @@
-; Converted from tests/policies.script by scripts/convert_cases.roc.
+; A cancelled slow job runs to the end and its answer is dropped; a timed
+; job past its timeout is stopped and answered Timeout.
 (test "policies"
   (setup
     (worker-pool 2))
   (steps
     (choose "Lab")
     (click (button "Slow job"))
-    (wait 300)
     (click (button "Cancel"))
-    (wait 100)
-    (expect-workers :limit 2 :live 1 :running 1 :queued 0 :started 1 :answered 0 :lost 0 :stopped 0 :timed-out 0 :dropped 0)
+    (expect-workers :running 1 :answered 0)
     (click (button "Timed job"))
-    (wait 3000)
-    (expect-workers :limit 2 :live 1 :running 0 :queued 0 :started 2 :answered 0 :lost 0 :stopped 1 :timed-out 1 :dropped 1)
+    (await-work)
+    (expect-workers :limit 2 :running 0 :queued 0 :started 2 :answered 0 :lost 0 :stopped 1 :timed-out 1 :dropped 1)
     (expect-dump """
       --- 600x283
       ui-vstack [1 views]

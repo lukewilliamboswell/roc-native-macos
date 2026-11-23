@@ -1,16 +1,17 @@
-; Converted from tests/file.script by scripts/convert_cases.roc.
+; A dropped file is inspected in a worker, which reports on it, and a
+; search runs over the report as each query is typed.
 (test "file"
   (setup
-    (worker-pool 2))
+    (worker-pool 1))
   (steps
     (choose "Lab")
     (drop "specs/fixtures/hello.txt")
-    (wait 800)
+    (await-work)
     (fill (text-field) "hello")
-    (wait 500)
+    (await-work)
     (fill (text-field) "fixture")
-    (wait 500)
-    (expect-workers :limit 2 :live 1 :running 0 :queued 0 :started 1 :answered 3 :lost 0 :stopped 0 :timed-out 0 :dropped 0)
+    (await-work)
+    (expect-workers :limit 1 :live 1 :running 0 :queued 0 :started 1 :answered 3 :lost 0 :stopped 0 :timed-out 0 :dropped 0)
     (expect-dump """
       --- 600x404
       ui-vstack [1 views]

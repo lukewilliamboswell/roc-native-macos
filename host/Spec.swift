@@ -21,6 +21,10 @@ final class SpecSteps {
     struct Line { let k: Int; let verb: String; let fields: [String] }
     var lines: [Line] = []
     var next = 0
+    /// The virtual clock, in milliseconds since 1970: what a timer's tick
+    /// and the boot facts read. Only `advance-time` moves it, and it
+    /// carries over a reload.
+    var clock: Int64 = 0
 
     init(_ text: String) {
         let rows = text.split(separator: "\n", omittingEmptySubsequences: true).map(String.init)
@@ -72,10 +76,23 @@ extension Host {
     /// app exits, which every run does through `exit`).
     func emit(_ line: String) { print(line) }
 
+    /// Drive this window by `steps`: its effects are held, and its setup
+    /// is applied, before mount.
+    func drive(_ steps: SpecSteps) {
+        specSteps = steps
+        held = HeldEffects()
+        setUp(steps)
+    }
+
     /// Setup lines (`k` 0), before mount's first step.
     func setUp(_ steps: SpecSteps) {
         for line in steps.lines where line.k == 0 {
             switch line.verb {
+            case "time":
+                steps.clock = Int64(line.fields.first ?? "") ?? 0
+            case "local-storage":
+                guard line.fields.count == 2 else { fatal("ROC_SPEC: local-storage needs a key and a value") }
+                LocalStorage.seed(line.fields[0], line.fields[1])
             case "pool":
                 guard let n = Int(line.fields.first ?? ""), n >= 1 else { fatal("ROC_SPEC: pool needs a count") }
                 work.limit = n
@@ -100,6 +117,22 @@ extension Host {
             case .next: break
             case .wait(let ms): delay = ms / 1000
             case .handedOver: return
+            case .awaitWork:
+                // Worker jobs and file operations run for real: wait for
+                // them, at most 30 seconds, then take the next step.
+                let began = Bench.now()
+                func poll() {
+                    if workDone {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05, execute: next)
+                    } else if Bench.now() - began > 30 {
+                        emit("@\(line.k) fail worker jobs or file operations were still in flight after 30 s: \(work.summary)")
+                        NSApp.terminate(nil)
+                    } else {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.01, execute: poll)
+                    }
+                }
+                poll()
+                return
             case .failed(let message, let located):
                 emit("@\(line.k) fail \(message)")
                 if let located {
@@ -117,6 +150,7 @@ extension Host {
     enum Performed {
         case next
         case wait(Double)
+        case awaitWork
         case handedOver
         case failed(String, Located?)
     }
@@ -251,7 +285,6 @@ extension Host {
             return .wait(Double(f.first ?? "") ?? 0)
         case "reload":
             guard let fresh = (NSApp.delegate as? AppDelegate)?.reload(), let steps = specSteps else { return .failed("reload found no engine to reload", nil) }
-            fresh.specSteps = steps
             fresh.run(spec: steps)
             return .handedOver
         case "dump":
@@ -279,6 +312,7 @@ extension Host {
                 emit("|\(name) \(count)")
             }
         default:
+            if let done = performEffect(line) { return done }
             fatal("ROC_SPEC: unknown step \(line.verb); this host and the macos.roc tool are from different releases")
         }
         return .next

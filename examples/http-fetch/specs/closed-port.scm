@@ -1,9 +1,15 @@
-; Converted from tests/closed-port.script by scripts/convert_cases.roc.
+; A refused connection is answered as the network's failure, with its message.
 (test "closed-port"
   (steps
     (fill (text-field) "http://127.0.0.1:9/")
     (click (button "Fetch"))
-    (wait 1500)
+    (expect-pending-effects 1)
+    (expect-request 1 :method "GET" :url "http://127.0.0.1:9/" :timeout 0)
+    (expect-disabled (button "Cancel") false)
+    (fail-http "refused" :kind network :detail "Could not connect to the server.")
+    (run-effect 1)
+    (expect-pending-effects 0)
+    (expect-visible (text "NETWORK"))
     (expect-dump """
       --- 560x221
       ui-vstack [1 views]

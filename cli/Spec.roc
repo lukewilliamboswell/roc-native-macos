@@ -61,13 +61,29 @@ Spec := [].{
 		ExpectChecked(Loc, Bool),
 		ExpectDisabled(Loc, Bool),
 		ExpectWorkers(List({ field : Str, count : I64 })),
+		StubHttp({ url : Str, status : I64, body : Str, headers : List((Str, Str)) }),
+		FailHttp({ kind : Str, detail : Str }),
+		RunEffect(I64),
+		TickInterval(I64),
+		FireTimer(I64),
+		AdvanceTime(I64),
+		AwaitWork,
+		ExpectPendingEffects(I64),
+		ExpectInterval(I64, I64),
+		ExpectRequest(I64, List({ field : Str, value : Str })),
+		ExpectCancelled(I64),
+		MarkMetrics,
+		ExpectMetricDelta(Str, I64),
+		ExpectMetricDeltaAtMost(Str, I64),
 	]
 
 	## One step and where it is written.
 	Step : { pos : Pos, op : Op }
 
-	## What a spec sets before the app mounts.
-	Setup : { pool : U64 }
+	## What a spec sets before the app mounts: the worker pool's size (0 for
+	## the host's own), the virtual clock's time at mount, in milliseconds
+	## since 1970, and local storage's pairs.
+	Setup : { pool : U64, time : I64, storage : List((Str, Str)) }
 
 	## A parsed spec.
 	Parsed : { name : Str, setup : Setup, steps : List(Step) }
@@ -82,7 +98,7 @@ Spec := [].{
 		}
 		match items {
 			[Sym("test", _), Text(name, _), .. as sections] => {
-				var $setup = { pool: 0 }
+				var $setup = { pool: 0, time: 0, storage: [] }
 				var $steps = []
 				var $saw_setup = Bool.False
 				var $saw_steps = Bool.False
@@ -127,7 +143,9 @@ Spec := [].{
 	## step's number from 1. A field escapes `\`, tab and line break.
 	lower : Parsed -> Str
 	lower = |{ setup, steps, .. }| {
-		head = ["roc-spec 1"].concat(if (setup.pool > 0) ["0\tpool\t${setup.pool.to_str()}"] else [])
+		head = ["roc-spec 1", "0\ttime\t${setup.time.to_str()}"]
+			.concat(if (setup.pool > 0) ["0\tpool\t${setup.pool.to_str()}"] else [])
+			.concat(setup.storage.map(|(key, value)| "0\tlocal-storage\t${escape(key)}\t${escape(value)}"))
 		var $lines = head
 		var $k = 0.U64
 		for step in steps {
@@ -200,13 +218,18 @@ Spec := [].{
 	judge = |{ steps, .. }, run| {
 		var $problems = []
 		var $k = 0.U64
+		var $mark = Err(NoMark)
 		for step in steps {
 			$k = $k + 1
 			match run.failed {
 				Ok(f) if f.step == $k => return $problems.append({ pos: step.pos, message: failure_message(f.message, f.lines) })
 				_ => {}
 			}
-			match expectation(step.op, observation(run, $k)) {
+			seen = observation(run, $k)
+			if step.op == MarkMetrics {
+				$mark = seen.map_ok(counters_of).map_err(|_| NoMark)
+			}
+			match expectation(step.op, seen, $mark) {
 				Ok({}) => {}
 				Err(message) => {
 					$problems = $problems.append({ pos: step.pos, message })
@@ -261,7 +284,83 @@ Spec := [].{
 
 	## The step names, for an unknown step's message.
 	step_names : List(Str)
-	step_names = ["click", "fill", "submit", "toggle", "select", "hover", "choose", "press", "files", "drop", "move", "leave", "sweep", "scroll", "phase", "stats", "window", "wait", "reload", "expect-dump", "expect-visible", "expect-absent", "expect-text", "expect-checked", "expect-disabled", "expect-workers"]
+	step_names = ["click", "fill", "submit", "toggle", "select", "hover", "choose", "press", "files", "drop", "move", "leave", "sweep", "scroll", "phase", "stats", "window", "wait", "reload", "expect-dump", "expect-visible", "expect-absent", "expect-text", "expect-checked", "expect-disabled", "expect-workers", "stub-http", "fail-http", "run-effect", "tick-interval", "fire-timer", "advance-time", "await-work", "expect-pending-effects", "expect-interval", "expect-request", "expect-cancelled", "mark-metrics", "expect-metric-delta", "expect-metric-delta-at-most"]
+
+	## The work metrics a spec may name, and the engine's work counters each
+	## sums. Counter `k` is the `k`th of the work record the engine returns
+	## with every turn (roc-signals design.md, Appendix B: `count:u32
+	## (counter:u64)*`, cumulative over the window's engine): 1-18 count
+	## commands by opcode, 19-31 engine work, 32-38 the effect counters, 40
+	## onwards ports, properties, released registrations, transitions,
+	## progress, startup and opportunities. This is roc-signals' own table
+	## (`platform/Scm.roc`, `metric_names`), which its engine package does
+	## not expose.
+	metric_names : List({ name : Str, counters : List(U64) })
+	metric_names = [
+		{ name: "rows_created", counters: [1] },
+		{ name: "rows_removed", counters: [22] },
+		{ name: "rows_reused", counters: [23] },
+		{ name: "rows_updated", counters: [24] },
+		{ name: "rows_moved", counters: [4] },
+		{ name: "create_element", counters: [8] },
+		{ name: "set_text", counters: [2, 12] },
+		{ name: "set_value", counters: [19] },
+		{ name: "set_checked", counters: [20] },
+		{ name: "bind_event", counters: [11] },
+		{ name: "registrations_released", counters: [43] },
+		{ name: "set_metadata", counters: [17] },
+		{ name: "patches_emitted", counters: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 41, 42, 48] },
+		{ name: "derived_calls_into_roc", counters: [21] },
+		{ name: "scopes_created", counters: [25] },
+		{ name: "scopes_disposed", counters: [26] },
+		{ name: "dirty_source_roots", counters: [27] },
+		{ name: "each_key_hashes", counters: [28] },
+		{ name: "each_key_compares", counters: [29] },
+		{ name: "turns", counters: [30] },
+		{ name: "effects_issued", counters: [32] },
+		{ name: "effects_delivered", counters: [33] },
+		{ name: "effects_stale", counters: [34] },
+		{ name: "effects_refused", counters: [35] },
+		{ name: "effects_cancelled", counters: [36] },
+		{ name: "effects_reparented", counters: [37] },
+		{ name: "effects_skipped", counters: [38] },
+		{ name: "effects_progress", counters: [47] },
+		{ name: "view_transitions", counters: [45] },
+		{ name: "startup", counters: [49] },
+		{ name: "startup_ack", counters: [50] },
+		{ name: "startup_complete", counters: [51] },
+		{ name: "opportunity_commands", counters: [52] },
+		{ name: "opportunity_requested", counters: [53] },
+		{ name: "opportunity_cancelled", counters: [54] },
+		{ name: "opportunity_delivered", counters: [55] },
+		{ name: "opportunity_stale", counters: [56] },
+	]
+
+	## A metric's value in a work record's counters: the sum of its counters.
+	metric : List(U64), Str -> Try(U64, [UnknownMetric])
+	metric = |counters, name|
+		match Spec.metric_names.find_first(|m| m.name == name) {
+			Ok(m) => Ok(m.counters.fold(0, |sum, k| sum + (counters.get(k) ?? 0)))
+			Err(_) => Err(UnknownMetric)
+		}
+
+	## A work record's counters, from its bytes: `count:u32 (counter:u64)*`,
+	## little-endian, and what follows them ignored.
+	work_counters : List(U8) -> List(U64)
+	work_counters = |bytes| {
+		count = le(bytes, 0, 4)
+		var $out = []
+		var $k = 0.U64
+		while $k < count and 4 + 8 * ($k + 1) <= bytes.len() {
+			$out = $out.append(le(bytes, 4 + 8 * $k, 8))
+			$k = $k + 1
+		}
+		$out
+	}
+
+	## The fields `expect-request` may name.
+	request_fields : List(Str)
+	request_fields = ["method", "url", "body", "timeout"]
 
 	## The locator kinds.
 	locator_names : List(Str)
@@ -481,7 +580,11 @@ setup_form = |setup, form|
 	match form {
 		List([Sym("worker-pool", _), Int(n, _)], _) if n >= 1 and n <= 64 => Ok({ ..setup, pool: n.to_u64_wrap() })
 		List([Sym("worker-pool", p), ..], _) => Err({ pos: p, message: "(worker-pool N) takes a count from 1 to 64" })
-		List([head, ..], _) => Err({ pos: pos_of(head), message: "unknown setup form ${show(head)}; the setup forms are worker-pool" })
+		List([Sym("initial-time", _), Int(ms, _)], _) => Ok({ ..setup, time: ms })
+		List([Sym("initial-time", p), ..], _) => Err({ pos: p, message: "(initial-time MS) takes milliseconds since 1970" })
+		List([Sym("local-storage", _), Text(key, _), Text(value, _)], _) => Ok({ ..setup, storage: setup.storage.append((key, value)) })
+		List([Sym("local-storage", p), ..], _) => Err({ pos: p, message: "(local-storage \"key\" \"value\") seeds one pair" })
+		List([head, ..], _) => Err({ pos: pos_of(head), message: "unknown setup form ${show(head)}; the setup forms are worker-pool, initial-time and local-storage" })
 		other => Err({ pos: pos_of(other), message: "a setup form is a list, such as (worker-pool 1)" })
 	}
 
@@ -551,6 +654,35 @@ step_form = |form| {
 		("expect-disabled", _) => return usage("(expect-disabled LOCATOR true)")
 		("expect-workers", [_, ..]) => ExpectWorkers(worker_counts(args)?)
 		("expect-workers", _) => return usage("(expect-workers :answered 8 …)")
+		("stub-http", [Text(_, _), .. as rest]) => StubHttp(stub(rest, { url: "", status: 200, body: "", headers: [] })?)
+		("stub-http", _) => return usage("(stub-http \"label\" :status 200 :body \"…\"), optionally with :url \"…\" and :headers ((\"name\" \"value\") …)")
+		("fail-http", [Text(_, _), Sym(":kind", _), Sym(kind, _)]) if kind == "timeout" => FailHttp({ kind, detail: "" })
+		("fail-http", [Text(_, _), Sym(":kind", _), Sym(kind, _), Sym(":detail", _), Text(detail, _)]) if kind == "network" => FailHttp({ kind, detail })
+		("fail-http", _) => return usage("(fail-http \"label\" :kind network :detail \"message\") or (fail-http \"label\" :kind timeout)")
+		("run-effect", [Int(n, _)]) if n >= 1 => RunEffect(n)
+		("run-effect", _) => return usage("(run-effect N), N counting the effects the app issued from 1")
+		("tick-interval", [Int(ms, _)]) if ms >= 1 => TickInterval(ms)
+		("tick-interval", _) => return usage("(tick-interval MS), an interval's period")
+		("fire-timer", [Int(ms, _)]) if ms >= 0 => FireTimer(ms)
+		("fire-timer", _) => return usage("(fire-timer MS), a timer's delay")
+		("advance-time", [Int(ms, _)]) if ms >= 0 => AdvanceTime(ms)
+		("advance-time", _) => return usage("(advance-time MS)")
+		("await-work", []) => AwaitWork
+		("await-work", _) => return usage("(await-work)")
+		("expect-pending-effects", [Int(n, _)]) if n >= 0 => ExpectPendingEffects(n)
+		("expect-pending-effects", _) => return usage("(expect-pending-effects N)")
+		("expect-interval", [Int(ms, _), Int(n, _)]) if ms >= 1 and n >= 0 => ExpectInterval(ms, n)
+		("expect-interval", _) => return usage("(expect-interval MS N), N live intervals of that period")
+		("expect-request", [Int(n, _), .. as rest]) if n >= 1 => ExpectRequest(n, request_pairs(rest)?)
+		("expect-request", _) => return usage("(expect-request N :method \"GET\" :url \"…\"), with any of :method, :url, :body and :timeout")
+		("expect-cancelled", [Int(n, _)]) if n >= 1 => ExpectCancelled(n)
+		("expect-cancelled", _) => return usage("(expect-cancelled N)")
+		("mark-metrics", []) => MarkMetrics
+		("mark-metrics", _) => return usage("(mark-metrics)")
+		("expect-metric-delta", [Sym(name, np), Int(n, _)]) if n >= 0 => ExpectMetricDelta(metric_name(name, np)?, n)
+		("expect-metric-delta", _) => return usage("(expect-metric-delta METRIC N)")
+		("expect-metric-delta-at-most", [Sym(name, np), Int(n, _)]) if n >= 0 => ExpectMetricDeltaAtMost(metric_name(name, np)?, n)
+		("expect-metric-delta-at-most", _) => return usage("(expect-metric-delta-at-most METRIC N)")
 		_ => return Err({ pos, message: "unknown step ${head}; the steps are ${Str.join_with(Spec.step_names, ", ")}" })
 	}
 	Ok({ pos, op })
@@ -604,6 +736,61 @@ worker_counts = |args|
 			Ok([{ field, count: n }].concat(worker_counts(rest)?))
 		}
 		[other, ..] => Err({ pos: pos_of(other), message: "expect-workers takes :name COUNT pairs, such as :answered 8" })
+	}
+
+metric_name : Str, Spec.Pos -> Try(Str, Spec.Problem)
+metric_name = |name, pos|
+	if Spec.metric_names.any(|m| m.name == name) {
+		Ok(name)
+	} else {
+		Err({ pos, message: "unknown metric ${name}; the metrics are ${Str.join_with(Spec.metric_names.map(|m| m.name), ", ")}" })
+	}
+
+## The little-endian number of `size` bytes at `at`; 0 past the end.
+le : List(U8), U64, U64 -> U64
+le = |bytes, at, size| bytes.drop_first(at).take_first(size).fold({ n: 0, shift: 0 }, |acc, b| { n: acc.n + b.to_u64().shl_wrap(acc.shift), shift: acc.shift + 8 }).n
+
+## A staged HTTP answer's keywords.
+stub : List(Spec.Sx), { url : Str, status : I64, body : Str, headers : List((Str, Str)) } -> Try({ url : Str, status : I64, body : Str, headers : List((Str, Str)) }, Spec.Problem)
+stub = |args, acc|
+	match args {
+		[] => Ok(acc)
+		[Sym(":url", _), Text(url, _), .. as rest] => stub(rest, { ..acc, url })
+		[Sym(":status", _), Int(status, p), .. as rest] =>
+			if (status >= 100 and status <= 999) stub(rest, { ..acc, status }) else Err({ pos: p, message: "a status is from 100 to 999" })
+		[Sym(":body", _), Text(body, _), .. as rest] => stub(rest, { ..acc, body })
+		[Sym(":headers", _), List(pairs, _), .. as rest] => {
+			var $headers = []
+			for pair in pairs {
+				match pair {
+					List([Text(name, _), Text(value, _)], _) => {
+						$headers = $headers.append((name, value))
+					}
+					other => return Err({ pos: pos_of(other), message: "a header is (\"name\" \"value\")" })
+				}
+			}
+			stub(rest, { ..acc, headers: $headers })
+		}
+		[other, ..] => Err({ pos: pos_of(other), message: "stub-http takes :url, :status, :body and :headers, each followed by its value" })
+	}
+
+request_pairs : List(Spec.Sx) -> Try(List({ field : Str, value : Str }), Spec.Problem)
+request_pairs = |args|
+	match args {
+		[] => Ok([])
+		[Sym(key, kp), value, .. as rest] if key.starts_with(":") => {
+			field = key.drop_prefix(":")
+			if !Spec.request_fields.contains(field) {
+				return Err({ pos: kp, message: "unknown request field ${key}; they are ${Str.join_with(Spec.request_fields.map(|f| ":${f}"), ", ")}" })
+			}
+			text = match value {
+				Text(t, _) => t
+				Int(n, _) => n.to_str()
+				other => return Err({ pos: pos_of(other), message: "a request field's value is a string or a number" })
+			}
+			Ok([{ field, value: text }].concat(request_pairs(rest)?))
+		}
+		[other, ..] => Err({ pos: pos_of(other), message: "expect-request takes :name value pairs, such as :method \"GET\"" })
 	}
 
 loc : Spec.Sx -> Try(Spec.Loc, Spec.Problem)
@@ -671,6 +858,20 @@ lowered = |op|
 		ExpectChecked(l, _) => ["find"].concat(loc_fields(l))
 		ExpectDisabled(l, _) => ["find"].concat(loc_fields(l))
 		ExpectWorkers(_) => ["workers"]
+		StubHttp({ url, status, body, headers }) => ["stub-http", url, status.to_str(), body, headers.len().to_str()].concat(headers.join_map(|(n, v)| [n, v]))
+		FailHttp({ kind, detail }) => ["fail-http", kind, detail]
+		RunEffect(n) => ["run-effect", n.to_str()]
+		TickInterval(ms) => ["tick-interval", ms.to_str()]
+		FireTimer(ms) => ["fire-timer", ms.to_str()]
+		AdvanceTime(ms) => ["advance-time", ms.to_str()]
+		AwaitWork => ["await-work"]
+		ExpectPendingEffects(_) => ["effects"]
+		ExpectInterval(_, _) => ["effects"]
+		ExpectRequest(_, _) => ["effects"]
+		ExpectCancelled(_) => ["effects"]
+		MarkMetrics => ["metrics"]
+		ExpectMetricDelta(_, _) => ["metrics"]
+		ExpectMetricDeltaAtMost(_, _) => ["metrics"]
 	}
 
 loc_fields : Spec.Loc -> List(Str)
@@ -735,27 +936,25 @@ found = |lines|
 		},
 	)
 
-expectation : Spec.Op, Try(List(Str), [Missing]) -> Try({}, Str)
-expectation = |op, seen| {
-	lines = match (op, seen) {
-		(ExpectDump(_), Ok(l)) => l
-		(ExpectVisible(_), Ok(l)) => l
-		(ExpectAbsent(_), Ok(l)) => l
-		(ExpectText(_, _), Ok(l)) => l
-		(ExpectChecked(_, _), Ok(l)) => l
-		(ExpectDisabled(_, _), Ok(l)) => l
-		(ExpectWorkers(_), Ok(l)) => l
-		(Press({ heard: Heard(_), .. }), Ok(l)) => l
-		(Press({ heard: Heard(_), .. }), Err(Missing)) => return Err("expected the host to report the key press, saw nothing")
-		(Press(_), _) => return Ok({})
-		(ExpectDump(_), Err(Missing)) => return Err("expected a dump, saw none: the host printed no observation for this step")
-		(ExpectVisible(_), Err(Missing)) => return Err("expected an observation, saw none")
-		(ExpectAbsent(_), Err(Missing)) => return Err("expected an observation, saw none")
-		(ExpectText(_, _), Err(Missing)) => return Err("expected an observation, saw none")
-		(ExpectChecked(_, _), Err(Missing)) => return Err("expected an observation, saw none")
-		(ExpectDisabled(_, _), Err(Missing)) => return Err("expected an observation, saw none")
-		(ExpectWorkers(_), Err(Missing)) => return Err("expected the pool's counts, saw none")
-		_ => return Ok({})
+## Whether a step expects something, and so needs the host's observation.
+observes : Spec.Op -> Bool
+observes = |op|
+	match op {
+		ExpectDump(_) | ExpectVisible(_) | ExpectAbsent(_) | ExpectText(_, _) | ExpectChecked(_, _) | ExpectDisabled(_, _) | ExpectWorkers(_) => Bool.True
+		ExpectPendingEffects(_) | ExpectInterval(_, _) | ExpectRequest(_, _) | ExpectCancelled(_) => Bool.True
+		ExpectMetricDelta(_, _) | ExpectMetricDeltaAtMost(_, _) => Bool.True
+		Press({ heard: Heard(_), .. }) => Bool.True
+		_ => Bool.False
+	}
+
+expectation : Spec.Op, Try(List(Str), [Missing]), Try(List(U64), [NoMark]) -> Try({}, Str)
+expectation = |op, seen, mark| {
+	if !observes(op) {
+		return Ok({})
+	}
+	lines = match seen {
+		Ok(l) => l
+		Err(Missing) => return Err("expected an observation of this step, saw none: the host printed nothing for it")
 	}
 	match op {
 		ExpectDump(body) => dump_matches(body.text, lines)
@@ -807,6 +1006,47 @@ expectation = |op, seen| {
 				Err("expected the worker pool's ${shown(wrong)}, saw ${shown(saw)}")
 			}
 		}
+		ExpectMetricDelta(name, want) => metric_delta(name, lines, mark, |d| d == want.to_u64_wrap(), "exactly ${want.to_str()}")
+		ExpectMetricDeltaAtMost(name, most) => metric_delta(name, lines, mark, |d| d <= most.to_u64_wrap(), "at most ${most.to_str()}")
+		ExpectPendingEffects(want) => {
+			e = effects(lines)
+			pending = e.issued.keep_if(|x| x.state == "pending" and x.kind != "interval")
+			count = pending.len() + e.work + e.files
+			if count == want.to_u64_wrap() {
+				Ok({})
+			} else {
+				listed = pending.map(|x| "#${x.k} ${x.kind}").concat(if (e.work > 0) ["${e.work.to_str()} worker jobs"] else []).concat(if (e.files > 0) ["${e.files.to_str()} file operations"] else [])
+				Err("expected ${want.to_str()} pending effects, saw ${count.to_str()}${if (listed.is_empty()) "" else ": ${Str.join_with(listed, ", ")}"}")
+			}
+		}
+		ExpectInterval(ms, want) => {
+			live = effects(lines).issued.keep_if(|x| x.kind == "interval" and x.state == "pending" and x.ms == ms.to_str()).len()
+			if (live == want.to_u64_wrap()) Ok({}) else Err("expected ${want.to_str()} live intervals of ${ms.to_str()} ms, saw ${live.to_str()}")
+		}
+		ExpectRequest(n, fields) => {
+			e = effects(lines)
+			match e.issued.find_first(|x| x.k == n.to_str()) {
+				Err(_) => Err("expected effect #${n.to_str()} to be an HTTP request, saw only ${e.issued.len().to_str()} effects issued")
+				Ok(x) if x.kind != "http" => Err("expected effect #${n.to_str()} to be an HTTP request, saw a ${x.kind}")
+				Ok(x) => {
+					wrong = fields.keep_if(|f| x.request.find_first(|r| r.field == f.field) != Ok(f))
+					if wrong.is_empty() {
+						Ok({})
+					} else {
+						shown = |list| Str.join_with(list.map(|{ field, value }| ":${field} ${Str.inspect(value)}"), " ")
+						Err("expected request #${n.to_str()} to have ${shown(wrong)}, saw ${shown(x.request.keep_if(|r| wrong.any(|w| w.field == r.field)))}")
+					}
+				}
+			}
+		}
+		ExpectCancelled(n) => {
+			e = effects(lines)
+			match e.issued.find_first(|x| x.k == n.to_str()) {
+				Ok(x) if x.state == "cancelled" => Ok({})
+				Ok(x) => Err("expected effect #${n.to_str()} (a ${x.kind}) to be cancelled, saw it ${x.state}")
+				Err(_) => Err("expected effect #${n.to_str()} to be cancelled, saw only ${e.issued.len().to_str()} effects issued")
+			}
+		}
 		Press({ key, heard: Heard(want) }) => {
 			got = lines.contains("heard true")
 			if (got == want) Ok({}) else Err("expected ${key} to be ${if (want) "heard" else "not heard"} by the app, saw it ${if (got) "heard" else "not heard"}")
@@ -814,6 +1054,62 @@ expectation = |op, seen| {
 		_ => Ok({})
 	}
 }
+
+## The work counters a `metrics` observation holds: `work HEX`, the work
+## record's bytes.
+counters_of : List(Str) -> List(U64)
+counters_of = |lines|
+	match lines.find_first(|line| line.starts_with("work ")) {
+		Ok(line) => Spec.work_counters(hex_bytes(line.drop_prefix("work ")))
+		Err(_) => []
+	}
+
+hex_bytes : Str -> List(U8)
+hex_bytes = |text| {
+	digits = text.to_utf8().map(|c| if (c >= 'a') c - 'a' + 10 else c - '0')
+	var $out = []
+	var $i = 0.U64
+	while $i + 1 < digits.len() {
+		$out = $out.append((digits.get($i) ?? 0) * 16 + (digits.get($i + 1) ?? 0))
+		$i = $i + 2
+	}
+	$out
+}
+
+metric_delta : Str, List(Str), Try(List(U64), [NoMark]), (U64 -> Bool), Str -> Try({}, Str)
+metric_delta = |name, lines, mark, holds, wanted| {
+	# With no mark, the change is measured from the window's mount.
+	(before, since) = match mark {
+		Ok(counters) => (counters, "since (mark-metrics)")
+		Err(NoMark) => ([], "since the window mounted")
+	}
+	b = Spec.metric(before, name) ?? 0
+	a = Spec.metric(counters_of(lines), name) ?? 0
+	delta = if (a >= b) a - b else 0
+	if (holds(delta)) Ok({}) else Err("expected ${name} to change by ${wanted} ${since}, saw ${delta.to_str()}")
+}
+
+## The effects the app issued in this window, from `effect K KIND STATE
+## MS` lines and each request's `request K FIELD VALUE` lines, and the
+## worker jobs and file operations in flight (`work N`, `files N`).
+Effects : { issued : List({ k : Str, kind : Str, state : Str, ms : Str, request : List({ field : Str, value : Str }) }), work : U64, files : U64 }
+
+effects : List(Str) -> Effects
+effects = |lines|
+	lines.fold(
+		{ issued: [], work: 0, files: 0 },
+		|acc, line|
+			match line.split_on(" ") {
+				["effect", k, kind, state, ms] => { ..acc, issued: acc.issued.append({ k, kind, state, ms, request: [] }) }
+				["request", k, field, .. as rest] => {
+					value = unescape(Str.join_with(rest, " "))
+					{ ..acc, issued: acc.issued.map(|x| if (x.k == k) { ..x, request: x.request.append({ field, value }) } else x) }
+				}
+				["work", n] => { ..acc, work: U64.from_str(n) ?? 0 }
+				["files", n] => { ..acc, files: U64.from_str(n) ?? 0 }
+				_ => acc
+			},
+	)
 
 ## The one thing a locator found, or why there was not exactly one.
 one : Spec.Loc, Found -> Try(Found, Str)
@@ -939,7 +1235,51 @@ expect {
 ## Lowering writes one line per step, with the locators' parts as fields.
 expect
 	Spec.parse(counter).map_ok(Spec.lower)
-		== Ok("roc-spec 1\n1\tclick\t1\tbutton\t+\n2\tfind\t1\ttext\t1\n3\tdump\n")
+		== Ok("roc-spec 1\n0\ttime\t0\n1\tclick\t1\tbutton\t+\n2\tfind\t1\ttext\t1\n3\tdump\n")
+
+fetch =
+	\\(test "fetch"
+	\\  (setup (initial-time 1000))
+	\\  (steps
+	\\    (click (button "Fetch"))
+	\\    (expect-request 1 :method "GET" :timeout 2000)
+	\\    (stub-http "ok" :status 200 :body "hi" :headers (("content-type" "text/plain")))
+	\\    (run-effect 1)
+	\\    (expect-pending-effects 0)))
+	\\
+
+## Effect steps lower to the host's verbs; their expectations to one
+## observation of every effect.
+expect
+	Spec.parse(fetch).map_ok(Spec.lower)
+		== Ok("roc-spec 1\n0\ttime\t1000\n1\tclick\t1\tbutton\tFetch\n2\teffects\n3\tstub-http\t\t200\thi\t1\tcontent-type\ttext/plain\n4\trun-effect\t1\n5\teffects\n")
+
+## Metrics are measured from the mark before them.
+expect {
+	text =
+		\\(test "work"
+		\\  (steps
+		\\    (mark-metrics)
+		\\    (click (button "+"))
+		\\    (expect-metric-delta set_text 1)
+		\\    (expect-metric-delta-at-most derived_calls_into_roc 2)))
+	# Two counters: counter 0, and counter 1 (rows_created); set_text sums 2 and 12.
+	zero = "0000000000000000"
+	nine = Str.join_with(List.repeat(zero, 9), "")
+	before = "work 0d000000${zero}${zero}0500000000000000${nine}0100000000000000"
+	after = "work 0d000000${zero}${zero}0700000000000000${nine}0100000000000000"
+	run = Spec.read_run("@1 obs\n|${before}\n@3 obs\n|${after}\n@4 obs\n|${after}\n@done\n")
+	Spec.parse(text).map_ok(|p| Spec.judge(p, run).map(|x| x.message)) == Ok(["expected set_text to change by exactly 1 since (mark-metrics), saw 2"])
+}
+
+expect Spec.parse("(test \"x\" (steps (expect-metric-delta rows_painted 1)))").is_err()
+
+## A request that differs, and effects still pending, are reported.
+expect {
+	run = Spec.read_run("@2 obs\n|effect 1 http pending 0\n|request 1 method POST\n|request 1 timeout 2000\n@5 obs\n|effect 1 timer pending 300\n|effect 2 interval pending 47\n|work 1\n@done\n")
+	Spec.parse(fetch).map_ok(|p| Spec.judge(p, run).map(|x| x.message))
+		== Ok(["expected request #1 to have :method \"GET\", saw :method \"POST\"", "expected 0 pending effects, saw 2: #1 timer, 1 worker jobs"])
+}
 
 ## A run that saw what the spec expects has no problems.
 expect {

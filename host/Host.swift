@@ -44,6 +44,8 @@ final class Host: NSObject, NSTextFieldDelegate {
     var hovered: [Node] = []
     /// The spec this run performs (`ROC_SPEC`, Spec.swift); nil otherwise.
     var specSteps: SpecSteps?
+    /// The effects a spec holds for its steps to answer (Simulated.swift).
+    var held: HeldEffects?
     /// `ROC_BENCH=1` timings (Bench.swift); nil when off.
     let bench: Bench? = Bench.on ? Bench() : nil
     /// Live document key declarations, in the order they were mounted.
@@ -89,7 +91,9 @@ final class Host: NSObject, NSTextFieldDelegate {
         let v = engine.version
         if v != 23 { fatal("engine speaks protocol \(v), this host speaks 23") }
         bench?.begin(.mount)
-        timed(.mount) { engine.mount() }
+        // A spec mounts at its virtual clock's time.
+        let now = specSteps.map { Date(timeIntervalSince1970: Double($0.clock) / 1000) } ?? Date()
+        timed(.mount) { engine.mount(now: now) }
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .keyUp]) { [weak self] event in
             guard let self, event.window === self.window else { return event }
             return self.key(event) ? nil : event

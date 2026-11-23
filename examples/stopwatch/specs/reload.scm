@@ -1,11 +1,16 @@
-; Converted from tests/reload.script by scripts/convert_cases.roc.
+; A reload starts a fresh engine: the running watch and its lap are gone,
+; and the fresh one runs as the first did.
 (test "reload"
+  (setup
+    (initial-time 1700000000000))
   (steps
     (click (button "Start"))
-    (wait 200)
+    (tick-interval 47)
+    (advance-time 300)
+    (tick-interval 47)
     (click (button "Lap"))
     (reload)
-    (wait 300)
+    (expect-interval 47 0)
     (expect-dump """
       --- 420x236
       ui-vstack [1 views]
@@ -24,7 +29,10 @@
               ui-text "Press Lap while the watch runs." {color=tertiary-label}
       """)
     (click (button "Start"))
-    (wait 200)
+    (tick-interval 47)
+    (advance-time 200)
+    (tick-interval 47)
+    (expect-visible (text "0:00.20"))
     (click (button "Stop"))
     (click (button "Reset"))
     (expect-dump """

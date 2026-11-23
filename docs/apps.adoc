@@ -474,6 +474,93 @@ run. A spec ends after its last step, through the same teardown as quitting.
 | `(expect-dump """ … """)` | the window, as a dump prints it: its size (`--- 360x237`), then the view tree; a list shows its visible rows, and a text, box or drop zone the look attributes that differ from the usual (`{color=secondary-label text-style=caption1}`)
 |===
 
+[#effects-in-a-spec]
+=== Effects
+
+In a spec nothing the app asks of the outside world happens on its own.
+HTTP requests, timers (`Engine.timer`) and intervals (`Engine.interval`) are
+held, numbered from 1 in the order the window issued them, and the spec
+answers them; the clock is virtual, starting at `(initial-time MS)` (0, the
+start of 1970, by default), and only `advance-time` moves it, so a stopwatch
+or a timeout reads the same time on every run. Worker jobs and file reads
+run for real: `(await-work)` waits for every one in flight, and
+`(worker-pool 1)` runs jobs one at a time, so they finish in the order they
+started. Storage reads answer by themselves, as they always do. A reload
+starts the numbering again; the clock carries over.
+
+[cols="1,3",options="header"]
+|===
+| Step | Does
+
+| `(stub-http "label" :status 200 :body "…")` | stages the answer the next `run-effect` of an HTTP request gives: a status from 100 to 999 (200 by default), a body, `:headers (("name" "value") …)`, and with `:url "…"` the URL the request must have. One answer is staged at a time
+| `(fail-http "label" :kind network :detail "…")`, `(fail-http "label" :kind timeout)` | stages a failure instead: the network's message, or a timeout
+| `(run-effect N)` | answers effect `N`, which must be pending: an HTTP request with the staged answer, a timer by firing it at the clock's time
+| `(tick-interval MS)` | ticks every live interval of that period, at the clock's time; fails when there is none
+| `(fire-timer MS)` | fires the first pending timer of that delay
+| `(advance-time MS)` | moves the clock on; an HTTP request whose timeout has passed answers `Timeout`, in issue order
+| `(await-work)` | waits for every worker job and file operation in flight, at most 30 seconds
+|===
+
+[cols="1,3",options="header"]
+|===
+| Expectation | Holds when
+
+| `(expect-pending-effects N)` | `N` HTTP requests, timers, worker jobs and file operations are waiting to be answered (intervals are not counted: see `expect-interval`)
+| `(expect-interval MS N)` | `N` intervals of that period are live
+| `(expect-request N :method "GET" :url "…")` | effect `N` is an HTTP request with those fields, any of `:method`, `:url`, `:body` and `:timeout` (in milliseconds, 0 for none)
+| `(expect-cancelled N)` | the app cancelled effect `N`
+|===
+
+[source,scheme]
+----
+(test "a refused connection says why"
+  (steps
+    (fill (text-field) "http://127.0.0.1:9/")
+    (click (button "Fetch"))
+    (expect-request 1 :method "GET" :url "http://127.0.0.1:9/")
+    (fail-http "refused" :kind network :detail "Could not connect to the server.")
+    (run-effect 1)
+    (expect-text (text "#1: Could not connect to the server.") "#1: Could not connect to the server.")
+    (expect-pending-effects 0)))
+----
+
+[#work-metrics]
+=== Work metrics
+
+The engine counts the work each turn does, and returns the counts with it.
+`(mark-metrics)` notes them, and each later
+`(expect-metric-delta METRIC N)` expects a metric to have changed by
+exactly `N` since, `(expect-metric-delta-at-most METRIC N)` by at most
+`N`. Expect structural work exactly, since it is what the window shows, and
+bound incidental work, such as how many of the app's functions ran, with
+`-at-most`, so that a faster engine does not fail the spec. With no mark
+before it, a change is measured from the window's mount. A reload starts the
+counts again, so mark after it.
+
+[source,scheme]
+----
+(test "a click writes one text"
+  (steps
+    (mark-metrics)
+    (click (button "+"))
+    (expect-metric-delta set_text 1)
+    (expect-metric-delta create_element 0)
+    (expect-metric-delta-at-most derived_calls_into_roc 2)))
+----
+
+The metrics are roc-signals': `rows_created`, `rows_removed`, `rows_reused`,
+`rows_updated`, `rows_moved`, `create_element`, `set_text`, `set_value`,
+`set_checked`, `bind_event`, `registrations_released`, `set_metadata`,
+`patches_emitted`, `derived_calls_into_roc`, `scopes_created`,
+`scopes_disposed`, `dirty_source_roots`, `each_key_hashes`,
+`each_key_compares`, `turns`, the effect counts `effects_issued`,
+`effects_delivered`, `effects_stale`, `effects_refused`,
+`effects_cancelled`, `effects_reparented`, `effects_skipped` and
+`effects_progress`, `view_transitions`, `startup`, `startup_ack`,
+`startup_complete`, and `opportunity_commands`, `opportunity_requested`,
+`opportunity_cancelled`, `opportunity_delivered` and `opportunity_stale`.
+roc-signals' testing guide describes what each counts.
+
 [#setup]
 === Setup
 
@@ -482,6 +569,8 @@ run. A spec ends after its last step, through the same teardown as quitting.
 | Setup | Does
 
 | `(worker-pool N)` | at most `N` worker threads, so a spec runs alike on any machine
+| `(initial-time MS)` | the virtual clock at mount, in milliseconds since 1970 (0 by default); the boot facts and every tick read it
+| `(local-storage "key" "value")` | a pair in local storage at mount, which starts empty
 |===
 
 [#the-spec-protocol]

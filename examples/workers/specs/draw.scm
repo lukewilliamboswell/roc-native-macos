@@ -1,12 +1,13 @@
-; Converted from tests/draw.script by scripts/convert_cases.roc.
+; Eight bands, each a job on the one worker thread, drawn in order.
 (test "draw"
   (setup
-    (worker-pool 2))
+    (worker-pool 1))
   (steps
     (choose "Fast")
     (click (button "Draw"))
-    (wait 1500)
-    (expect-workers :limit 2 :live 2 :running 0 :queued 0 :started 2 :answered 8 :lost 0 :stopped 0 :timed-out 0 :dropped 0)
+    (await-work)
+    (expect-workers :limit 1 :live 1 :running 0 :queued 0 :started 1 :answered 8 :lost 0 :stopped 0 :timed-out 0 :dropped 0)
+    (expect-text (text "Drawn: 8 bands.") "Drawn: 8 bands.")
     (expect-dump """
       --- 600x504
       ui-vstack [1 views]

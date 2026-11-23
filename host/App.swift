@@ -24,7 +24,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let host = Host(window: window)
         self.host = host
         let spec = specText.map(SpecSteps.init)
-        if let spec { host.specSteps = spec; host.setUp(spec) }
+        if let spec { host.drive(spec) }
         host.start()
         window.center()
         if let spec {
@@ -60,6 +60,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         old.retire()
         let fresh = Host(window: old.window)
         host = fresh
+        if let spec = old.specSteps { fresh.drive(spec) }
         fresh.start()
         fresh.trace("RELOAD")
         return fresh
