@@ -43,7 +43,6 @@ on:
       - platform/**
       - sbom/**
       - scripts/**
-      - tests/examples/**
 
 permissions: {}
 

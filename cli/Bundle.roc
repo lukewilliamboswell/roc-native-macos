@@ -3,10 +3,10 @@
 # it imports them from the working tree. `check` fails when cli/Bundle.roc
 # differs from what the script generates for a checkout.
 import "../examples/counter/main.roc" as scaffold_main_roc : Str
-import "../tests/examples/counter/increment.expected" as scaffold_tests_increment_expected : Str
-import "../tests/examples/counter/increment.script" as scaffold_tests_increment_script : Str
-import "../tests/examples/counter/reset.expected" as scaffold_tests_reset_expected : Str
-import "../tests/examples/counter/reset.script" as scaffold_tests_reset_script : Str
+import "../examples/counter/tests/increment.expected" as scaffold_tests_increment_expected : Str
+import "../examples/counter/tests/increment.script" as scaffold_tests_increment_script : Str
+import "../examples/counter/tests/reset.expected" as scaffold_tests_reset_expected : Str
+import "../examples/counter/tests/reset.script" as scaffold_tests_reset_script : Str
 
 ## What this copy of the tool ships with: the release it belongs to, that
 ## release's platform, the Roc it was tested with, and the app `init` writes.

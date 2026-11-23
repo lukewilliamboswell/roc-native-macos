@@ -82,11 +82,11 @@ Release := [].{
 	## The counter scaffold `macos.roc init` writes, by its path in the new
 	## app, and where it comes from in the checkout: the counter example and
 	## its recorded cases (`case_files`, the file names in
-	## `tests/examples/counter/`).
+	## `examples/counter/tests/`).
 	scaffold : List(Str) -> List({ path : Str, source : Str })
 	scaffold = |case_files| {
 		cases = case_files.keep_if(|name| name.ends_with(".script") or name.ends_with(".expected")).sort_with(Release.compare_text)
-		[{ path: "main.roc", source: "examples/counter/main.roc" }].concat(cases.map(|name| { path: "tests/${name}", source: "tests/examples/counter/${name}" }))
+		[{ path: "main.roc", source: "examples/counter/main.roc" }].concat(cases.map(|name| { path: "tests/${name}", source: "examples/counter/tests/${name}" }))
 	}
 
 	## The checked-in `cli/Bundle.roc`: the tool in a checkout, importing the
@@ -387,16 +387,16 @@ expect
 	Release.scaffold(["reset.script", "increment.expected", "notes.txt", "increment.script"])
 		== [
 			{ path: "main.roc", source: "examples/counter/main.roc" },
-			{ path: "tests/increment.expected", source: "tests/examples/counter/increment.expected" },
-			{ path: "tests/increment.script", source: "tests/examples/counter/increment.script" },
-			{ path: "tests/reset.script", source: "tests/examples/counter/reset.script" },
+			{ path: "tests/increment.expected", source: "examples/counter/tests/increment.expected" },
+			{ path: "tests/increment.script", source: "examples/counter/tests/increment.script" },
+			{ path: "tests/reset.script", source: "examples/counter/tests/reset.script" },
 		]
 
 ## A checkout's Bundle.roc imports the working tree; a release's, its copies.
 expect {
 	dev = Release.development_bundle(["a.script"])
 	rel = Release.release_bundle({ version: "0.0.1", platform_url: "https://u/B.tar.zst", roc_version: "r" }, ["a.script"])
-	dev.contains("import \"../tests/examples/counter/a.script\" as scaffold_tests_a_script : Str\n")
+	dev.contains("import \"../examples/counter/tests/a.script\" as scaffold_tests_a_script : Str\n")
 		and dev.contains("\tversion = \"development\"\n")
 		and rel.contains("import \"scaffold/tests/a.script\" as scaffold_tests_a_script : Str\n")
 		and rel.contains("\tplatform_url = \"https://u/B.tar.zst\"\n")

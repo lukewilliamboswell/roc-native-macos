@@ -37,4 +37,4 @@ ui-vstack [1 views]
           ui-text "hello from a fixture" {design=monospaced text-style=callout}
         ui-hstack [2 views]
           ui-text "URL" {color=secondary-label text-style=caption1}
-          ui-text "file://<repo>/tests/fixtures/hello.txt" {design=monospaced text-style=callout}
+          ui-text "file://<app>/tests/fixtures/hello.txt" {design=monospaced text-style=callout}

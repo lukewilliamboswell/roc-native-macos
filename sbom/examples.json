@@ -36,7 +36,7 @@
       "to": "roc-native-macos-examples",
       "relation": "contains",
       "scope": "",
-      "basis": "Every example's main.roc from examples/, its header naming the release's platform bundle URL; the recorded cases (tests/examples/<example>/<case>.script and .expected) and fixtures (tests/fixtures) they run with; and a generated README.md. All are this repository's own files."
+      "basis": "Every example's main.roc from examples/, its header naming the release's platform bundle URL; each example's recorded cases (examples/<example>/tests/<case>.script and .expected) and the fixtures they use (examples/<example>/tests/fixtures); and a generated README.md. All are this repository's own files."
     },
     {
       "from": "Subject",

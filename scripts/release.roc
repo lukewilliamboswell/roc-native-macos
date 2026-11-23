@@ -39,7 +39,7 @@ import src/Release
 ##
 ## `archive` writes the examples archive: every example with its header
 ## naming the bundle's release URL (`GITHUB_REPOSITORY`, the version and the
-## bundle's file name), and the recorded cases and fixtures they run with.
+## bundle's file name), with their recorded cases and the files those use.
 ##
 ## `test` checks those exact files as an app author meets them. It unpacks
 ## the archive, serves DIR on localhost in place of the release URL (the
@@ -145,7 +145,7 @@ tool! = |root, version, dir, base| {
 	for name in modules {
 		write!("${stage}/${name}", read!("cli/${name}")?)?
 	}
-	case_files = names_in!("tests/examples/counter")?
+	case_files = names_in!("examples/counter/tests")?
 	for file in Release.scaffold(case_files) {
 		write!("${stage}/scaffold/${file.path}", read!(file.source)?)?
 	}
@@ -199,8 +199,9 @@ archive! = |root, version, dir| {
 	for path in tracked!(["examples"])?.keep_if(|path| path.contains("/assets/")) {
 		copy!(path, "${top}/${path}")?
 	}
-	for path in tracked!(["tests/examples", "tests/fixtures"])? {
-		write!("${top}/${path}", read!(path)?)?
+	# Each example's recorded cases and the files they use, byte for byte.
+	for path in tracked!(["examples"])?.keep_if(|path| path.contains("/tests/")) {
+		copy!(path, "${top}/${path}")?
 	}
 	write!("${top}/README.md", readme(version, url, examples.len()))?
 	zip = "${dir}/${name}.zip"
@@ -234,14 +235,13 @@ readme = |version, url, count|
 			"",
 			"    roc build main.roc --target=arm64mac",
 			"",
-			"`tests/examples/<example>/<case>.script` holds the steps of a recorded run",
-			"and `<case>.expected` what the app prints. Run a case from this directory,",
-			"the one that holds `tests/`:",
+			"Each example's `tests/<case>.script` holds the steps of a recorded run and",
+			"`<case>.expected` what the app prints. Run them from the example's directory:",
 			"",
-			"    ROC_SCRIPT=\"$(cat tests/examples/counter/increment.script)\" ./examples/counter/main",
+			"    roc ../../../macos.roc test",
 			"",
-			"The window's size is written `--- <size>`, and this directory's path",
-			"`<repo>`, where the output printed the path.",
+			"The window's size is written `--- <size>`, and the example's directory",
+			"`<app>`, where the output printed the path.",
 			"",
 		],
 		"\n",
@@ -283,13 +283,13 @@ test! = |root, dir, binaries| {
 		# A bare program is run away from its assets, so ROC_ASSETS names
 		# them; a bundled one finds its own in Contents/Resources.
 		bundled = if (Path.exists!(Path.utf8(in_app)) ?? Bool.False) [{ exe: in_app, label: "${example}.app", assets: "" }] else []
-		cases = names_in!("${top}/tests/examples/${example}")?.keep_oks(Recorded.case_name)
+		cases = names_in!("${top}/examples/${example}/tests")?.keep_oks(Recorded.case_name)
 		if cases.is_empty() {
 			$failed = $failed.append("${example} has no recorded case")
 		}
 		for { exe, label, assets } in [{ exe: "${apps}/${example}", label: example, assets: "${top}/examples/${example}/assets" }].concat(bundled) {
 			for name in cases {
-				match run_case!(top, { exe, assets }, "tests/examples/${example}/${name}") {
+				match run_case!("${top}/examples/${example}", { exe, assets }, name) {
 					Ok({}) => {
 						note!("release: PASS ${label}/${name}")
 						$passed = $passed + 1
@@ -386,23 +386,24 @@ served! = |server|
 		Err(error) => Err("the local server did not start: ${Str.inspect(error)}")
 	}
 
-## One recorded case, run from the archive's top directory as `blueprint run
-## examples` runs it from the checkout: exit 0, and print exactly the
-## recorded output with that directory written `<repo>`.
+## One recorded case, `tests/<name>` of the example in `app_dir`, run from that
+## directory as `macos.roc test` and `blueprint run examples` run it: exit 0,
+## and print exactly the recorded output with the directory written `<app>`.
 run_case! : Str, { exe : Str, assets : Str }, Str => Try({}, Str)
-run_case! = |top, { exe, assets }, base| {
+run_case! = |app_dir, { exe, assets }, name| {
+	base = "tests/${name}"
 	if !(Path.exists!(Path.utf8(exe)) ?? Bool.False) {
 		return Err("${exe} does not exist")
 	}
-	steps = read!("${top}/${base}.script")?.trim()
-	expected = read!("${top}/${base}.expected")?
-	program = Cmd.new(OsStr.from_str(exe)).cwd(Path.utf8(top)).env("ROC_SCRIPT", OsStr.from_str(steps))
+	steps = read!("${app_dir}/${base}.script")?.trim()
+	expected = read!("${app_dir}/${base}.expected")?
+	program = Cmd.new(OsStr.from_str(exe)).cwd(Path.utf8(app_dir)).env("ROC_SCRIPT", OsStr.from_str(steps))
 	output = (if (assets.is_empty()) program else program.env("ROC_ASSETS", OsStr.from_str(assets)))
 		.stdin(Null)
 		.stderr(MergeWithStdout)
 		.timeout(Duration.seconds(60))
 		.run!() ? |error| "${exe} did not finish: ${Str.inspect(error)}"
-	printed = Recorded.portable(Str.from_utf8_lossy(output.stdout_bytes), top, "<repo>")
+	printed = Recorded.portable(Str.from_utf8_lossy(output.stdout_bytes), app_dir, "<app>")
 	if output.status != Exited(0) {
 		Err("exited with ${Str.inspect(output.status)}; it printed:\n${printed}")
 	} else if printed != expected {

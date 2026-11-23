@@ -196,7 +196,7 @@ fmt! = |colour| {
 tool! : Bool => Try(List(Str), _)
 tool! = |update| {
 	var $problems = []
-	cases = Path.list!(Path.utf8("tests/examples/counter"))?.keep_oks(|path| Path.filename(path).map_ok(Path.display))
+	cases = Path.list!(Path.utf8("examples/counter/tests"))?.keep_oks(|path| Path.filename(path).map_ok(Path.display))
 	generated = Release.development_bundle(cases)
 	if update {
 		Path.write_utf8!(Path.utf8("cli/Bundle.roc"), generated)?
@@ -258,7 +258,7 @@ examples! = |update, colour| {
 	var $cases = []
 	var $problems = []
 	for example in examples_present!()? {
-		dir = "tests/examples/${example}"
+		dir = "examples/${example}/tests"
 		files = if Path.is_dir!(Path.utf8(dir)) ?? Bool.False {
 			Path.list!(Path.utf8(dir))?.keep_oks(|path| Path.filename(path).map_ok(Path.display))
 		} else {
@@ -331,7 +331,12 @@ run_case! = |{ example, base, .. }, how| {
 		return Ok(Err("${exe} is not built: run `blueprint run build` first"))
 	}
 	steps = Path.read_utf8!(Path.utf8("${base}.script"))?.trim()
-	command = if (how == RunMode) Cmd.new("roc").args(["main.roc"]).cwd(Path.utf8("examples/${example}")) else Cmd.new(OsStr.from_str(exe))
+	# A case runs from its example's directory, as `macos.roc test` runs an
+	# app's, so its steps name files relative to the app and its output
+	# writes the app's directory `<app>`.
+	root = Env.cwd!().map_ok(|cwd| cwd.display()) ?? "."
+	app_dir = "${root}/examples/${example}"
+	command = (if (how == RunMode) Cmd.new("roc").args(["main.roc"]) else Cmd.new(OsStr.from_str("${app_dir}/${example}"))).cwd(Path.utf8(app_dir))
 	result = command
 		.env("ROC_SCRIPT", OsStr.from_str(steps))
 		.stdin(Null)
@@ -343,8 +348,7 @@ run_case! = |{ example, base, .. }, how| {
 		Err(CmdErr(error)) => return Ok(Err("${exe} did not finish: ${Str.inspect(error)}"))
 		Err(Interrupted) => return Ok(Err("interrupted"))
 	}
-	root = Env.cwd!().map_ok(|cwd| cwd.display()) ?? ""
-	printed = Recorded.portable(Str.from_utf8_lossy(output.stdout_bytes), root, "<repo>")
+	printed = Recorded.portable(Str.from_utf8_lossy(output.stdout_bytes), app_dir, "<app>")
 	expected_path = Path.utf8("${base}.expected")
 	match output.status {
 		Exited(0) => {}

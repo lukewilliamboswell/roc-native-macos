@@ -9,6 +9,7 @@ examples/*/*.app/
 !examples/*/*.roc
 !examples/*/demo.script
 !examples/*/assets/
+!examples/*/tests/
 # The bench harnesses' binaries (bench/<name>/<name>), beside their sources
 bench/*/*
 !bench/*/*.roc

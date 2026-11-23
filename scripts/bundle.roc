@@ -259,7 +259,7 @@ assets_app! = |root, dir, url| {
 	Path.write_utf8!(Path.utf8("${app_dir}/main.roc"), served) ? |error| "could not write ${app_dir}/main.roc: ${Str.inspect(error)}"
 	Path.copy_dir!(Path.utf8("${root}/examples/${name}/assets"), Path.utf8("${app_dir}/assets")) ? |error| "could not copy examples/${name}/assets: ${Str.inspect(error)}"
 	for file in [".script", ".expected"].map(|ext| "${Bundle.assets_case}${ext}") {
-		Path.copy!(Path.utf8("${root}/tests/examples/${name}/${file}"), Path.utf8("${app_dir}/tests/${file}")) ? |error| "could not copy ${file}: ${Str.inspect(error)}"
+		Path.copy!(Path.utf8("${root}/examples/${name}/tests/${file}"), Path.utf8("${app_dir}/tests/${file}")) ? |error| "could not copy ${file}: ${Str.inspect(error)}"
 	}
 	Path.copy!(Path.utf8("${dir}/macos.roc"), Path.utf8("${app_dir}/macos.roc")) ? |error| "could not copy macos.roc: ${Str.inspect(error)}"
 	for command in ["build", "test"] {

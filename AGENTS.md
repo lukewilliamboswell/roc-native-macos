@@ -10,9 +10,9 @@ Run `blueprint run check` with a current Roc nightly installed as `roc`. It is
 the same gate CI runs on `macos-15`: compiler pins, engine digests,
 formatting, the scripts' tests, the `macos.roc` tool's package (`cli/`),
 the committed glue, `scripts/build.roc`, `roc test`, every example's recorded scripted runs
-(`tests/examples/`), and the platform bundle with a counter created, built
+(`examples/<example>/tests/`), and the platform bundle with a counter created, built
 and tested against it through `macos.roc` (`scripts/bundle.roc --test`). A new example needs at
-least one recorded case: add `tests/examples/<example>/<case>.script` and run
+least one recorded case: add `examples/<example>/tests/<case>.script` and run
 `blueprint run examples -- --update`. Review the `.expected` diff before you
 commit it.
 
