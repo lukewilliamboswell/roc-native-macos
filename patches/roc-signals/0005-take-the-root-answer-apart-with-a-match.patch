@@ -1,6 +1,6 @@
 From: roc-native-macos engine patch series
 Subject: [PATCH 0005] Take the root's answer apart with a match
-Upstream: not yet sent
+Upstream: not yet sent (proposed in https://github.com/lukewilliamboswell/roc-signals/issues/309)
 Applies to: roc-signals a13ff70e + 0001 + 0002 + 0003 + 0004, platform/Core.roc
 
 What

@@ -1,6 +1,6 @@
 From: roc-native-macos engine patch series
 Subject: [PATCH 0001] Mount an event listener in a function of its own
-Upstream: not yet sent
+Upstream: not yet sent (proposed in https://github.com/lukewilliamboswell/roc-signals/issues/305)
 Applies to: roc-signals a13ff70e, platform/Core.roc
 
 What
