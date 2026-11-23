@@ -123,7 +123,7 @@ MacOS :: [].{
 		\\icon. `roc macos.roc COMMAND --help` describes a command.
 		\\
 		\\They need Roc as `roc`, on macOS, Linux or Windows; no Xcode is needed. The app
-		\\runs on Apple silicon Macs with macOS 11 or later, so run, dev and test work only there.
+		\\runs on Apple silicon and Intel Macs with macOS 15 or later, so run, dev and test work only there.
 		\\This is roc-native-macos ${Bundle.version}, tested with Roc ${Bundle.roc_version}.
 		\\Documentation: https://lukewilliamboswell.github.io/roc-native-macos/apps.html
 
@@ -147,9 +147,11 @@ MacOS :: [].{
 				\\Usage: roc macos.roc build [METADATA FLAGS]
 				\\
 				\\Run from the app's directory, containing main.roc. It works on macOS, Linux
-				\\and Windows alike: the platform carries everything the link needs, and the
-				\\app is built for Apple silicon (roc build --target=arm64mac). The build goes
-				\\to .macos/, and then replaces <name>.app.
+				\\and Windows alike: the platform carries everything the link needs. The app
+				\\is built for Apple silicon and for Intel Macs (roc build --target=arm64mac,
+				\\then --target=x64mac), and the two programs are joined into one universal
+				\\program, which each Mac runs natively. The build goes to .macos/, and then
+				\\replaces <name>.app.
 				\\The assets/ directory beside main.roc, if there is one, is copied into the
 				\\app, where Ui.asset_image finds its images. assets/icon.png (square, best
 				\\1024 by 1024 pixels) or assets/icon.icns becomes the app's icon.
@@ -162,7 +164,7 @@ MacOS :: [].{
 				\\
 				\\Usage: roc macos.roc run [METADATA FLAGS]
 				\\
-				\\Run from the app's directory, containing main.roc, on an Apple silicon Mac.
+				\\Run from the app's directory, containing main.roc, on a Mac.
 				\\It builds <name>.app as build does, then runs the program inside it, so dbg
 				\\output and crash reports appear here. Quit the app to return. It takes the
 				\\metadata flags build takes.
@@ -171,7 +173,7 @@ MacOS :: [].{
 				\\
 				\\Usage: roc macos.roc dev
 				\\
-				\\Run from the app's directory, containing main.roc, on an Apple silicon Mac.
+				\\Run from the app's directory, containing main.roc, on a Mac.
 				\\It runs `roc main.roc` there: Roc builds the app with its development
 				\\backend and starts it, with no .app, and watches main.roc and the modules
 				\\it imports. When you save a change that compiles, Roc rebuilds the app and
@@ -239,7 +241,7 @@ MacOS :: [].{
 				\\
 				\\Usage: roc macos.roc test [--update]
 				\\
-				\\Run from the app's directory, containing main.roc, on an Apple silicon Mac.
+				\\Run from the app's directory, containing main.roc, on a Mac.
 				\\Each tests/<case>.script holds steps (click:+;dump;quit), which drive the
 				\\app's real controls without taking focus, and tests/<case>.expected what the
 				\\run prints. A case passes when it exits normally having printed that, with
@@ -279,7 +281,7 @@ MacOS :: [].{
 			"id" => "${given} is not a bundle identifier: it needs two or more parts separated by dots, made of letters, digits and hyphens, such as com.example.counter."
 			"version" => "${given} is not a version: write one to three whole numbers separated by dots, such as 1.2.0, with no v, and optionally a pre-release suffix, such as 1.2.0-beta.1."
 			"build" => "${given} is not a build number: write one to three whole numbers separated by dots, such as 7 or 1.2.0, with no suffix."
-			"minimum_macos" => "${given} is not a macOS version this platform runs on: write ${Meta.oldest_macos} or later, such as 13.0."
+			"minimum_macos" => "${given} is not a macOS version this platform runs on: write ${Meta.oldest_macos} or later, such as 26.0."
 			"category" => "${given} is not an App Store category: write public.app-category. and the category's name, such as public.app-category.utilities."
 			_ => "${given} holds a control character, such as a tab or a line break, which an app's ${field} cannot."
 		}
@@ -323,13 +325,14 @@ MacOS :: [].{
 			RocMissing => { code: 1, text: "The Roc compiler is not on your PATH as `roc`, so the app cannot be built. Install Roc ${Bundle.roc_version} (or a later nightly) and put it on your PATH as `roc`." }
 			NoMainRoc => { code: 1, text: "There is no main.roc here, so there is no app to build. Run this from your app's directory, or create an app with `roc macos.roc init my-app`." }
 			BuildFailed => { code: 1, text: "The build failed: the compiler's report is above." }
-			NotAppleSilicon({ command, system, bundle }) =>
+			NotAMac({ command, system, bundle }) =>
 				if command == "run" {
-					{ code: 1, text: "Built ${bundle}, but this is ${system}, and the app runs only on an Apple silicon Mac: copy ${bundle} to one and open it there." }
+					{ code: 1, text: "Built ${bundle}, but this is ${system}, and the app runs only on a Mac: copy ${bundle} to one and open it there." }
 				} else {
-					{ code: 1, text: "The recorded cases run the app, which runs only on an Apple silicon Mac, and this is ${system}, so test cannot run them here. `roc macos.roc build` builds the app on any system." }
+					{ code: 1, text: "The recorded cases run the app, which runs only on a Mac, and this is ${system}, so test cannot run them here. `roc macos.roc build` builds the app on any system." }
 				}
-			DevNotAppleSilicon(system) => { code: 1, text: "dev starts the app, which runs only on an Apple silicon Mac, and this is ${system}, so it cannot start it here. `roc macos.roc build` builds the app on any system." }
+			DevNotAMac(system) => { code: 1, text: "dev starts the app, which runs only on a Mac, and this is ${system}, so it cannot start it here. `roc macos.roc build` builds the app on any system." }
+			NotUniversal(_) => { code: 1, text: "roc build did not write one Mac program for Apple silicon and one for Intel in .macos/, so they cannot be joined into the app's universal program: build again, and report it if it recurs." }
 			DevFailed({ how, code }) => { code, text: "roc main.roc ${how}: its output is above." }
 			NoCases => { code: 1, text: "There are no recorded cases to run: tests/ holds no .script files. `roc macos.roc init` writes tests/increment.script as an example, and `roc macos.roc test --help` describes them." }
 			CasesFailed({ failed, total }) => { code: 1, text: "${failed.len().to_str()} of ${total.to_str()} recorded cases failed: ${Str.join_with(failed, ", ")}. If the app changed on purpose, record what it prints now with `roc macos.roc test --update`." }
@@ -363,9 +366,9 @@ metadata_help =
 	\\  --build 42            CFBundleVersion, the build number (by default the version)
 	\\  --copyright TEXT      NSHumanReadableCopyright, shown in About
 	\\  --category CATEGORY   LSApplicationCategoryType, such as public.app-category.utilities
-	\\  --minimum-macos 13.0  LSMinimumSystemVersion (by default 11.0, the oldest it runs on)
+	\\  --minimum-macos 26.0  LSMinimumSystemVersion (by default 15.0, the oldest it runs on)
 	\\
-	\\In macos.json the fields are text: { "version": "1.2.0", "minimum_macos": "13.0" }.
+	\\In macos.json the fields are text: { "version": "1.2.0", "minimum_macos": "26.0" }.
 
 ## Each command line names its command, with the defaults filled in.
 expect {
@@ -433,9 +436,9 @@ expect MacOS.commands.all(|command| MacOS.command_usage(command).contains("Usage
 
 ## Every failure is a sentence, and a misused command line exits with 2.
 expect {
-	explained = [UnknownCommand("x"), UnexpectedArguments({ command: "test", extra: ["-v"] }), BadField({ field: "id", value: "x", from: Flag }), NoMainRoc, NotAppleSilicon({ command: "run", system: "Linux", bundle: "counter.app" }), CasesFailed({ failed: ["reset"], total: 2 })].map(MacOS.explain)
+	explained = [UnknownCommand("x"), UnexpectedArguments({ command: "test", extra: ["-v"] }), BadField({ field: "id", value: "x", from: Flag }), NoMainRoc, NotAMac({ command: "run", system: "Linux", bundle: "counter.app" }), CasesFailed({ failed: ["reset"], total: 2 })].map(MacOS.explain)
 	run_elsewhere = explained.drop_first(4).first().map_ok(|e| e.text)
-	explained.map(|e| e.code) == [2, 2, 2, 1, 1, 1] and run_elsewhere == Ok("Built counter.app, but this is Linux, and the app runs only on an Apple silicon Mac: copy counter.app to one and open it there.")
+	explained.map(|e| e.code) == [2, 2, 2, 1, 1, 1] and run_elsewhere == Ok("Built counter.app, but this is Linux, and the app runs only on a Mac: copy counter.app to one and open it there.")
 }
 
 ## An icon that cannot be used says why, in its own words.
@@ -468,9 +471,9 @@ expect {
 
 ## dev elsewhere points at build; a failed run keeps roc's exit code.
 expect {
-	explained = [DevNotAppleSilicon("Linux"), DevFailed({ how: "exited with code 3", code: 3 })].map(MacOS.explain)
+	explained = [DevNotAMac("Linux"), DevFailed({ how: "exited with code 3", code: 3 })].map(MacOS.explain)
 	explained == [
-		{ code: 1, text: "dev starts the app, which runs only on an Apple silicon Mac, and this is Linux, so it cannot start it here. `roc macos.roc build` builds the app on any system." },
+		{ code: 1, text: "dev starts the app, which runs only on a Mac, and this is Linux, so it cannot start it here. `roc macos.roc build` builds the app on any system." },
 		{ code: 3, text: "roc main.roc exited with code 3: its output is above." },
 	]
 }

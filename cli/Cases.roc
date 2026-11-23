@@ -30,15 +30,16 @@ Cases := [].{
 		if !(Path.exists!(Path.utf8("main.roc"))?) {
 			return Err(NoMainRoc)
 		}
-		match App.system(System.target!()) {
-			AppleSilicon => {}
-			Other(system) => return Err(NotAppleSilicon({ command: "test", system, bundle: "" }))
+		target = match App.system(System.target!()) {
+			Mac(own) => own
+			Other(system) => return Err(NotAMac({ command: "test", system, bundle: "" }))
 		}
 		found = Cases.names(files!(Cases.dir))
 		if found.is_empty() {
 			return Err(NoCases)
 		}
-		{ program, .. } = App.compile!()?
+		# The cases run this Mac's own program: one build, not two.
+		{ program, .. } = App.compile!(Native(target))?
 		root = Env.cwd!()?.display()
 		Stdout.line!("Running ${found.len().to_str()} recorded cases${if (update) ", recording what they print" else ""}...")?
 		var $failed = []

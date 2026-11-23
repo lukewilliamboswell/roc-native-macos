@@ -78,7 +78,7 @@ Workflow := [].{
 		\\  APP_DIR: .
 		\\
 		\\jobs:
-		\\  # The recorded cases run the app, which needs an Apple silicon Mac.
+		\\  # The recorded cases run the app, which needs a Mac.
 		\\  test:
 		\\    name: Run the recorded cases
 		\\    runs-on: macos-15
