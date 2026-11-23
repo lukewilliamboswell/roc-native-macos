@@ -90,6 +90,8 @@ extension Host {
         if let keyMonitor { NSEvent.removeMonitor(keyMonitor) }
         keyMonitor = nil
         engine.abandon()
+        // Nodes hold their parents strongly: let go, so the old tree is freed.
+        root.walk { $0.parent = nil }
     }
 }
 
