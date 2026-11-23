@@ -1,6 +1,6 @@
 = roc-native-macos 0.0.1
 
-The first release of roc-native-macos, an early proof of concept: a Roc
+The first release of roc-native-macos, a new and experimental Roc
 platform for native macOS apps, written against the roc-signals reactive
 engine and drawn with real AppKit controls.
 
@@ -53,4 +53,5 @@ naming this release, and the recorded runs each is tested against.
 * Effects: HTTP requests, timers and intervals, file reads and digests, saving
   files, and `UserDefaults` local storage.
 
-This is a spike. Expect the API to change in every release before 1.0.
+This platform is experimental. Expect the API to change in every release
+before 1.0.
