@@ -26,7 +26,9 @@ patches in order with their upstream status
 `Core.roc`'s mount functions so the compiler keeps the turn and the block
 unshared, which makes mounting linear, and a third changes how a site is
 called so it owns its storage, which makes a turn's cost independent of
-the number of sites beside the ones it touches. 0007 adds
+the number of sites beside the ones it touches. 0004 and 0005 take a
+table and the root's answer apart with `match`, so a table write costs the
+rows written. 0006 adds
 `table_view_counted`, a `table_view` that reports how many rows its query
 keeps, for the windowed list. `tests/engine-modules.sha256` records
 the pristine digests, and `check` reverse-applies the series and compares.
@@ -200,7 +202,7 @@ text. AppKit: `setAccessibilityLabel`; empty leaves the view out of the accessib
 `N`, set by `Ui.table_list` from its window: the list is windowed, and its element children are the table's rows from row `N`. AppKit: the table row of the first child; see xref:architecture.adoc#lists[Lists].
 
 `view-rows` (list)::
-`N`, set by the engine's `table_view_counted` (patch 0007) on its parent: how many rows the view keeps. AppKit: the table's `numberOfRows` for a windowed list.
+`N`, set by the engine's `table_view_counted` (patch 0006) on its parent: how many rows the view keeps. AppKit: the table's `numberOfRows` for a windowed list.
 
 A surface (`Surface`, for `ui-box` and `ui-drop-zone`) draws its fill and
 border in `draw(_:)` with `NSColor`s, where AppKit has set the view's
@@ -306,7 +308,7 @@ A windowed list (`Ui.table_list`) holds only the engine's window. The
 list's own `Engine.state` holds the window, which it gives the
 `table_view` and sends the host as `window-start`; the engine tells the
 host how many rows the view keeps as `view-rows` on the list
-(`table_view_counted`, engine patch 0007). The table has that many rows:
+(`table_view_counted`, engine patch 0006). The table has that many rows:
 table row `i` is the window's row `i - start`, and a row outside the window
 is a placeholder cell as high as the first row drawn (which also sets the
 table's `rowHeight`, its estimate for rows not yet measured). Each row

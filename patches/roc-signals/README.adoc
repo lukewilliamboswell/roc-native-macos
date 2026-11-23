@@ -22,11 +22,11 @@ stage.
 . `0003-call-sites-owning-their-captures.patch`: call a site's function outside tail position, and give `Inst` a variant that is never built, so an erased site call owns its captures and rebuilding a block no longer copies its child list; a turn no longer grows with the fan-out of the blocks on its path (grid bench, hover engine p50: 2.5 ms to 0.1 ms at 10,000 cells, 0.1 ms at 14,400). Upstream: not yet sent.
 . `0004-write-a-table-in-place.patch`: take a table apart with `match` (in `TableCore.write` and `Engine.inner`), record a written key without `Dict.update`, and hand the modifier the lens's only reference, so a table write is in place (3 rows written, no view: 31 ms to 0.0 ms at a million rows) and building a table with `Table.insert` in a loop is linear (mount engine time: 53 s to 0.15 s at 100,000 rows). Upstream: not yet sent.
 . `0005-take-the-root-answer-apart-with-a-match.patch`: take the answer of the root's call apart with `match` in `turn`, so the root's pass owns its block and a `table_view` below it updates its columns in place (3 rows written under a view of every row: 45 ms to 0.1 ms at a million rows after 0004). Upstream: not yet sent.
-. `0007-count-table-view-rows.patch`: `table_view_counted`, a `table_view` that sets an attribute of its parent to the number of rows its query keeps, so `Ui.table_list` can draw a small window and size the table for every row (bench/rows, a million rows: mount engine 2,130 ms to 211 ms, apply 1,120 ms to 8 ms, peak RSS 1.57 GB to 366 MB, all from windowing it enables). Upstream: not yet sent.
+. `0006-count-table-view-rows.patch`: `table_view_counted`, a `table_view` that sets an attribute of its parent to the number of rows its query keeps, so `Ui.table_list` can draw a small window and size the table for every row (bench/rows, a million rows: mount engine 2,130 ms to 211 ms, apply 1,120 ms to 8 ms, peak RSS 1.57 GB to 366 MB, all from windowing it enables). Upstream: not yet sent.
 
 0001–0005 work around compiler behaviour rather than engine bugs; the
 compiler side is in xref:../roc-compiler/README.adoc[patches/roc-compiler].
-0007 adds to the engine's API.
+0006 adds to the engine's API.
 
 == Making a patch
 

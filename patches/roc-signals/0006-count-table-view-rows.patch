@@ -1,7 +1,8 @@
 From: roc-native-macos engine patch series
-Subject: [PATCH 0007] Count the rows a table view keeps, on its parent
+Subject: [PATCH 0006] Count the rows a table view keeps, on its parent
 Upstream: not yet sent
-Applies to: roc-signals a13ff70e + 0001 + 0002 + 0003, platform/Core.roc and platform/Engine.roc
+Applies to: roc-signals a13ff70e + 0001 + 0002 + 0003 + 0004 + 0005,
+  platform/Core.roc and platform/Engine.roc
 
 What
   `table_view_counted(table, props, name, template)`, in Core and
@@ -26,7 +27,8 @@ Why
   the host asks for a new one as the user scrolls), and the host sizes
   the `NSTableView` from the attribute.
 
-Measured (bench/rows, Apple M-series, RC1, a loaded machine; `Ui.list`
+Measured (bench/rows, Apple M-series, RC1, a loaded machine, before
+0004 and 0005; `Ui.list`
 over `every_row` against `Ui.table_list`, in the same build; ms)
                                   N=10,000      N=100,000     N=1,000,000
   mount engine, every row             18           173          2,130

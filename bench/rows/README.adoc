@@ -19,7 +19,7 @@ Windowed, a million rows open in 0.3–0.4 s and 370 MB (2.5 s and 1.6 GB
 drawing every row), and clearing a filter takes 30–40 ms (2.7 s): see
 <<windowed>>. What still costs N is in the engine: building the table and
 the view at mount, and every filter keystroke (by design: a new query
-rebuilds the view in the size of the table, 12–19 ms at a million). See
+rebuilds the view in the size of the table, 12–21 ms at a million). See
 <<scaling>>.
 
 It is a harness, not an example. The gate's `bench` stage builds it and runs
@@ -106,12 +106,13 @@ filter took 8 s; see <<host>>.
 
 The list keeps the view's window in an `Engine.state` of its own and the
 host moves it as the list scrolls; the engine tells the host how many rows
-the view keeps (`table_view_counted`, engine patch 0007), so the table is
+the view keeps (`table_view_counted`, engine patch 0006), so the table is
 sized for every row while only the window's rows (55 to 100 here) exist as
 nodes. See docs/architecture.adoc, Lists.
 
 Same machine, 2026-11-23, load average 7 to 11; engine patches 0001–0003
-and 0007. Each column is two runs of the windowed list (`run.sh`) and
+and 0006 (measured before 0004 and 0005, as patch 0007; see <<combined>>
+for all six). Each column is two runs of the windowed list (`run.sh`) and
 two of the list drawing every row (`LIST=every run.sh`) in the same build,
 taken in turn; a range is the two runs. Times in ms as engine + apply +
 layout.
@@ -151,6 +152,30 @@ What windowing changed:
   0005: the `table_view` over every row was half of it, and the rest the
   table's own write. With them it is under a millisecond either way (see
   <<combined>>).
+
+[#combined]
+=== Combined (0001–0006)
+
+All six engine patches, one run each at a million rows, 2026-11-23, load
+average about 4 (`run.sh 1000000`, `LIST=every run.sh 1000000`, and two
+mounts with `-rows-build insert`). Times in ms as engine + apply + layout.
+
+[cols="2,3,3",options="header"]
+|===
+| N = 1,000,000 | Windowed (`Ui.table_list`) | Every row (`Ui.list`)
+
+| First display | 316 ms (139 + 10 + 24) | 2.3 s (1,323 + 724 + 138)
+| Peak RSS | 316 MB | 1.35 GB
+| Tick: 3 rows written, engine p50 / p95 | 0.2 / 0.2 | 0.1 / 0.2
+| Filter keystroke, p50 total (engine) | 46 (21) | 201 (117)
+| Clear the filter | 52 (18 + 7 + 25) | 2.6 s (1,666 + 741 + 177)
+| Mount built with `Table.insert` in a loop (`-rows-build insert`), engine | 352–359 ms (first display 0.51 s, 248–252 MB) | not run
+|===
+
+A table write no longer costs the table under either list, and the
+windowed list opens a million rows in about a third of a second; what
+still scales with N is building the table and the view at mount and the
+query's rebuild on each keystroke.
 
 [#scaling]
 == What scales with what
