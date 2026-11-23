@@ -86,6 +86,10 @@
           "evidence": "__error, the function errno names (`#define errno (*__error())`, apple-oss-distributions/xnu, bsd/sys/errno.h), in libSystem's libsystem_kernel: Roc's run-mode shims (roc-lang/roc src/machine_code_shim, src/interpreter_shim) read errno through it (Zig's lib/std/c/darwin.zig)"
         },
         {
+          "name": "___sincos_stret",
+          "evidence": "__sincos_stret, the sine and cosine of one argument that LLVM calls on Darwin in place of a sin and a cos of the same value (llvm/llvm-project, llvm/lib/IR/RuntimeLibcalls.cpp), in libSystem's libsystem_m (apple-oss-distributions/Libm)"
+        },
+        {
           "name": "___stack_chk_fail",
           "evidence": "the stack protector's failure handler the compiler calls (clang -fstack-protector), in libSystem's libsystem_c"
         },
@@ -148,6 +152,10 @@
         {
           "name": "_exit",
           "evidence": "exit (ISO C 7.22.4.4), in libSystem's libsystem_c"
+        },
+        {
+          "name": "_exp2",
+          "evidence": "exp2 (ISO C 7.12.6.2), which the compiler calls for a power of two, in libSystem's libsystem_m"
         },
         {
           "name": "_fclose",
@@ -250,6 +258,10 @@
           "evidence": "posix_memalign (POSIX.1-2001), in libSystem's libsystem_malloc"
         },
         {
+          "name": "_pow",
+          "evidence": "pow (ISO C 7.12.7.4), in libSystem's libsystem_m"
+        },
+        {
           "name": "_pread",
           "evidence": "pread, POSIX.1 (man 2 pread), in libSystem's libsystem_kernel: Roc's run-mode shims (roc-lang/roc src/machine_code_shim, src/interpreter_shim) (src/shim_io.zig)"
         },
@@ -284,6 +296,10 @@
         {
           "name": "_realpath$DARWIN_EXTSN",
           "evidence": "realpath (POSIX.1-2008), under the name macOS exports for its extended form (man 3 realpath), in libSystem's libsystem_c"
+        },
+        {
+          "name": "_sin",
+          "evidence": "sin (ISO C 7.12.4.6), in libSystem's libsystem_m"
         },
         {
           "name": "_stat",
@@ -1178,6 +1194,10 @@
           "evidence": "`swift_initStackObject`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
         },
         {
+          "name": "_swift_isEscapingClosureAtFileLocation",
+          "evidence": "`swift_isEscapingClosureAtFileLocation`, the Swift runtime's check that a closure passed as non-escaping did not escape (swiftlang/swift, stdlib/public/runtime), which Swift emits where a closure becomes a non-escaping Objective-C block"
+        },
+        {
           "name": "_swift_isUniquelyReferenced_nonNull_bridgeObject",
           "evidence": "`swift_isUniquelyReferenced_nonNull_bridgeObject`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
         },
@@ -1798,6 +1818,10 @@
           "evidence": "the Objective-C class NSFont (https://developer.apple.com/documentation/appkit/nsfont)"
         },
         {
+          "name": "_OBJC_CLASS_$_NSGraphicsContext",
+          "evidence": "the Objective-C class NSGraphicsContext (https://developer.apple.com/documentation/appkit/nsgraphicscontext)"
+        },
+        {
           "name": "_OBJC_CLASS_$_NSImage",
           "evidence": "the Objective-C class NSImage (https://developer.apple.com/documentation/appkit/nsimage)"
         },
@@ -1974,6 +1998,66 @@
       "evidence": "Core Graphics, /System/Library/Frameworks/CoreGraphics.framework/Versions/A/CoreGraphics (https://developer.apple.com/documentation/coregraphics).",
       "symbols": [
         {
+          "name": "_CGBitmapContextCreate",
+          "evidence": "CGBitmapContextCreate, which Swift calls as CGContext.init(data:width:height:bitsPerComponent:bytesPerRow:space:bitmapInfo:) (https://developer.apple.com/documentation/coregraphics/cgcontext/init(data:width:height:bitspercomponent:bytesperrow:space:bitmapinfo:))"
+        },
+        {
+          "name": "_CGBitmapContextCreateImage",
+          "evidence": "CGBitmapContextCreateImage, which Swift calls as CGContext.makeImage() (https://developer.apple.com/documentation/coregraphics/cgcontext/makeimage())"
+        },
+        {
+          "name": "_CGBitmapContextGetData",
+          "evidence": "CGBitmapContextGetData, which Swift reads as CGContext.data (https://developer.apple.com/documentation/coregraphics/cgcontext/data)"
+        },
+        {
+          "name": "_CGColorSpaceCreateWithName",
+          "evidence": "CGColorSpaceCreateWithName, which Swift calls as CGColorSpace.init(name:) (https://developer.apple.com/documentation/coregraphics/cgcolorspace/init(name:))"
+        },
+        {
+          "name": "_CGContextClearRect",
+          "evidence": "CGContextClearRect, which Swift calls as CGContext.clear(_:) (https://developer.apple.com/documentation/coregraphics/cgcontext/clear(_:))"
+        },
+        {
+          "name": "_CGContextConcatCTM",
+          "evidence": "CGContextConcatCTM, which Swift calls as CGContext.concatenate(_:) (https://developer.apple.com/documentation/coregraphics/cgcontext/concatenate(_:))"
+        },
+        {
+          "name": "_CGContextFillRect",
+          "evidence": "CGContextFillRect, which Swift calls as CGContext.fill(_:) with a CGRect (https://developer.apple.com/documentation/coregraphics/cgcontext/fill(_:))"
+        },
+        {
+          "name": "_CGContextRestoreGState",
+          "evidence": "CGContextRestoreGState, which Swift calls as CGContext.restoreGState() (https://developer.apple.com/documentation/coregraphics/cgcontext/restoregstate())"
+        },
+        {
+          "name": "_CGContextRotateCTM",
+          "evidence": "CGContextRotateCTM, which Swift calls as CGContext.rotate(by:) (https://developer.apple.com/documentation/coregraphics/cgcontext/rotate(by:))"
+        },
+        {
+          "name": "_CGContextSaveGState",
+          "evidence": "CGContextSaveGState, which Swift calls as CGContext.saveGState() (https://developer.apple.com/documentation/coregraphics/cgcontext/savegstate())"
+        },
+        {
+          "name": "_CGContextScaleCTM",
+          "evidence": "CGContextScaleCTM, which Swift calls as CGContext.scaleBy(x:y:) (https://developer.apple.com/documentation/coregraphics/cgcontext/scaleby(x:y:))"
+        },
+        {
+          "name": "_CGContextSetAlpha",
+          "evidence": "CGContextSetAlpha, which Swift calls as CGContext.setAlpha(_:) (https://developer.apple.com/documentation/coregraphics/cgcontext/setalpha(_:))"
+        },
+        {
+          "name": "_CGContextSetFillColorWithColor",
+          "evidence": "CGContextSetFillColorWithColor, which Swift calls as CGContext.setFillColor(_:) with a CGColor (https://developer.apple.com/documentation/coregraphics/cgcontext/setfillcolor(_:))"
+        },
+        {
+          "name": "_CGContextSetInterpolationQuality",
+          "evidence": "CGContextSetInterpolationQuality, which Swift sets as CGContext.interpolationQuality (https://developer.apple.com/documentation/coregraphics/cgcontext/interpolationquality)"
+        },
+        {
+          "name": "_CGContextTranslateCTM",
+          "evidence": "CGContextTranslateCTM, which Swift calls as CGContext.translateBy(x:y:) (https://developer.apple.com/documentation/coregraphics/cgcontext/translateby(x:y:))"
+        },
+        {
           "name": "_CGRectGetHeight",
           "evidence": "CGRectGetHeight (https://developer.apple.com/documentation/coregraphics/cgrectgetheight(_:))"
         },
@@ -1984,6 +2068,10 @@
         {
           "name": "_CGRectInset",
           "evidence": "CGRectInset (https://developer.apple.com/documentation/coregraphics/cgrectinset(_:_:_:))"
+        },
+        {
+          "name": "_kCGColorSpaceSRGB",
+          "evidence": "the colour space name kCGColorSpaceSRGB, which Swift reads as CGColorSpace.sRGB (https://developer.apple.com/documentation/coregraphics/cgcolorspace/srgb)"
         }
       ]
     }
