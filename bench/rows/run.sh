@@ -4,7 +4,8 @@
 #   bench/rows/run.sh                 # N = 10000 100000 1000000
 #   bench/rows/run.sh 50000           # just these sizes
 #   NO_BUILD=1 bench/rows/run.sh      # reuse bench/rows/rows (BIN=path runs another build)
-#   bench/rows/run.sh --smoke         # the gate's check: 200 rows, every phase, exit 0
+#   bench/rows/run.sh --smoke         # the gate's check: 200 rows, every phase, exit 0,
+#                                     # then the write-scaling check (end of this file)
 #
 # Each N is a fresh process with ROC_BENCH=1 and a scripted session, one
 # phase each (`phase:NAME`, reported as `event/NAME` and so on): select
@@ -66,3 +67,31 @@ for n in "${sizes[@]}"; do
 	fi
 	rm -f "$log"
 done
+
+# The write-scaling check, part of --smoke. It mounts 2,000 and 200,000
+# rows (100 times as many) and ticks for a second: ten turns that each
+# write three rows of the table, under the list's table_view and the
+# selection's reader. A write must cost the rows written, so fail if the
+# ticks' engine p50 at 200,000 rows is more than 5 times 2,000's. Before
+# engine patches 0004 and 0005 (patches/roc-signals) it grew with the
+# rows: 0.5 and 18.8 ms, a ratio of 38; with them, 0.3 and 0.3. The
+# smaller is floored at 0.2 ms, twice the host's resolution, so timer
+# noise on a fast machine cannot fail it.
+tick_p50() {
+	ROC_BENCH=1 ROC_STORAGE_SUITE=dev.roc.bench.rows ROC_SCRIPT="wait:300;phase:tick;toggle:Tick;wait:1000;toggle:Tick;wait:200;stats;quit" \
+		perl -e 'alarm shift; exec @ARGV' "$timeout" "${BIN:-$here/rows}" -rows-n "$1" 2>&1 | sed -n 's/^bench: timer\/tick .*| engine \([0-9.]*\)\/.*/\1/p' | head -1
+}
+if [[ -n $smoke && -z ${NO_SCALING:-} ]]; then
+	small="$(tick_p50 2000)"
+	large="$(tick_p50 200000)"
+	if [[ -z $small || -z $large ]]; then
+		echo "bench/rows --smoke: no tick turns at 2,000 or 200,000 rows (did the interval run?)" >&2
+		exit 1
+	fi
+	ratio="$(perl -e 'my ($s, $l) = @ARGV; printf "%.1f", $l / ($s < 0.2 ? 0.2 : $s)' "$small" "$large")"
+	echo "== write scaling: tick engine p50 2,000 rows $small ms, 200,000 rows $large ms: ratio $ratio for 100x the rows (constant 1, linear 100, fails above 5)"
+	if perl -e 'exit($ARGV[0] > 5 ? 0 : 1)' "$ratio"; then
+		echo "bench/rows --smoke: a 3-row table write's engine time grows with the table; see patches/roc-signals/README.adoc (0004, 0005)" >&2
+		exit 1
+	fi
+fi

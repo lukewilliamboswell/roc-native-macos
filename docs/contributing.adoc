@@ -304,7 +304,7 @@ same one CI runs on `macos-15`. Its stages, in order:
 | `build` | `scripts/build.roc` with the `roc` on PATH
 | `test` | `roc test` on `platform/main.roc` and every example
 | `examples` | every recorded case
-| `bench` | every harness under `bench/`, built and run at a token size (`bench/<name>/run.sh --smoke`) so it never goes stale; a harness's `--smoke` fails unless the run does what it measures, and the grid's also fails if mount grows superlinearly or a hover turn grows with the cells (N=20 against N=60, xref:contributing.adoc#engine-patches[Engine patches])
+| `bench` | every harness under `bench/`, built and run at a token size (`bench/<name>/run.sh --smoke`) so it never goes stale; a harness's `--smoke` fails unless the run does what it measures, the grid's also fails if mount grows superlinearly or a hover turn grows with the cells (N=20 against N=60), and the rows' if a turn writing 3 rows grows with the table (2,000 rows against 200,000; xref:contributing.adoc#engine-patches[Engine patches])
 | `bundle` | the bundle from the `build` stage's inputs, and its consumer test: `macos.roc` `init`, `build` and `test` against it
 |===
 
@@ -539,6 +539,14 @@ most of a 2.5 ms hover turn. Engine patch 0003 avoids both
 `Spare` variant (`patches/roc-compiler`, "Erased closures borrow their
 captures"). Mount was quadratic, also the compiler's doing, until engine
 patches 0001 and 0002 (xref:contributing.adoc#engine-patches[Engine patches]).
+Take a large value apart with `match`:: In optimized builds a record or
+tuple taken apart by a destructuring statement (`{ rows, record } = table`,
+`(root2, out, tx2) = call(..)`) or a parameter pattern (`|{ t }| t`) keeps
+its refcounted parts shared until the function returns, so an update of one
+copies it. `match table { { rows, record } => .. }` moves them. Every table
+write copied the table's rows, and a `table_view` its columns, until engine
+patches 0004 and 0005 (`patches/roc-compiler`, "Destructuring leaves the
+parts shared").
 A bundle is fetched only over https, or http to localhost:: Roc rejects a
 local `.tar.zst` path as a platform and an absolute platform path, and
 accepts plain `http` only for `localhost`, `127.0.0.1` and `[::1]`. It

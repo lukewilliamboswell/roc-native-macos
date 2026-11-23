@@ -1828,8 +1828,12 @@ wrap_cell : Core.Cell(st, a) -> Engine.Cell(st, a)
 wrap_cell = |c| { c: c }
 
 ## Move the public table's representation into the engine; no rows are copied.
+## A `match`, not a parameter pattern: inlined, a pattern leaves the
+## representation shared until the caller returns.
 inner : Engine.Table(k, v) -> TableCore.Table(k, v)
-inner = |{ t }| t
+inner = |table| match table {
+	{ t } => t
+}
 
 ## Wrap the uniquely held representation without retaining another reference.
 outer : TableCore.Table(k, v) -> Engine.Table(k, v)

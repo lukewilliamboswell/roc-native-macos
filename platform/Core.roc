@@ -429,9 +429,11 @@ Core := [].{
 				modify: |w, f| modify(
 					w,
 					|t| {
-						began = wrap(TableCore.begin_changes(unwrap(t)))
-						before = TableCore.mark(unwrap(began))
-						wrap(TableCore.kept(unwrap(f(began)), before))
+						# `began` stays unwrapped until the call, so the modifier
+						# receives the table's only reference and writes in place.
+						began = TableCore.begin_changes(unwrap(t))
+						before = TableCore.mark(began)
+						wrap(TableCore.kept(unwrap(f(wrap(began))), before))
 					},
 				),
 			},
@@ -10671,8 +10673,19 @@ new_tx = |cmds| { cmds: cmds.append(0), next: 1, free: [], routes: [], work: wor
 ## commands (resolved now, so a reference mounted later in the same turn
 ## is found; a missing one is counted stale).
 turn : App(st), List(U32), U32, Payload -> App(st)
-turn = |Core.App.(AppBody.({ store, root, tx, programs })), path, h, payload| {
-	(root2, out, tx2) = call(root, Root.{ store }, Fire(path, 0, h, payload), bump(tx, w_turns, 1))
+turn = |Core.App.(AppBody.({ store, root, tx, programs })), path, h, payload| match call(root, Root.{ store }, Fire(path, 0, h, payload), bump(tx, w_turns, 1)) {
+	(root2, out, tx2) => fired_turn(root2, out, tx2, path, h, programs)
+}
+
+## The rest of a turn, once the event has fired. The root instance comes
+## in through a `match` on the answer of its call, not a destructuring
+## statement: a statement leaves each part of the answer shared until the
+## end of the function, so the root's pass read its block shared and
+## every site below it copied its storage (a table view's columns, the
+## size of its table) on every turn. Compiler side: roc-native-macos
+## patches/roc-compiler, destructure-sharing.
+fired_turn : Inst(Root(st)), Out(Root(st)), Tx, List(U32), U32, Catalogue -> App(st)
+fired_turn = |root2, out, tx2, path, h, programs| {
 	(store2, writes) = root_answer(out)
 	force = tx2.observations.echo
 	if layers_empty(writes) {

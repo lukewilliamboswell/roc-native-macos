@@ -10,19 +10,21 @@ interval changing three rows' values every 100 ms. It asks one question of
 each operation: does it cost what changed (the rows selected, scrolled
 into sight, written or filtered in or out), or does it cost N?
 
-*In short:* selecting, scrolling and a written row's repaint cost the same
-at a million rows as at ten thousand (2–3 ms, 18 ms a screenful, 2 ms of
-host time). A million rows open in 2.5 s and 1.6 GB. What still costs N is
-in the engine: every write of the table (3 rows written: 80 ms at a
-million), every filter keystroke (by design: a new query rebuilds the view
-in the size of the table), and, because the list draws every row the query
+*In short:* selecting, scrolling and writing rows cost the same at a
+million rows as at ten thousand (2–3 ms, 18 ms a screenful; a turn that
+writes 3 rows is 0.1–0.3 ms of engine time and 2 ms of host time). A
+million rows open in 2.5 s and 1.6 GB. What still costs N is in the
+engine: every filter keystroke (by design: a new query rebuilds the view
+in the size of the table) and, because the list draws every row the query
 keeps (`Engine.every_row`), the rows a filter lets in or out. See
 <<scaling>>.
 
 It is a harness, not an example. The gate's `bench` stage builds it and runs
 `run.sh --smoke`: 200 rows through every phase below, which fails unless
 each phase ran and the list holds all 200 rows again once the filter is
-cleared.
+cleared, and then a write-scaling check: the tick's engine p50 at 200,000
+rows must be at most 5 times its p50 at 2,000 (it is about 1; before
+engine patches 0004 and 0005 it was 38).
 
 == Running it
 
@@ -59,7 +61,10 @@ A run still going after `TIMEOUT` seconds (300) is killed.
 Apple M-series, 8 cores, 16 GB, macOS 26.3, `roc` 0.1.0 RC1, engine patches
 0001–0003, measured 2026-11-23 with a load average of 4 to 6 from other
 builds; ±20%. Times are p50/p95 in ms, as engine + apply + layout (display
-is under 2 ms throughout).
+is under 2 ms throughout). The tick row is engine time with patches
+0001–0005, against 0001–0003 in brackets, both measured the same afternoon
+with a load average of 3 to 4; the host's part of a tick is 2 to 7 ms
+(layout) whatever N.
 
 [cols="2,3,3,3",options="header"]
 |===
@@ -69,7 +74,7 @@ is under 2 ms throughout).
 | Peak RSS | 134 MB | 316 MB | 1.57 GB
 | Select a row | 2.2 / 2.5 (0.0 + 0.0 + 2.0) | 2.2 / 2.4 | 2.2 / 2.5
 | Scroll a screenful (about 20 new rows) | 17 / 18 (layout) | 18 / 19 | 18 / 18
-| Tick: 3 rows written | 2.4 / 2.7 (0.5 + 0.0 + 1.9) | 8.6 / 9.4 (6.6 + 0 + 1.9) | 81 / 107 (79 + 0 + 2.0)
+| Tick: 3 rows written (engine p50 / p95; before 0004 and 0005) | 0.3 / 0.7 (2.7 / 4.1) | 0.3 / 0.4 (12 / 20) | 0.1 / 0.4 (63 / 104)
 | Filter keystroke | 31 / 35 (1.1 + 3.6 + 20) | 51 / 96 (11 + 5.6 + 31) | 220 / 949 (143 + 29 + 81; p95 702 + 176 + 140)
 | Clear the filter (every row back) | 57 (14 + 7 + 34) | 257 (141 + 69 + 45) | 2,700 (1,758 + 772 + 164)
 |===
@@ -90,20 +95,19 @@ Proportional to what changed (good)::
   views and the table sizes it (`usesAutomaticRowHeights`). Rows already
   seen keep their cell views.
 * *A written row's repaint*: the host's part of a tick is 2 ms whatever N.
+* *Writing the table.* A turn that writes three rows (`cells.rows.update`
+  with three `Table.update` calls) costs 0.1–0.3 ms of engine time at
+  every N. It cost 0.5 ms at 10,000 rows, 6.6 ms at 100,000 and 79 ms at
+  1,000,000 until engine patches 0004 and 0005: every `Table.update` copied
+  the table's rows (`TableCore.write` took the table apart with a
+  destructuring statement, which the compiler leaves shared), the first
+  write of each turn copied them again (the cell's lens), and the root's
+  pass read its block shared, so the `table_view` copied its per-row
+  columns (marks, a hole column, the shown column: 196 MB at a million
+  rows) on every turn. The reader was never the cost. See
+  xref:../../patches/roc-compiler/README.adoc#destructure-sharing[destructure-sharing].
 
 Proportional to N, in the engine (reported for roc-signals)::
-* *Writing the table.* A turn that writes three rows (`cells.rows.update`
-  with three `Table.update` calls) costs 0.5 ms of engine time at 10,000
-  rows, 6.6 ms at 100,000 and 79 ms at 1,000,000. Measured apart with
-  variants of this app: with no `table_view` and no reader of the table at
-  all the write alone costs 3.5 ms at 100,000 and 34 ms at 1,000,000; a
-  `table_view` over every row adds about as much again (71 ms at a
-  million), and the `shown` reader (`cells.rows.signal().map2(…)`, which
-  only does a `Table.get`) about 20 ms more. A write of k rows should cost
-  k; the linear part suggests the table's dictionary is copied once per
-  write (not uniquely referenced when `TableCore.update` → `write` runs),
-  and that the `table_view` site and the reader each touch the whole table
-  per write.
 * *Building a table by inserting rows one at a time.* `generated`
   originally inserted the rows in a `var` loop with `Table.insert`, as
   `examples/contacts` does: the mount's engine time was 0.42 s at 10,000
@@ -156,10 +160,6 @@ each row's index by a scan of the list's rows, up to 64 scans of N.
   new event and attribute in the vocabulary, the host mapping table row
   `i` to node `i - window.start`, and placeholder rows while the engine
   catches up.
-. *Make a table write cost the rows written* (roc-signals): above, 79 ms
-  at a million rows for three rows. Find what copies the dictionary per
-  write, and what the `table_view` site and plain readers do per write that
-  is linear.
 . *Make `Table.insert` in a loop linear* (roc-signals or the compiler):
   apps build tables that way, and it is quadratic.
 . *A `Ui.grid` over `NSCollectionView`* (not built; evaluated here). The

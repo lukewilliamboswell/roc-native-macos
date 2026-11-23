@@ -21,7 +21,16 @@ header (xref:../roc-signals/README.adoc[patches/roc-signals]).
   Worked around by engine patches 0001 and 0002 (see <<mount-sharing>>).
   Upstream: not yet reported.
 
-Both reproduce with Roc 0.1.0 RC1 (`roc`) and nightly-2026-11-14-a87808d
+. `destructure-sharing/`: a record taken apart by a destructuring
+  statement or a parameter pattern keeps its refcounted fields shared
+  until the function returns, so an update of one of them copies it.
+  Standalone reproducer. Engine impact: every table write copied the
+  table's rows, and the root's pass read its block shared, so a
+  `table_view` copied its columns on every turn; worked around by engine
+  patches 0004 and 0005 (see <<destructure-sharing>>). Upstream: not yet
+  reported (draft below).
+
+The first two reproduce with Roc 0.1.0 RC1 (`roc`) and nightly-2026-11-14-a87808d
 (`roc-stable`), with `roc build` (LLVM, `--opt=speed`); `erased-captures`
 also with nightly-2026-11-22-3350b1c.
 
@@ -169,3 +178,85 @@ under `ROC_BENCH=1`, as in
 | `sites`, 2,500 | 381 | 21
 | `sites`, 4,900 | 2,858 | 44
 |===
+
+[#destructure-sharing]
+== Destructuring leaves the parts shared
+
+Draft for roc-lang/roc, not yet filed (the text from "Title" to the end
+of "Notes", with `destructure-sharing/main.roc` as the program). It may be
+what the engine's `TODO https://github.com/roc-lang/roc/issues/12957`
+in `store_inst` describes ("an optimized build still copies a table's
+rows on each keyed write").
+
+Title:: Taking a record apart with a destructuring statement or a
+parameter pattern keeps its fields shared, so updating one copies it
+
+Summary:: `{ rows, other, version } = t` followed by `rows.insert(..)`
+should insert in place when `t` is uniquely held. In an optimized build
+it copies `rows` on every call when the record has a second refcounted
+field and the function is called from a loop that is a procedure of its
+own: the fields stay shared until the function returns. The same
+function written with `match t { { rows, other, version } => .. }` is in
+place. A parameter pattern (`|{ rows, other, version }, key, row|`)
+behaves as the statement does. In the engine, a tuple taken apart by a
+statement (`(a, b, c) = f(..)`) kept its parts shared the same way (not
+reduced).
+
+Reproduction:: `destructure-sharing/main.roc` (basic-cli 0.28.1) calls
+three versions of the same write three times per loop, twenty loops, on
+a record holding a `Dict(U64, { name : Str, value : U64 })` of N entries,
+a `Str` and a counter:
++
+[source,sh]
+----
+roc build main.roc --output=/tmp/destructure && /tmp/destructure
+----
+
+Expected:: Constant time per call in all three versions.
+
+Actual:: The statement and the parameter pattern are linear in N; the
+`match` is constant. Apple M-series, `roc build` (LLVM, `--opt=speed`),
+microseconds per call of the loop (three inserts):
++
+|===
+| N | statement | parameter pattern | `match`
+
+4+| Roc 0.1.0 RC1
+| 10,000 | 80 | 82 | 0
+| 100,000 | 1,274 | 1,290 | 0
+| 1,000,000 | 17,339 | 17,291 | 0
+4+| nightly-2026-11-22-3350b1c
+| 10,000 | 85 | 85 | 0
+| 100,000 | 1,534 | 1,475 | 0
+| 1,000,000 | 18,112 | 17,445 | 0
+|===
+
+Notes:: Each of these makes the statement constant again: a record with
+one refcounted field, dictionary values that are not refcounted (`U64`
+instead of the record holding a `Str`), the three inserts written out
+instead of in a loop, or the loop inlined into its only caller. In the
+engine, a --debug build showed the copy as a `memcpy` of the
+dictionary's entries in `Dict.insert`, and a watchpoint on their
+refcount an incref before the insert that was released only after the
+function returned.
+
+Engine impact. Three places in the engine took a table, or the root
+instance that owns every table view, apart this way, and each cost a
+turn the size of a table (bench/rows, a turn writing 3 rows of a table
+of a million: 63 to 80 ms):
+
+* `TableCore.write`'s statement left the rows shared for the insert:
+  each `Table.update` in an app's loop copied the rows.
+* `Engine.inner`'s parameter pattern, inlined into the table cell's
+  lens, and the lens handing its modifier a table it still held: the
+  first write of each turn copied the rows.
+* `turn`'s `(root2, out, tx2) = call(..)`: the root's pass for the
+  written cells read the root block shared, replacing a child in its
+  child list copied the list, and the table view below it copied its
+  pending marks, a hole column and its shown column (196 MB at a million
+  rows) on every turn.
+
+Engine patch 0004 fixes the first two with `match` (and by keeping the
+lens's table unwrapped until the call), and 0005 the third. A turn that
+writes 3 rows now costs 0.1 to 0.3 ms at every size measured, up to a
+million rows; bench/rows' `--smoke` guards it.
