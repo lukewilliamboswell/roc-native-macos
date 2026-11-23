@@ -1,0 +1,90 @@
+--- 520x339
+ui-vstack [1 views]
+  ui-vstack [5 views]
+    ui-hstack [2 views]
+      ui-asset-image icon.png [1024x1024, 36pt wide, 36pt high]
+      ui-text "Expenses" {text-style=large-title weight=bold}
+    ui-form [2 views]
+      ui-hstack [3 views]
+        ui-text-field "Coffee"
+        ui-dropdown "Food" of ["Food", "Transport", "Home", "Fun", "Other"]
+        ui-button "Add"
+      ui-text "End with what it cost, as in “Coffee 4.50”." {color=red text-style=caption1}
+    ui-vstack [2 views]
+      ui-hstack [3 views]
+        ui-text "Summary" {text-style=headline}
+        ui-spacer
+        ui-button "Hide Summary"
+      ui-hstack [3 views]
+        ui-box
+          ui-vstack [2 views]
+            ui-text "Spent" {color=secondary-label text-style=caption1}
+            ui-text "0.00" {design=monospaced-digits text-style=title3 weight=semibold}
+        ui-box
+          ui-vstack [2 views]
+            ui-text "Expenses" {color=secondary-label text-style=caption1}
+            ui-text "0" {design=monospaced-digits text-style=title3 weight=semibold}
+        ui-box
+          ui-vstack [2 views]
+            ui-text "Largest" {color=secondary-label text-style=caption1}
+            ui-text "None yet" {design=monospaced-digits text-style=title3 weight=semibold}
+    ui-vstack [2 views]
+      ui-hstack [3 views]
+        ui-text "Expenses" {text-style=headline}
+        ui-spacer
+        ui-button "Hide Expenses"
+      ui-vstack [2 views]
+        ui-hstack [3 views]
+          ui-file-button "Import CSV…"
+          ui-spacer
+          ui-button "Clear All" (disabled)
+        ui-text "No expenses yet." {color=tertiary-label text-style=callout}
+    ui-text "Type what you bought and what it cost, then press Return." {color=secondary-label text-style=callout}
+--- 520x495
+ui-vstack [1 views]
+  ui-vstack [5 views]
+    ui-hstack [2 views]
+      ui-asset-image icon.png [1024x1024, 36pt wide, 36pt high]
+      ui-text "Expenses" {text-style=large-title weight=bold}
+    ui-form [1 views]
+      ui-hstack [3 views]
+        ui-text-field ""
+        ui-dropdown "Food" of ["Food", "Transport", "Home", "Fun", "Other"]
+        ui-button "Add"
+    ui-vstack [2 views]
+      ui-hstack [3 views]
+        ui-text "Summary" {text-style=headline}
+        ui-spacer
+        ui-button "Hide Summary"
+      ui-hstack [3 views]
+        ui-box
+          ui-vstack [2 views]
+            ui-text "Spent" {color=secondary-label text-style=caption1}
+            ui-text "4.50" {design=monospaced-digits text-style=title3 weight=semibold}
+        ui-box
+          ui-vstack [2 views]
+            ui-text "Expenses" {color=secondary-label text-style=caption1}
+            ui-text "1" {design=monospaced-digits text-style=title3 weight=semibold}
+        ui-box
+          ui-vstack [2 views]
+            ui-text "Largest" {color=secondary-label text-style=caption1}
+            ui-text "Coffee, 4.50" {design=monospaced-digits text-style=title3 weight=semibold}
+    ui-vstack [2 views]
+      ui-hstack [3 views]
+        ui-text "Expenses" {text-style=headline}
+        ui-spacer
+        ui-button "Hide Expenses"
+      ui-vstack [2 views]
+        ui-hstack [3 views]
+          ui-file-button "Import CSV…"
+          ui-spacer
+          ui-button "Clear All"
+        ui-box {border=line:1:separator}
+          ui-scroll [1 views, 180pt high]
+            ui-hstack [5 views]
+              ui-text "Coffee"
+              ui-spacer
+              ui-text "Food" {color=secondary-label text-style=caption1}
+              ui-text "4.50" {design=monospaced-digits}
+              ui-button "Remove"
+    ui-text "Added Coffee." {color=secondary-label text-style=callout}
