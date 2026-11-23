@@ -311,7 +311,7 @@ same one CI runs on `macos-15`. Its stages, in order:
 | `build` | `scripts/build.roc` with the `roc` on PATH
 | `test` | `roc test` on `platform/main.roc` and every example
 | `examples` | every example's specs
-| `bench` | every harness under `bench/`, built and run at a token size (`bench/<name>/run.sh --smoke`) so it never goes stale; a harness's `--smoke` fails unless the run does what it measures, the grid's also fails if mount grows superlinearly or a hover turn grows with the cells (N=20 against N=60), and the rows' if a turn writing 3 rows grows with the table (2,000 rows against 200,000)
+| `bench` | every harness under `bench/`, built and run at a token size (`bench/<name>/run.sh --smoke`) so it never goes stale, failing unless the run does what it measures; then its specs, `bench/<name>/specs/*.scm`, which count a turn's work with the same bounds at two sizes: a hover or a cooling timer at N=20 and N=60 cells, a tick writing 3 rows and a selection at 2,000 and 200,000 rows. The harnesses' timing ratios are reported as diagnostics and never fail
 | `bundle` | the bundle from the `build` stage's inputs, and its consumer test: `macos.roc` `init`, `build` and `test` against it
 |===
 

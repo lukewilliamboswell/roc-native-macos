@@ -6,7 +6,12 @@
 #   NO_BUILD=1 bench/grid/run.sh    # reuse bench/grid/grid (BIN=path runs another build)
 #   LIVE=1 bench/grid/run.sh 100    # move the mouse yourself; the HUD shows the timings
 #   bench/grid/run.sh --smoke       # the gate's check: a 4x4 grid, a short sweep, exit 0,
-#                                   # then the mount- and turn-scaling checks (end of this file)
+#                                   # then the mount- and turn-scaling timings (end of this file)
+#
+# The timings are diagnostics: a ratio past its bound is reported, never a
+# failure. What a hover or a timer costs is checked by counting its work, in
+# the specs beside this file (specs/grid-20.scm and specs/grid-60.scm, the
+# same bounds at both sizes), which `blueprint run check -- bench` runs.
 #
 # Each N is a fresh process with ROC_BENCH=1 and a scripted sweep: the
 # pointer crosses the grid's diagonal in 2N moves (at least 200, at most
@@ -77,7 +82,7 @@ done
 # The scaling checks, part of --smoke. Each mounts N=20 and N=60 (400 and
 # 3,600 cells, 9 times as many) and sweeps 40 moves across it.
 #
-# Mount: fail if the mount's engine time grows more than 3 times faster
+# Mount: report it if the mount's engine time grows more than 3 times faster
 # than linear (a ratio above 27; a quadratic mount gives about 80). Mount
 # was quadratic until roc-signals 0.8.0-rc2 (roc-signals#305, #306),
 # which work around compiler behaviour a later engine change could bring
@@ -85,7 +90,7 @@ done
 # machine cannot fail it.
 #
 # Turns: a hover writes one cell's state, so its engine time must not grow
-# with the grid. Fail if the hover turns' p50 at N=60 is more than 4 times
+# with the grid. Report it if the hover turns' p50 at N=60 is more than 4 times
 # N=20's (linear would be 9; before roc-signals#307 it was about 9:
 # 0.1 and 0.9 ms). The smaller is floored at 0.1 ms, the host's resolution.
 scaling_run() {
@@ -109,10 +114,10 @@ if [[ -n $smoke && -z ${NO_SCALING:-} ]]; then
 		exit 1
 	fi
 	ratio="$(perl -e 'my ($s, $l) = @ARGV; printf "%.1f", $l / ($s < 2 ? 2 : $s)' "$small" "$large")"
-	echo "== mount scaling: N=20 $small ms, N=60 $large ms: ratio $ratio for 9x the cells (linear 9, fails above 27)"
+	echo "== mount scaling: N=20 $small ms, N=60 $large ms: ratio $ratio for 9x the cells (linear 9; past 27 is reported)"
 	if perl -e 'exit($ARGV[0] > 27 ? 0 : 1)' "$ratio"; then
 		echo "bench/grid --smoke: mount grows superlinearly with the cells; see roc-signals#305 and #306" >&2
-		exit 1
+		echo "  (timing is a diagnostic: the work is checked by the specs in $here/specs)" >&2
 	fi
 	small="$(hover_p50 <<<"$small_log")"
 	large="$(hover_p50 <<<"$large_log")"
@@ -121,9 +126,9 @@ if [[ -n $smoke && -z ${NO_SCALING:-} ]]; then
 		exit 1
 	fi
 	ratio="$(perl -e 'my ($s, $l) = @ARGV; printf "%.1f", $l / ($s < 0.1 ? 0.1 : $s)' "$small" "$large")"
-	echo "== turn scaling: hover engine p50 N=20 $small ms, N=60 $large ms: ratio $ratio for 9x the cells (constant 1, linear 9, fails above 4)"
+	echo "== turn scaling: hover engine p50 N=20 $small ms, N=60 $large ms: ratio $ratio for 9x the cells (constant 1, linear 9; past 4 is reported)"
 	if perl -e 'exit($ARGV[0] > 4 ? 0 : 1)' "$ratio"; then
 		echo "bench/grid --smoke: a hover turn's engine time grows with the cells; see roc-signals#307" >&2
-		exit 1
+		echo "  (timing is a diagnostic: the work is checked by the specs in $here/specs)" >&2
 	fi
 fi

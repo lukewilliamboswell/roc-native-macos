@@ -48,7 +48,9 @@ import src/Repo
 ##   which links the host with the compiler's own run shim against the
 ##   stubs, and must pass the same.
 ## - `bench`: every harness under `bench/` (`bench/<name>/run.sh --smoke`),
-##   built and run at a token size, so it never goes stale.
+##   built and run at a token size, so it never goes stale, then its specs
+##   (`bench/<name>/specs/*.scm`): the work a turn does, counted, at two
+##   sizes. Its timings are only reported.
 ## - `bundle`: the platform bundle from the inputs `build` made, and an
 ##   author's first steps against it with the `macos.roc` tool: `init`,
 ##   `build` and `test` a counter (`scripts/bundle.roc --prebuilt --test`).
@@ -120,7 +122,7 @@ run_stage! = |stage, update, colour|
 		"build" => build!()
 		"test" => test!()
 		"examples" => examples!(update, colour)
-		"bench" => bench!()
+		"bench" => bench!(update)
 		"bundle" => run!("roc-stable", ["scripts/bundle.roc", "--", "--prebuilt", "--test"])
 		_ => Ok(["no such stage"])
 	}
@@ -228,13 +230,30 @@ test! = || {
 }
 
 ## Every harness under `bench/`: built and run at a token size with
-## `run.sh --smoke`, which fails unless the run does what it measures.
-bench! : () => Try(List(Str), _)
-bench! = || {
+## `run.sh --smoke`, which fails unless the run does what it measures, and
+## then its specs against the program `run.sh` built, each of which counts
+## the work a turn does (`expect-metric-delta-at-most`) with the same bounds
+## at a small size and a large one.
+bench! : Bool => Try(List(Str), _)
+bench! = |update| {
 	harnesses = tracked!(["bench"])?.keep_if(|path| path.ends_with("/run.sh"))
+	root = Env.cwd!().map_ok(|cwd| cwd.display()) ?? "."
 	var $problems = []
 	for script in harnesses {
 		$problems = $problems.concat(run_with!(Cmd.new("bash").args([script, "--smoke"].map(OsStr.from_str)).env("ROC", "roc"), "${script} --smoke")?)
+		dir = script.drop_suffix("/run.sh")
+		name = dir.drop_prefix("bench/")
+		for spec in SpecRun.names(names_in!("${dir}/specs")) {
+			outcome = SpecRun.run!({ program: "${root}/${dir}/${name}", dir: "${root}/${dir}", spec: "specs/${spec}", update, args: [], env: [] })?
+			match outcome {
+				Passed => note!("PASS ${dir}/specs/${spec}")
+				Updated => note!("SAVE ${dir}/specs/${spec}")
+				Failed(problems) => {
+					note!("FAIL ${dir}/specs/${spec}")
+					$problems = $problems.append("${dir}/specs/${spec}: ${Str.join_with(problems, "\n  ")}")
+				}
+			}
+		}
 	}
 	Ok($problems)
 }

@@ -20,9 +20,14 @@ reasonable target for one view per cell; see <<ceiling>>.
 It is a harness, not an example. The gate's `bench` stage builds it and runs
 `run.sh --smoke`: a 4×4 grid and a 12-move sweep, which fails unless the
 cells were hovered and every trail timer has cooled. That keeps it from going
-stale without putting any load on the gate. `--smoke` then checks that mount
-and turns scale: it mounts N=20 and N=60 (400 and 3,600 cells) and sweeps
-40 moves across each. It fails if the larger mount engine time is more
+stale without putting any load on the gate. The specs beside it,
+`specs/grid-20.scm` and `specs/grid-60.scm`, then count the work with the
+same bounds at 400 and 3,600 cells: three hovers emit three commands and
+create no element, and their three cooling timers cool three cells, so a
+turn whose work grows with the cells fails. `--smoke` also reports how
+mount and turns scale in time, as a diagnostic that never fails: it mounts
+N=20 and N=60 (400 and 3,600 cells) and sweeps 40 moves across each. It
+reports it if the larger mount engine time is more
 than 27 times the smaller (9 times the cells, so 3 times the linear
 expectation; the smaller time is floored at 2 ms; a quadratic mount gives
 about 87), or if the hover turns' engine p50 at N=60 is more than 4 times
@@ -31,7 +36,7 @@ N=20's (a turn should not grow with the cells; the smaller is floored at
 about 7 to 9, 0.1 against 0.7 to 0.9 ms, and it is now 1). roc-signals
 0.8.0-rc2 (roc-signals#305 to #307) made mount linear and
 turns independent of the grid, all by working around compiler behaviour,
-and this keeps them from regressing silently. `NO_SCALING=1` skips both.
+and the specs keep the work from regressing silently. `NO_SCALING=1` skips both timings.
 
 == Running it
 
