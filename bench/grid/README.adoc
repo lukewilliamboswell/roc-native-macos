@@ -10,7 +10,8 @@ one event costs at that size, and what many short-lived timers cost.
 
 *In short:* once a batch that only repaints skips layout, a hover answers
 in under 1 ms up to 2,500 cells and about 4 ms at 10,000, and the trail
-behaves at every size. The ceiling is opening the window: 10,000 cells
+behaves at every size. Since engine patch 0003 a hover's engine time is
+about 0.1 ms at every size (0.3 ms in all at 10,000 cells). The ceiling is opening the window: 10,000 cells
 take 13–30 s and over a GB, and 22,500 never opened (killed in Auto Layout
 at 3.4 GB). The engine's quadratic mount and Auto Layout are the walls;
 see <<where-it-breaks>>.
@@ -19,13 +20,17 @@ It is a harness, not an example. The gate's `bench` stage builds it and runs
 `run.sh --smoke`: a 4×4 grid and a 12-move sweep, which fails unless the
 cells were hovered and every trail timer has cooled. That keeps it from going
 stale without putting any load on the gate. `--smoke` then checks that mount
-scales: it mounts N=20 and N=60 (400 and 3,600 cells), prints both mount
-engine times, and fails if the larger is more than 27 times the smaller (9
-times the cells, so 3 times the linear expectation; the smaller time is
-floored at 2 ms). A quadratic mount gives about 87. Engine patches 0001 and
-0002 (`patches/roc-signals`) made mount linear by working around compiler
-behaviour, and this keeps them from regressing silently. `NO_SCALING=1`
-skips it.
+and turns scale: it mounts N=20 and N=60 (400 and 3,600 cells) and sweeps
+40 moves across each. It fails if the larger mount engine time is more
+than 27 times the smaller (9 times the cells, so 3 times the linear
+expectation; the smaller time is floored at 2 ms; a quadratic mount gives
+about 87), or if the hover turns' engine p50 at N=60 is more than 4 times
+N=20's (a turn should not grow with the cells; the smaller is floored at
+0.1 ms, the host's resolution; before engine patch 0003 the ratio was
+about 7 to 9, 0.1 against 0.7 to 0.9 ms, and it is now 1). Engine patches
+0001 and 0002 (`patches/roc-signals`) made mount linear and 0003 made
+turns independent of the grid, all by working around compiler behaviour,
+and this keeps them from regressing silently. `NO_SCALING=1` skips both.
 
 == Running it
 
@@ -166,13 +171,25 @@ compiler's ownership inference), and the engine here is a verbatim copy.
 This is the cliff for opening the window: 10,000 cells take 10–15 s, and
 100,000 had not opened after 10 minutes.
 
-The engine's turn is linear in the grid (open):: After the layout fix a
-turn costs 0.05 ms at 100 cells, 0.15 ms at 1,024 and 1.4–1.9 ms at 10,000:
-about 0.15–0.2 µs per cell per turn, though a turn writes one cell's local
-state and changes one attribute. The samples show reference-count traffic
-(`roc_llvm_rc_incref`/`decref`) and some copying across the whole site
-tree. Projected, a turn would cost 15–20 ms at 100,000 cells (just within
-a frame per move) and 150–200 ms at a million.
+The engine's turn was linear in the grid (fixed):: After the layout fix a
+turn cost 0.05 ms at 100 cells, 0.15 ms at 1,024 and 1.4–1.9 ms at 10,000,
+though it writes one cell's local state and changes one attribute: each
+call of the root site copied its 10,000-child list (a 2.4 MB `memcpy` from
+`fire_kid`'s `List.replace`, with an incref of every child), because an
+erased call borrowed the site's captures. Engine patch 0003 calls sites so
+they own them (`patches/roc-signals`, `patches/roc-compiler`
+"erased-captures"). Now a hover move's engine time is about 0.1 ms (p50)
+at every size measured, 100 to 14,400 cells, and a timer turn under
+0.05 ms:
++
+[cols="1,1,1,1,1,1,1",options="header"]
+|===
+| Engine ms, p50 | N=10 | N=32 | N=50 | N=70 | N=100 | N=120
+| hover move, before 0003 | 0.0 | 0.2 | 0.5 | 1.1 | 2.5–2.8 | –
+| hover move, after | 0.0 | 0.1 | 0.0 | 0.1 | 0.1 | 0.1
+| timer turn, before 0003 | 0.0 | 0.1 | – | – | 1.2–1.5 | –
+| timer turn, after | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 | 0.0
+|===
 
 AppKit's own cost (the next wall):: The mount's layout (NSStackView and
 Auto Layout solving each cell's fixed width and height and the stacks'
@@ -190,9 +207,8 @@ Drawing is not a problem: one cell's repaint is under 0.1 ms.
   10–15 s into what the linear part costs (about 0.3 s, extrapolating from
   1,024 cells), and is the precondition for anything past 10,000. Payoff:
   very large; cost: find the shared reference in `mount_elem`/`emit_op`.
-. *Make the engine's turn independent of the grid* (roc-signals): route an
-  event to its site without touching the others. Payoff: turns at a million
-  cells from about 200 ms to the 0.1 ms of a small grid.
+. *Make the engine's turn independent of the grid*: done by engine patch
+  0003; a turn costs about 0.1 ms at any size measured.
 . *A canvas element* (`Ui.canvas` or `Ui.grid`: one view drawing N×N cells
   from a list signal, one CALayer or one `draw(_:)`, hit-testing by
   arithmetic): no NSView, constraint or engine element per cell, so a
