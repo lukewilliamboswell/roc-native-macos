@@ -10,8 +10,8 @@ Run `blueprint run check` with a current Roc nightly installed as `roc`. It is
 the same gate CI runs on `macos-15`: compiler pins, the engine facades,
 formatting, the scripts' tests, the `macos.roc` tool's package (`cli/`),
 the committed glue, `scripts/build.roc`, `roc test`, every example's recorded scripted runs
-(`examples/<example>/tests/`), and the platform bundle with a counter created, built
-and tested against it through `macos.roc` (`scripts/bundle.roc --test`). A new example needs at
+(`examples/<example>/tests/`), and the platform bundle with the starter app created, built,
+tested and packaged against it through `macos.roc` (`scripts/bundle.roc --test`). A new example needs at
 least one recorded case: add `examples/<example>/tests/<case>.script` and run
 `blueprint run examples -- --update`. Review the `.expected` diff before you
 commit it.
@@ -115,6 +115,15 @@ compared: change `cli/Recorded.roc` and copy it over. The tool's `build` must
 keep working from Linux and Windows: write files and run `roc`, and never
 call a macOS program to build. Every failure is one sentence from
 `MacOS.explain`.
+
+What `init` writes is `examples/starter`, every tracked file of it: change
+the scaffold by changing that example (its cases, `expect`s and fuzz
+targets run in `check` like any example's), then regenerate
+`cli/Bundle.roc`. Its `AGENTS.md` is the app author's, and says what an
+agent working on an app must know; keep it accurate when the tool, the
+platform or the starter change. The tool reads an app's root module from
+`src/main.roc`, or from `main.roc` at the top for apps made by 0.0.1; keep
+both working.
 
 ## Change discipline
 
