@@ -121,6 +121,7 @@ MacOS :: [].{
 		\\They need Roc as `roc`, on macOS, Linux or Windows; no Xcode is needed. The app
 		\\runs on Apple silicon Macs with macOS 11 or later, so run and test work only there.
 		\\This is roc-native-macos ${Bundle.version}, tested with Roc ${Bundle.roc_version}.
+		\\Documentation: https://lukewilliamboswell.github.io/roc-native-macos/apps.html
 
 	## Describe one command, without looking at the app or building anything.
 	command_usage : Str -> Str

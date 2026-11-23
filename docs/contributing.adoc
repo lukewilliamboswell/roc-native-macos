@@ -297,7 +297,7 @@ same one CI runs on `macos-15`. Its stages, in order:
 | `build` | `scripts/build.roc` with the `roc` on PATH
 | `test` | `roc test` on `platform/main.roc` and every example
 | `examples` | every recorded case
-| `bench` | every harness under `bench/`, built and run at a token size (`bench/<name>/run.sh --smoke`) so it never goes stale; a harness's `--smoke` fails unless the run does what it measures, and the grid's also fails if mount grows superlinearly (N=20 against N=60, xref:contributing.adoc#engine-patches[Engine patches])
+| `bench` | every harness under `bench/`, built and run at a token size (`bench/<name>/run.sh --smoke`) so it never goes stale; a harness's `--smoke` fails unless the run does what it measures, and the grid's also fails if mount grows superlinearly or a hover turn grows with the cells (N=20 against N=60, xref:contributing.adoc#engine-patches[Engine patches])
 | `bundle` | the bundle from the `build` stage's inputs, and its consumer test: `macos.roc` `init`, `build` and `test` against it
 |===
 
@@ -522,14 +522,16 @@ on another attribute having been applied first. `title-display` is
 reapplied after any title, bezel or size change for this reason.
 No `Str` order:: `Str` has no ordering in RC1, so `Engine.sort_by` cannot
 sort rows by a name; `contacts` sorts by key.
-Turns copy the storage on the event's path:: Every site is an erased
-closure (the state crosses to the host in a `Box`), and an erased call
-reads its captures borrowed, so each turn copies the child list of every
-block on the event's path. With 10,000 sites in one block that is a
-2.4 MB copy per call and most of a 2.4 ms hover turn
-(`patches/roc-compiler`, "Erased closures borrow their captures").
-Mount was quadratic, also the compiler's doing, until engine patches 0001
-and 0002 (xref:contributing.adoc#engine-patches[Engine patches]).
+Erased calls can borrow their captures:: Every site is an erased closure
+(the state crosses to the host in a `Box`), and an erased call reads its
+captures borrowed when the call is in tail position or the result holds
+exactly one function. A site's block is then shared, and rebuilding it
+copies its child list: with 10,000 sites in one block, a 2.4 MB copy and
+most of a 2.5 ms hover turn. Engine patch 0003 avoids both
+(`Core.call`); keep a site call out of tail position and keep `Inst`'s
+`Spare` variant (`patches/roc-compiler`, "Erased closures borrow their
+captures"). Mount was quadratic, also the compiler's doing, until engine
+patches 0001 and 0002 (xref:contributing.adoc#engine-patches[Engine patches]).
 A bundle is fetched only over https, or http to localhost:: Roc rejects a
 local `.tar.zst` path as a platform and an absolute platform path, and
 accepts plain `http` only for `localhost`, `127.0.0.1` and `[::1]`. It

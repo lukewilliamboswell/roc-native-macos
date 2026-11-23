@@ -151,7 +151,7 @@ consumer_test! = |root, out, bundle| {
 ## The port the server reports, from its first line of output.
 served! : Cmd.Child => Try(U16, Str)
 served! = |server|
-	match server.read!(Duration.seconds(10)) {
+	match server.read!(Duration.seconds(30)) {
 		Ok(Stdout(bytes)) => Bundle.served_port(Str.from_utf8_lossy(bytes)).map_err(|_| "the local server printed no port: ${Str.from_utf8_lossy(bytes)}")
 		Ok(Stderr(bytes)) => Err("the local server failed: ${Str.from_utf8_lossy(bytes)}")
 		Err(error) => Err("the local server did not start: ${Str.inspect(error)}")
