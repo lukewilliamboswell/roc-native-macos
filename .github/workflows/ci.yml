@@ -1,19 +1,32 @@
 name: CI
 
 # The pull-request gate is `blueprint run check`, the same task a contributor
-# runs. It builds the Swift host and every example, so it runs on Apple
-# silicon macOS, the platform's one target (arm64mac). The examples are run
-# for real: `macos-15` hosted runners have a logged-in GUI session, so each
+# runs. It builds the Swift host and every example, so it runs on macOS: on
+# Apple silicon (arm64mac), and again on an Intel Mac (x64mac), since the
+# platform supports both and the maintainer has no Intel Mac. The examples are
+# run for real: hosted macOS runners have a logged-in GUI session, so each
 # recorded ROC_SCRIPT case drives real AppKit controls. A scripted run never
 # takes keyboard focus.
 #
 #   nightly  the latest Roc nightly, resolved once for every job
-#   host     the Swift host, in its own job and keyed by its fingerprint
-#            (sources, glue header, recipe, swiftc, Xcode): restored from the
-#            cache when nothing it is built from changed, otherwise built twice
+#   host     the Swift hosts for both targets, cross-compiled on Apple silicon
+#            in their own job and keyed by their fingerprint (target, sources,
+#            glue header, recipe, swiftc, Xcode): restored from the cache when
+#            nothing they are built from changed, otherwise each built twice
 #            with identical bytes required and saved
-#   check    the whole gate, with that host; its build stage reuses a host
-#            whose recorded fingerprint matches
+#   check    the whole gate on Apple silicon, with those hosts; its build
+#            stage reuses a host whose recorded fingerprint matches
+#   intel    the gate's stages that build and run, on an Intel Mac
+#            (macos-15-intel) with the same hosts: the glue the Intel `roc`
+#            generates, the stub audit of the hosts and of the Intel `roc`'s
+#            own run shims, every example built natively for Intel and its
+#            recorded cases run (and the counter's through `roc main.roc`), and
+#            the bundle's consumer test, whose macos.roc builds a universal app
+#            and runs its Intel half. Blueprint's environment is Apple silicon
+#            only (roc-policy and roc-docs have no x86_64-darwin build), so the
+#            job runs scripts/check_all.roc with roc-stable directly
+#            (.github/actions/setup-roc-tooling), without the pins, engine, fmt
+#            and bench stages, whose results do not depend on the CPU.
 
 on:
   pull_request:
@@ -69,6 +82,7 @@ jobs:
         run: blueprint run build -- host --fingerprint
       # A cache is storage, not trust: the entry is this repository's own
       # earlier build of the same fingerprint, and the gate audits it again.
+      # x64v1mac's libhost.a is a copy of x64mac's, which every build makes.
       - id: cache
         uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25
         with:
@@ -76,6 +90,9 @@ jobs:
           path: |
             platform/targets/arm64mac/libhost.a
             platform/targets/arm64mac/libhost.fingerprint
+            platform/targets/x64mac/libhost.a
+            platform/targets/x64mac/libhost.fingerprint
+            platform/targets/x64v1mac/libhost.a
       - if: steps.cache.outputs.cache-hit != 'true'
         run: blueprint run build -- host --reproduce
       - if: steps.cache.outputs.cache-hit != 'true'
@@ -85,12 +102,18 @@ jobs:
           path: |
             platform/targets/arm64mac/libhost.a
             platform/targets/arm64mac/libhost.fingerprint
+            platform/targets/x64mac/libhost.a
+            platform/targets/x64mac/libhost.fingerprint
+            platform/targets/x64v1mac/libhost.a
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: libhost
           path: |
             platform/targets/arm64mac/libhost.a
             platform/targets/arm64mac/libhost.fingerprint
+            platform/targets/x64mac/libhost.a
+            platform/targets/x64mac/libhost.fingerprint
+            platform/targets/x64v1mac/libhost.a
           if-no-files-found: error
           retention-days: 7
 
@@ -113,10 +136,34 @@ jobs:
       - uses: lukewilliamboswell/roc-automation/actions/setup-roc-nightly@acc5efdcd929b38e665cd3ae6e694d1c4887f9c7
         with:
           nightly-tag: ${{ needs.nightly.outputs.tag }}
+      # The artifact's root is platform/targets/, the paths' common parent.
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
         with:
           name: libhost
-          path: platform/targets/arm64mac
+          path: platform/targets
       - run: blueprint run release -- versions
       - run: blueprint check
       - run: blueprint run check
+
+  intel:
+    name: Check on an Intel Mac
+    needs: [nightly, host]
+    runs-on: macos-15-intel
+    timeout-minutes: 75
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      # The same Xcode: the hosts' fingerprints then match, and the build
+      # stage reuses the bytes the host job cross-compiled.
+      - uses: ./.github/actions/setup-xcode
+      - uses: ./.github/actions/setup-roc-tooling
+        with:
+          nightly-tag: ${{ needs.nightly.outputs.tag }}
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          name: libhost
+          path: platform/targets
+      - run: roc-stable scripts/check_all.roc -- scripts tool glue build test examples bundle
