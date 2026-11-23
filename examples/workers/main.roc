@@ -493,9 +493,10 @@ one = 268_435_456
 home : View
 home = { cx: -(one * 3 // 4), cy: 0, span: one * 3, samples: 1, limit: 1 }
 
-## Half the span, about a point on the set's edge.
+## An eighth of the span, about a point in the seahorse valley, where the
+## set's edge is most intricate.
 zoom : View -> View
-zoom = |v| { ..v, cx: (v.cx * 3 - (one * 3 // 4)) // 4, cy: (v.cy * 3 + (one // 10)) // 4, span: (v.span // 2).max(4096) }
+zoom = |v| { ..v, cx: -(one * 743_645 // 1_000_000), cy: one * 131_825 // 1_000_000, span: (v.span // 8).max(4096) }
 
 with_detail : View, Str -> View
 with_detail = |v, detail|
@@ -550,17 +551,34 @@ render = |{ top, rows, view: v, .. }| {
 				for sx in (0.U64).until(v.samples) {
 					x = left + step_x * (col * v.samples + sx).to_i64_wrap()
 					y = upper + step_y * (row * v.samples + sy).to_i64_wrap()
-					$total = $total + escape(x, y, v.limit)
+					$total = $total + shade_of(escape(x, y, v.limit), v.limit)
 				}
 			}
-			mean = $total // (v.samples * v.samples)
-			shade = if (mean >= v.limit) 9 else (mean * 9) // v.limit.max(1)
+			# The mean shade of the samples, rounded.
+			count = v.samples * v.samples
+			shade = ($total + count // 2) // count
 			$line = $line.append(shades.get(shade) ?? ' ')
 		}
 		$lines = $lines.append(Str.from_utf8($line) ?? "")
 	}
 	Str.join_with($lines, "\n")
 }
+
+## A sample's shade, 0 to 9: 9 inside the set, otherwise how many bits its
+## escape count takes, so the bands near the edge show.
+shade_of : U64, U64 -> U64
+shade_of = |n, limit|
+	if n >= limit {
+		9
+	} else {
+		var $bits = 0.U64
+		var $x = n
+		while $x > 0 {
+			$x = $x // 2
+			$bits = $bits + 1
+		}
+		$bits.min(8)
+	}
 
 ## The iterations before `c` leaves the radius-2 disk, at most `limit`.
 escape : I64, I64, U64 -> U64
@@ -646,3 +664,5 @@ expect sum_squares(4) == 14
 expect escape(0, 0, 50) == 50
 expect escape(one * 2, one * 2, 50) == 1
 expect picture(["ab", ""]).split_on("\n").len() == 1 + band_rows
+
+expect (shade_of(0, 10), shade_of(5, 10), shade_of(10, 10), shade_of(1000, 5000)) == (0, 3, 9, 8)
