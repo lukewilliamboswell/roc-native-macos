@@ -24,7 +24,9 @@ plus the patch series in `patches/roc-signals/`, whose `README.adoc` lists the
 patches in order with their upstream status
 (xref:contributing.adoc#engine-patches[Engine patches]). Two patches split
 `Core.roc`'s mount functions so the compiler keeps the turn and the block
-unshared, which makes mounting linear. `tests/engine-modules.sha256` records
+unshared, which makes mounting linear, and a third changes how a site is
+called so it owns its storage, which makes a turn's cost independent of
+the number of sites beside the ones it touches. `tests/engine-modules.sha256` records
 the pristine digests, and `check` reverse-applies the series and compares.
 
 Platform root:: `platform/main.roc` is a trimmed copy of roc-signals' root.

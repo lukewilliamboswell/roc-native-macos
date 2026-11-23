@@ -4234,7 +4234,9 @@ orphans_of = |out| match out {
 	_ => []
 }
 
-Inst(ctx) := [Inst((ctx, Msg, Tx -> (Inst(ctx), Out(ctx), Tx)))]
+## A site instance. `Spare` is never built: it is there for the compiler
+## (see `call`).
+Inst(ctx) := [Inst((ctx, Msg, Tx -> (Inst(ctx), Out(ctx), Tx))), Spare(List(Inst(ctx)))]
 
 ## The site tree, the store and the turn of a [Core.App], behind its opaque
 ## name (see [Core.App] for why the body is a type of its own).
@@ -5412,8 +5414,24 @@ noop = |_| Inst(
 	},
 )
 
+## Call a site with the instance moved in, so it owns its storage and
+## rebuilds its block in place. The platform boxes the engine state, so a
+## site's function is erased, and an erased call reads the captures borrowed
+## (and a rebuilt child list is a copy, linear in the block's sites) in two
+## cases this avoids: a call in tail position is deferred, and a deferred
+## call never hands its closure over, so the result is bound before it is
+## returned; and a callee whose answer holds exactly one function keeps its
+## own closure to build that function in, so `Inst` has the `Spare` variant,
+## which makes the answer hold a list of functions too. Compiler side:
+## roc-native-macos patches/roc-compiler, erased-captures.
 call : Inst(ctx), ctx, Msg, Tx -> (Inst(ctx), Out(ctx), Tx)
-call = |Inst(f), env, msg, tx| f(env, msg, tx)
+call = |inst, env, msg, tx| match inst {
+	Inst(f) => {
+		(next, out, tx1) = f(env, msg, tx)
+		(next, out, tx1)
+	}
+	Spare(_) => crash "internal: a spare instance is never built"
+}
 
 ## Re-evaluate the holes that read a changed layer, then descend into the
 ## children whose subtrees read one. With `every_layer` it re-evaluates every
