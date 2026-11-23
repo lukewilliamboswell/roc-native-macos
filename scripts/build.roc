@@ -40,7 +40,11 @@ import src/Tar
 ## (`link-inputs.yml`, then `publish-link-inputs.yml`). Until the first
 ## release there is no lock, and the stubs are generated from the catalog.
 ## Then the host's unresolved references are audited against the catalog: a
-## reference the catalog does not own fails the build.
+## reference the catalog does not own fails the build. So are the system
+## imports of the package compiler's run shims, the archives `roc main.roc`
+## links the host with (carved out of the compiler, where they are embedded,
+## into `build/run-shims`): one the catalog does not own, or owns without
+## listing it in `run_shim`, fails the build too.
 ##
 ## An example: `roc build`, then `<name>.app` beside the binary, with its
 ## `assets/` under `Contents/Resources/assets` and an `assets/icon.icns` as
@@ -57,7 +61,7 @@ main! = |raw_args| {
 	roc = env!("ROC", "roc")
 	result = match options.command {
 		All => everything!(roc, options.link_inputs)
-		Platform => platform!(options.link_inputs)
+		Platform => platform!(roc, options.link_inputs)
 		Examples(names) => examples!(roc, Ok(names))
 		Glue => glue!(roc, Bool.False)
 		GlueCheck => glue!(roc, Bool.True)
@@ -77,7 +81,7 @@ main! = |raw_args| {
 ## The platform, then every example.
 everything! : Str, Str => Try({}, Str)
 everything! = |roc, candidate| {
-	platform!(candidate)?
+	platform!(roc, candidate)?
 	examples!(roc, Err(All))
 }
 
@@ -96,12 +100,13 @@ print_fingerprint! = || {
 	}
 }
 
-## The host, the linker inputs, and the audit of one against the other.
-platform! : Str => Try({}, Str)
-platform! = |candidate| {
+## The host, the linker inputs, and the audit of the host and of the
+## compiler's run shims against them.
+platform! : Str, Str => Try({}, Str)
+platform! = |roc, candidate| {
 	_ = host!()?
 	link_inputs!(candidate)?
-	audit!()
+	audit!(roc)
 }
 
 ## The Swift sources of the host, relative to the checkout.
@@ -267,9 +272,10 @@ install! = |archive| {
 	Ok({})
 }
 
-## The host's unresolved references against the catalog.
-audit! : () => Try({}, Str)
-audit! = || {
+## The host's unresolved references against the catalog, then the system
+## imports of the compiler's run shims.
+audit! : Str => Try({}, Str)
+audit! = |roc| {
 	text = read!("host/interfaces.json")?
 	parsed : Try(LinkInputs.Catalog, _)
 	parsed = Json.parse(text)
@@ -278,16 +284,56 @@ audit! = || {
 	library = "platform/${Build.host_library}"
 	undefined = capture!("nm", ["-u", library])?.split_on("\n")
 	defined = capture!("nm", ["-gUj", library])?.split_on("\n")
-	result = LinkInputs.audit({ undefined, defined, owners })
+	result = LinkInputs.audit({ undefined, defined, owners, run_shim: catalog.run_shim.symbols })
 	if !result.unused.is_empty() {
 		warn!(LinkInputs.unused_message(result.unused))
 	}
-	if result.missing.is_empty() {
-		note!("build: the host references only symbols the catalog owns (${owners.len().to_str()} symbols)")
-		Ok({})
-	} else {
-		Err(LinkInputs.missing_message(result.missing))
+	if !result.missing.is_empty() {
+		return Err(LinkInputs.missing_message(result.missing))
 	}
+	note!("build: the host references only symbols the catalog owns (${owners.len().to_str()} symbols)")
+	shim_audit!(roc, owners, catalog.run_shim.symbols)
+}
+
+## The run shims embedded in the compiler `roc`, carved out into
+## `build/run-shims` and their imports (`nm -u` less `nm -gUj`) audited
+## against the catalog: `roc main.roc` links the host with one of them.
+shim_audit! : Str, List((Str, Str)), List(Str) => Try({}, Str)
+shim_audit! = |roc, owners, run_shim| {
+	compiler = capture!("which", [roc])?.trim()
+	version = capture!(compiler, ["version"])?.trim()
+	bytes = Path.read_bytes!(Path.utf8(compiler)) ? |error| "could not read ${compiler}: ${Str.inspect(error)}"
+	fresh!("build/run-shims")?
+	var $names = []
+	var $references = []
+	for found in LinkInputs.embedded_archives(bytes) {
+		match LinkInputs.run_shim_name(found.members) {
+			Ok(name) => {
+				path = "build/run-shims/lib${name}.a"
+				Path.write_bytes!(Path.utf8(path), bytes.sublist({ start: found.start, len: found.len })) ? |error| "could not write ${path}: ${Str.inspect(error)}"
+				undefined = capture!("nm", ["-u", path])?.split_on("\n")
+				defined = capture!("nm", ["-gUj", path])?.split_on("\n")
+				$names = $names.append(name)
+				$references = $references.concat(LinkInputs.references(undefined, defined))
+			}
+			Err(NotAShim) => {}
+		}
+	}
+	if $names.is_empty() {
+		return Err("${compiler} (${version}) embeds no run shim that the audit can find; its run mode cannot be checked")
+	}
+	result = LinkInputs.shim_audit({ shim_refs: $references, owners, run_shim })
+	if !result.stale.is_empty() {
+		warn!(LinkInputs.shim_stale_message(version, result.stale))
+	}
+	if !result.missing.is_empty() {
+		return Err(LinkInputs.shim_missing_message(version, result.missing))
+	}
+	if !result.unlisted.is_empty() {
+		return Err(LinkInputs.shim_unlisted_message(version, result.unlisted))
+	}
+	note!("build: the run shims of ${version} (${Str.join_with($names, ", ")}) import only symbols the catalog owns")
+	Ok({})
 }
 
 ## The linker inputs' fingerprint, as `link_inputs.roc fingerprint` prints it.

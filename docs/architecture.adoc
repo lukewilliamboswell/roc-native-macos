@@ -719,6 +719,27 @@ no lock, the build generates the stubs from the catalog. After installing
 them it audits `libhost.a`: a reference the catalog does not own fails the
 build, so adding one is a reviewed edit that names its library and evidence.
 
+The stubs have a second consumer: Roc's run mode. `roc main.roc` (and
+`roc run`, with `--opt=dev`, the default, or `--opt=interpreter`) links the
+host not with the app's object but with one of the compiler's own run shims,
+`libroc_machine_code_shim.a` or `libroc_interpreter_shim.a`, which load the
+program the compiler publishes into shared memory. Roc embeds both in the
+`roc` binary and extracts one for every run. Their system imports (file and
+mapping calls, futex waits, `dlsym`, `sys_icache_invalidate`,
+`_tlv_bootstrap` and a few others) are not the host's, so the catalog lists
+them as its own consumer, `run_shim`, each owned by a library with its own
+evidence like any other symbol. They are the imports roc-lang/roc's
+`src/machine_code_shim/archive_check.zig` allows a macOS shim, as the shims
+of 0.1.0 RC1 and the nightlies of November 2026 reference them. The build
+audits them as it audits the host: it carves the shims out of the `roc` it
+builds with (`LinkInputs.embedded_archives`, into `build/run-shims`), takes
+their `nm -u` less their own definitions and the `_roc_*` symbols the host
+and the compiler's generated objects supply, and fails on an import the
+catalog does not own or `run_shim` does not list; a `run_shim` name the
+shims no longer import is only noted, as another supported compiler's may.
+The check's `examples` stage then runs the counter's first recorded case
+through `roc main.roc`, so a run mode the stubs cannot link fails the gate.
+
 Swift is compiled with `-disable-autolink-frameworks` and
 `-disable-force-load-symbols`, so the frameworks linked are exactly the
 catalog's. Roc then links each `X.framework/X.tbd` it finds. The resulting

@@ -163,6 +163,12 @@ extension Host {
             case "dump":
                 let size = window.contentView?.frame.size ?? .zero
                 say("--- \(Int(size.width))x\(Int(size.height))"); dump(root, 0)
+            case "reload":
+                // Reload, as Cmd-R does; the rest of the script drives the
+                // fresh engine.
+                guard let fresh = (NSApp.delegate as? AppDelegate)?.reload() else { fatal("script: reload found no engine to reload") }
+                fresh.run(script: steps.joined(separator: ";"))
+                return
             case "quit":
                 NSApp.terminate(nil)  // through teardown (effects, then the engine), as a person quitting would
             default:

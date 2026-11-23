@@ -13,7 +13,8 @@ header (xref:../roc-signals/README.adoc[patches/roc-signals]).
   captures copies that state on every call. Standalone reproducer of the
   four combinations. Engine impact: every turn copied the child list of
   each block on the event's path; worked around by engine patch 0003 (see
-  <<erased-captures>>). Upstream: not yet reported.
+  <<erased-captures>>). Upstream:
+  https://github.com/roc-lang/roc/issues/13374[roc-lang/roc#13374].
 . `mount-sharing/`: in optimized builds the engine's mount passes its turn
   and its block shared, depending on the size of the functions involved,
   so appends copy. Reproduced with the engine only, not yet reduced.
@@ -27,9 +28,9 @@ also with nightly-2026-11-22-3350b1c.
 [#erased-captures]
 == Erased closures borrow their captures
 
-Ready to file as a roc-lang/roc issue: the text from "Title" to the end of
-"Suspected mechanism" (before "Engine impact"), with `main.roc` as the
-program.
+Reported as https://github.com/roc-lang/roc/issues/13374[roc-lang/roc#13374]
+(the text from "Title" to the end of "Suspected mechanism", with `main.roc`
+as the program).
 
 Title:: An erased closure that rebuilds itself copies its captures on every
 call: a tail-position call never transfers it, and a single-function result

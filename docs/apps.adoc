@@ -31,7 +31,10 @@ release, two recorded runs of it in `tests/`, its metadata in `macos.json`,
 a `.gitignore`, a release workflow in `.github/workflows/release.yml` (see
 xref:apps.adoc#ship-your-app[Ship your app]) and a copy of `macos.roc`.
 `run` builds `counter.app` and starts it, with its output (`dbg`, a crash
-report) in the terminal. Edit `main.roc` and run it again.
+report) in the terminal. Edit `main.roc` and run it again, or, on a Mac,
+start it with `roc main.roc` instead: Roc then runs the app straight from
+the compiler and loads each edit you save into it
+(xref:apps.adoc#hot-reloading[Hot reloading]).
 
 An app is one `main.roc`, whose header names the platform by its release URL:
 
@@ -236,8 +239,10 @@ at run time. Such files can live anywhere beside `main.roc`.
 Where they go:: `build` copies `assets/` into
 `<name>.app/Contents/Resources/assets/`, and beside the program it tests,
 `.macos/assets/`. The program looks in `ROC_ASSETS` when that is set, then in
-the `.app` it is in, then in `assets/` beside itself. So copy the whole `.app`
-to share it; a bare program moved away from its assets needs `ROC_ASSETS`.
+the `.app` it is in, then in `assets/` beside itself, and a bare program last
+in `assets/` of the directory it was started in, which is how `roc main.roc`
+finds them. So copy the whole `.app` to share it; a bare program moved away
+from its assets needs `ROC_ASSETS`.
 The assets are plain files in the bundle: the program's ad hoc signature does
 not cover them, as it does not cover `Info.plist`.
 
@@ -281,6 +286,47 @@ The README shows each example running. What each one uses:
 | `file-inspector` | `Ui.file_button` and a `Ui.drop_zone` delivering `File` handles, sizes in KB and MB; for an inspected file its SHA-256 (`sha256`), its first 200 bytes as text or "binary" (`slice`, `read_bytes`), its URL (`object_url`) and "Save Copy…" (`File.save`); Clear releases the handles
 | `workers` | Worker tasks: the Mandelbrot set drawn as text by eight jobs at once, with progress, a heartbeat that keeps counting, Cancel and Zoom In (a new picture stops the old one's jobs); a Lab tab with a job that crashes (only it is lost), 24 jobs at once, an `on_cancel: Finish` job, a timed-out job, and a dropped file read and copied into a report by a job (`File.read!`, `Files.build!`), digested and saved by the page, and searched by a preparation a worker keeps
 |===
+
+[#hot-reloading]
+== Hot reloading
+
+On a Mac, `roc main.roc` (or `roc run main.roc`), run from the app's
+directory, compiles the app with Roc's fast development backend and starts
+it straight from the compiler, with no `.app`. It also watches `main.roc`
+and every module it imports. When you save a change that compiles, Roc
+rebuilds the app in the background and loads the new code into the running
+program; a change that does not compile prints its errors and leaves the
+running code alone.
+
+[source,sh]
+----
+cd counter
+roc main.roc
+----
+
+What reloads:: Roc swaps the code in at the next call into the app, but this
+platform's window keeps the views and the state it mounted with the old
+code, so the old code still answers its buttons. Press Command-R (*Reload*
+in the app menu) to see the change: it drops the window's engine and mounts
+a fresh one, which runs the newest code. If Command-R comes before Roc has
+finished the rebuild, which the terminal reports as `hot reload generation
+N accepted by host`, press it again.
+What survives a reload:: Local and session storage, and the window. The
+state, the view tree, and every timer, request, file job and worker job in
+flight start again, as when a browser reloads a page.
+Limits:: Change the state's types (an `Engine.state`'s value, a store's
+cells) only with Command-R right after saving: until then the new code is
+handed the state the old code built. A change to the platform's interface
+asks you to restart `roc main.roc`. A reload keeps the old state's memory
+rather than release it with code that may describe it differently, which is
+harmless while you develop. *Reload* appears only in a bare program, such as
+the one `roc main.roc` runs, never in an `.app`.
+Compilers:: Roc 0.1.0 RC1 and current nightlies. `roc --opt=interpreter
+main.roc` runs the app too, but only the default development backend hot
+reloads.
+
+`roc macos.roc run` builds the real `.app` and is still how to check the app
+as people will see it.
 
 [#test-an-app]
 == Test an app
@@ -339,6 +385,7 @@ Steps are separated by `;` and run every 100 ms.
 | `wait:<ms>` | waits
 | `dump` | prints the window size (`--- 360x237`), then the view tree; a list shows its visible rows, and a text, box or drop zone the look attributes that differ from the usual (`{color=secondary-label text-style=caption1}`)
 | `window` | prints `window <number>`, for `screencapture -l<number>`
+| `reload` | reloads as Command-R does (xref:apps.adoc#hot-reloading[Hot reloading]): a fresh engine and view tree in the same window; the steps after it drive the fresh one
 | `quit` | quits, through the same teardown as quitting
 |===
 
