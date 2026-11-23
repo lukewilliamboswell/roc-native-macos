@@ -5,7 +5,9 @@
 
 roc-native-macos is a Roc platform for native macOS apps, built on the
 roc-signals reactive engine with a Swift host that draws AppKit controls.
-It is an early proof of concept.
+It is new: a fresh take on UI for productivity apps that puts ideas matured
+across other Roc platforms to the test. Consider it experimental until more
+people have used it and given feedback on the approach.
 
 App authors need only Roc and a release: start with
 xref:apps.adoc#get-started[Build an app], then look things up in
