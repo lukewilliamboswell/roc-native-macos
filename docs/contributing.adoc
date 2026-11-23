@@ -297,7 +297,7 @@ same one CI runs on `macos-15`. Its stages, in order:
 | `build` | `scripts/build.roc` with the `roc` on PATH
 | `test` | `roc test` on `platform/main.roc` and every example
 | `examples` | every recorded case
-| `bench` | every harness under `bench/`, built and run at a token size (`bench/<name>/run.sh --smoke`) so it never goes stale; a harness's `--smoke` fails unless the run does what it measures
+| `bench` | every harness under `bench/`, built and run at a token size (`bench/<name>/run.sh --smoke`) so it never goes stale; a harness's `--smoke` fails unless the run does what it measures, and the grid's also fails if mount grows superlinearly (N=20 against N=60, xref:contributing.adoc#engine-patches[Engine patches])
 | `bundle` | the bundle from the `build` stage's inputs, and its consumer test: `macos.roc` `init`, `build` and `test` against it
 |===
 

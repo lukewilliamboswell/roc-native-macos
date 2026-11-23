@@ -5,7 +5,8 @@
 #   bench/grid/run.sh 100 200       # just these sizes
 #   NO_BUILD=1 bench/grid/run.sh    # reuse bench/grid/grid (BIN=path runs another build)
 #   LIVE=1 bench/grid/run.sh 100    # move the mouse yourself; the HUD shows the timings
-#   bench/grid/run.sh --smoke       # the gate's check: a 4x4 grid, a short sweep, exit 0
+#   bench/grid/run.sh --smoke       # the gate's check: a 4x4 grid, a short sweep, exit 0,
+#                                   # then the mount-scaling check (end of this file)
 #
 # Each N is a fresh process with ROC_BENCH=1 and a scripted sweep: the
 # pointer crosses the grid's diagonal in 2N moves (at least 200, at most
@@ -72,3 +73,30 @@ for n in "${sizes[@]}"; do
 	fi
 	rm -f "$log"
 done
+
+# The mount-scaling check, part of --smoke: mount N=20 and N=60 (400 and
+# 3,600 cells, 9 times as many) and fail if the mount's engine time grows
+# more than 3 times faster than linear (a ratio above 27; a quadratic mount
+# gives about 80). Mount was quadratic until engine patches 0001 and 0002
+# (patches/roc-signals), which work around compiler behaviour a later
+# engine change could bring back. The smaller time is floored at 2 ms so
+# timer noise on a fast machine cannot fail it.
+mount_engine_ms() {
+	ROC_BENCH=1 ROC_STORAGE_SUITE=dev.roc.bench.grid ROC_SCRIPT='stats;quit' \
+		perl -e 'alarm shift; exec @ARGV' "$timeout" "${BIN:-$here/grid}" -grid-n "$1" 2>&1 |
+		sed -n 's/.*mount engine \([0-9.]*\).*/\1/p' | head -1
+}
+if [[ -n $smoke && -z ${NO_SCALING:-} ]]; then
+	small="$(mount_engine_ms 20)"
+	large="$(mount_engine_ms 60)"
+	if [[ -z $small || -z $large ]]; then
+		echo "bench/grid --smoke: no mount time for N=20 or N=60 (did the mount finish?)" >&2
+		exit 1
+	fi
+	ratio="$(perl -e 'my ($s, $l) = @ARGV; printf "%.1f", $l / ($s < 2 ? 2 : $s)' "$small" "$large")"
+	echo "== mount scaling: N=20 $small ms, N=60 $large ms: ratio $ratio for 9x the cells (linear 9, fails above 27)"
+	if perl -e 'exit($ARGV[0] > 27 ? 0 : 1)' "$ratio"; then
+		echo "bench/grid --smoke: mount grows superlinearly with the cells; see patches/roc-signals/README.adoc" >&2
+		exit 1
+	fi
+fi
