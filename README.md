@@ -1,11 +1,12 @@
-# roc-native-macos (spike)
+# roc-native-macos
 
 > [!NOTE]
-> This is an early proof of concept. My goal is to show how
-> [roc-signals](https://github.com/lukewilliamboswell/roc-signals) might look
-> for native UI. I'm not sure where this project will go: I've written it for
-> a bit of fun, and to help with the development of the reactive engine in
-> Roc. If you're interested in this work, let me know.
+> This platform is new. It builds on ideas that have matured across other Roc
+> platforms, and its purpose is to put those ideas to the test: a fresh take
+> on UI for productivity apps, written against the
+> [roc-signals](https://github.com/lukewilliamboswell/roc-signals) reactive
+> engine. Consider it experimental until more people have used it and told us
+> how the approach holds up. If you try it, I'd love to hear how it went.
 
 A Roc platform for native macOS apps. You write the app in Roc against the
 [roc-signals](https://github.com/lukewilliamboswell/roc-signals) reactive

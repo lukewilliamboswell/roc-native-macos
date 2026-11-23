@@ -444,9 +444,9 @@ The zip holds `<name>.app` with each entry's Unix mode set by the tool
 its execute bit whichever system made the zip: a zip made on Windows, or by
 many tools, loses it, and macOS then will not launch the app. The same app
 always makes the same zip, byte for byte: its entries are sorted and carry
-one time, 1980-01-01, or `SOURCE_DATE_EPOCH` when it is set. The entries are
-stored, not compressed, so the zip is about twice the size of a compressed
-one: 2.0 MB for the counter.
+one time, 1980-01-01, or `SOURCE_DATE_EPOCH` when it is set. The files are
+compressed with DEFLATE (by https://github.com/lukewilliamboswell/roc-zip[roc-zip]),
+so the counter's zip is about 1 MB, a little smaller than `zip -9` makes.
 
 [#share-with-friends]
 === Share it with friends
