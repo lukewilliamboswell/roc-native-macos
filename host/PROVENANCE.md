@@ -50,6 +50,29 @@ to the catalog. A new symbol is a reviewed catalog edit that names its
 library and its evidence, and a link error is never silenced by widening the
 catalog.
 
+## Roc's run-mode shims
+
+The stubs have one other consumer: the run shims of the Roc compiler,
+`libroc_machine_code_shim.a` and `libroc_interpreter_shim.a`, which `roc
+main.roc` and `roc run` link the host with in place of the app's object.
+Their system imports are listed in the catalog's `run_shim`, and each is
+owned by a library with its own evidence under the same rules as the host's:
+the public documentation or open-source declaration of the function, and the
+open-source Roc or Zig source (roc-lang/roc, ziglang/zig `lib/std`) that
+calls it. Three are not documented API. `__ulock_wait` and `__ulock_wake`
+are the address wait and wake of apple-oss-distributions/xnu
+(`bsd/sys/ulock.h`), which Zig's standard library declares and calls for its
+futex. `close$NOCANCEL` is the non-cancellable variant of `close` that Libc's
+`sys/cdefs.h` names (`__DARWIN_NOCANCEL`), which Zig's standard library
+calls. `_tlv_bootstrap` is the thread-local initializer of
+apple-oss-distributions/dyld that every Mach-O thread-local variable names.
+
+The shims are inventoried like the host: the build carves them out of the
+`roc` binary, where they are embedded, and checks their `nm -u` against the
+catalog. Roc's own source bounds what a macOS shim may import
+(`src/machine_code_shim/archive_check.zig`). The shims are Roc's, not Apple
+material, and nothing of them is read beyond their symbol tables.
+
 ## How the release is made
 
 The producer (`.github/workflows/link-inputs.yml`, running

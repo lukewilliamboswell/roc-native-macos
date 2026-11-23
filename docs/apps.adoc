@@ -236,8 +236,10 @@ at run time. Such files can live anywhere beside `main.roc`.
 Where they go:: `build` copies `assets/` into
 `<name>.app/Contents/Resources/assets/`, and beside the program it tests,
 `.macos/assets/`. The program looks in `ROC_ASSETS` when that is set, then in
-the `.app` it is in, then in `assets/` beside itself. So copy the whole `.app`
-to share it; a bare program moved away from its assets needs `ROC_ASSETS`.
+the `.app` it is in, then in `assets/` beside itself, and a bare program last
+in `assets/` of the directory it was started in, which is how `roc main.roc`
+finds them. So copy the whole `.app` to share it; a bare program moved away
+from its assets needs `ROC_ASSETS`.
 The assets are plain files in the bundle: the program's ad hoc signature does
 not cover them, as it does not cover `Info.plist`.
 

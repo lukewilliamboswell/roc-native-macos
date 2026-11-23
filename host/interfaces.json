@@ -1,7 +1,43 @@
 {
   "schema_version": 2,
   "target": "arm64-macos",
-  "note": "Reviewed catalog of the system interfaces the Swift host links against. Every library names its install name and every symbol its own public evidence; the generated stubs list only these names, and no Apple SDK file is read or shipped. PROVENANCE.md states the rules.",
+  "note": "Reviewed catalog of the system interfaces the Swift host links against, and that Roc's run-mode shims import when `roc main.roc` links the host (run_shim). Every library names its install name and every symbol its own public evidence; the generated stubs list only these names, and no Apple SDK file is read or shipped. PROVENANCE.md states the rules.",
+  "run_shim": {
+    "evidence": "Roc's run mode (`roc main.roc`, `roc run`, `--opt=dev` or `--opt=interpreter`) links the platform host with one of the compiler's own shim archives, libroc_machine_code_shim.a or libroc_interpreter_shim.a, which roc embeds and extracts for every run. Their system imports are the macOS imports roc-lang/roc's src/machine_code_shim/archive_check.zig allows (darwin_imports, c_memory_set, c_math_set). These are the ones the shims of the supported compilers reference (`nm -u`, which scripts/build.roc's audit re-checks against the `roc` it builds with); each is owned by a library below with its own evidence.",
+    "symbols": [
+      "__NSGetExecutablePath",
+      "___error",
+      "___ulock_wait",
+      "___ulock_wake",
+      "__availability_version_check",
+      "__longjmp",
+      "__setjmp",
+      "__tlv_bootstrap",
+      "_abort",
+      "_bzero",
+      "_close",
+      "_close$NOCANCEL",
+      "_dlsym",
+      "_fmod",
+      "_fmodf",
+      "_memcpy",
+      "_memmove",
+      "_memset",
+      "_mmap",
+      "_mprotect",
+      "_munmap",
+      "_openat",
+      "_os_unfair_lock_lock",
+      "_os_unfair_lock_trylock",
+      "_os_unfair_lock_unlock",
+      "_pread",
+      "_pthread_threadid_np",
+      "_read",
+      "_strlen",
+      "_sys_icache_invalidate",
+      "_write"
+    ]
+  },
   "libraries": [
     {
       "name": "libSystem",
@@ -38,8 +74,16 @@
           "evidence": "_NSConcreteStackBlock, the class of a block on the stack (clang docs/Block-ABI-Apple), in libSystem's libsystem_blocks"
         },
         {
+          "name": "__NSGetExecutablePath",
+          "evidence": "_NSGetExecutablePath (man 3 dyld), in libSystem's libdyld: Roc's run-mode shims (roc-lang/roc src/machine_code_shim, src/interpreter_shim) find their own executable (src/shim_io.zig)"
+        },
+        {
           "name": "___chkstk_darwin",
           "evidence": "the stack probe the compiler calls for a frame larger than a page on Apple platforms (llvm AArch64FrameLowering, ___chkstk_darwin), in libSystem's libcompiler_rt"
+        },
+        {
+          "name": "___error",
+          "evidence": "__error, the function errno names (`#define errno (*__error())`, apple-oss-distributions/xnu, bsd/sys/errno.h), in libSystem's libsystem_kernel: Roc's run-mode shims (roc-lang/roc src/machine_code_shim, src/interpreter_shim) read errno through it (Zig's lib/std/c/darwin.zig)"
         },
         {
           "name": "___stack_chk_fail",
@@ -54,6 +98,18 @@
           "evidence": "Darwin's stderr, the FILE * that stdio.h's stderr names (apple-oss-distributions/Libc, include/stdio.h), in libSystem's libsystem_c"
         },
         {
+          "name": "___ulock_wait",
+          "evidence": "__ulock_wait, the address-wait system call (apple-oss-distributions/xnu, bsd/sys/ulock.h, bsd/kern/sys_ulock.c), in libSystem's libsystem_kernel: the futex wait of Zig's std.Io (Zig's lib/std/c/darwin.zig, lib/std/Io/Threaded.zig), which Roc's run-mode shims (roc-lang/roc src/machine_code_shim, src/interpreter_shim) link"
+        },
+        {
+          "name": "___ulock_wake",
+          "evidence": "__ulock_wake, the address-wake system call (apple-oss-distributions/xnu, bsd/sys/ulock.h, bsd/kern/sys_ulock.c), in libSystem's libsystem_kernel: the futex wake of Zig's std.Io (Zig's lib/std/c/darwin.zig, lib/std/Io/Threaded.zig), which Roc's run-mode shims (roc-lang/roc src/machine_code_shim, src/interpreter_shim) link"
+        },
+        {
+          "name": "__availability_version_check",
+          "evidence": "_availability_version_check, the OS version query LLVM compiler-rt's __isPlatformVersionAtLeast calls (llvm-project, compiler-rt/lib/builtins/os_version_check.c), in libSystem: the compiler-rt that Roc's interpreter run shim carries"
+        },
+        {
           "name": "__longjmp",
           "evidence": "_longjmp, POSIX.1 (man 3 setjmp), in libSystem's libsystem_platform: unwinding a worker instance's call to its jump point on a crash, fault or stop (roc_guard_unwind; docs/architecture.adoc, \"Workers\")"
         },
@@ -62,12 +118,32 @@
           "evidence": "_setjmp, POSIX.1 (man 3 setjmp), in libSystem's libsystem_platform: the jump point a guarded call into a worker instance takes (the roc_guarded_* trampolines glue/SwiftGlue.roc generates; docs/architecture.adoc, \"Workers\")"
         },
         {
+          "name": "__tlv_bootstrap",
+          "evidence": "_tlv_bootstrap, the initializer every Mach-O thread-local variable descriptor names (apple-oss-distributions/dyld, threadLocalVariables.c; llvm-project lld MachO, the __thread_vars section), in libSystem's libdyld: Roc's run-mode shims (roc-lang/roc src/machine_code_shim, src/interpreter_shim) hold thread-locals"
+        },
+        {
+          "name": "_abort",
+          "evidence": "abort (ISO C 7.22.4.1), in libSystem's libsystem_c: Roc's run-mode shims (roc-lang/roc src/machine_code_shim, src/interpreter_shim)' panic path"
+        },
+        {
           "name": "_arc4random_buf",
           "evidence": "arc4random_buf, random bytes (man 3 arc4random), in libSystem's libsystem_c"
         },
         {
           "name": "_bzero",
           "evidence": "bzero (man 3 bzero; POSIX.1-2001), in libSystem's libsystem_platform"
+        },
+        {
+          "name": "_close",
+          "evidence": "close, POSIX.1 (man 2 close), in libSystem's libsystem_kernel: Roc's run-mode shims (roc-lang/roc src/machine_code_shim, src/interpreter_shim) (src/shim_io.zig, src/ipc/platform.zig)"
+        },
+        {
+          "name": "_close$NOCANCEL",
+          "evidence": "close under the name of its variant that is not a pthread cancellation point, `close$NOCANCEL` (apple-oss-distributions/Libc, include/sys/cdefs.h, __DARWIN_NOCANCEL; apple-oss-distributions/xnu, libsyscall), in libSystem's libsystem_kernel: Zig's std closes files through it on macOS (Zig's lib/std/c.zig, lib/std/c/darwin.zig), which Roc's run-mode shims (roc-lang/roc src/machine_code_shim, src/interpreter_shim) link"
+        },
+        {
+          "name": "_dlsym",
+          "evidence": "dlsym, POSIX.1 (man 3 dlsym), in libSystem's libdyld: Roc's machine-code run shim resolves the system functions its support image calls by name with RTLD_DEFAULT (roc-lang/roc src/machine_code_shim/main.zig, resolveSystemSymbol)"
         },
         {
           "name": "_exit",
@@ -142,8 +218,28 @@
           "evidence": "memset (ISO C 7.24.6.1), which Roc-compiled code calls directly, in libSystem's libsystem_platform"
         },
         {
+          "name": "_mmap",
+          "evidence": "mmap, POSIX.1 (man 2 mmap), in libSystem's libsystem_kernel: Roc's run-mode shims (roc-lang/roc src/machine_code_shim, src/interpreter_shim) map the compiler's shared-memory run image (src/ipc/platform.zig)"
+        },
+        {
+          "name": "_mprotect",
+          "evidence": "mprotect, POSIX.1 (man 2 mprotect), in libSystem's libsystem_kernel: Roc's machine-code run shim marks the run image's code executable (src/ipc/platform.zig)"
+        },
+        {
+          "name": "_munmap",
+          "evidence": "munmap, POSIX.1 (man 2 munmap), in libSystem's libsystem_kernel: Roc's run-mode shims (roc-lang/roc src/machine_code_shim, src/interpreter_shim) (src/ipc/platform.zig)"
+        },
+        {
+          "name": "_openat",
+          "evidence": "openat, POSIX.1-2008 (man 2 openat), in libSystem's libsystem_kernel: Roc's run-mode shims (roc-lang/roc src/machine_code_shim, src/interpreter_shim) (src/shim_io.zig)"
+        },
+        {
           "name": "_os_unfair_lock_lock",
           "evidence": "os_unfair_lock_lock (apple-oss-distributions/libplatform, include/os/lock.h), in libSystem's libsystem_platform"
+        },
+        {
+          "name": "_os_unfair_lock_trylock",
+          "evidence": "os_unfair_lock_trylock (apple-oss-distributions/libplatform, include/os/lock.h), in libSystem's libsystem_platform: Roc's run-mode shims (roc-lang/roc src/machine_code_shim, src/interpreter_shim)' standard-error lock (src/shim_io.zig)"
         },
         {
           "name": "_os_unfair_lock_unlock",
@@ -152,6 +248,10 @@
         {
           "name": "_posix_memalign",
           "evidence": "posix_memalign (POSIX.1-2001), in libSystem's libsystem_malloc"
+        },
+        {
+          "name": "_pread",
+          "evidence": "pread, POSIX.1 (man 2 pread), in libSystem's libsystem_kernel: Roc's run-mode shims (roc-lang/roc src/machine_code_shim, src/interpreter_shim) (src/shim_io.zig)"
         },
         {
           "name": "_pthread_getspecific",
@@ -170,6 +270,14 @@
           "evidence": "pthread_setspecific, POSIX.1 (man 3 pthread_setspecific), in libSystem's libsystem_pthread: a worker thread sets its context"
         },
         {
+          "name": "_pthread_threadid_np",
+          "evidence": "pthread_threadid_np (apple-oss-distributions/libpthread, include/pthread/pthread.h), in libSystem's libsystem_pthread: the thread id Zig's std (lib/std/Thread.zig) asks for, which Roc's run-mode shims (roc-lang/roc src/machine_code_shim, src/interpreter_shim) link"
+        },
+        {
+          "name": "_read",
+          "evidence": "read, POSIX.1 (man 2 read), in libSystem's libsystem_kernel: Roc's run-mode shims (roc-lang/roc src/machine_code_shim, src/interpreter_shim) (src/shim_io.zig)"
+        },
+        {
           "name": "_realloc",
           "evidence": "realloc (ISO C 7.22.3.5), in libSystem's libsystem_malloc"
         },
@@ -182,12 +290,24 @@
           "evidence": "stat (POSIX.1-2008), in libSystem's libsystem_kernel"
         },
         {
+          "name": "_strlen",
+          "evidence": "strlen (ISO C 7.24.6.3), in libSystem's libsystem_platform: one of the C memory routines Roc's machine-code run shim imports (roc-lang/roc src/builtins/shim_symbols.zig, c_memory_set)"
+        },
+        {
+          "name": "_sys_icache_invalidate",
+          "evidence": "sys_icache_invalidate (man 3 sys_icache_invalidate; apple-oss-distributions/xnu, libkern/libkern/OSCacheControl.h; apple-oss-distributions/libplatform, src/cachecontrol), in libSystem's libsystem_platform: Roc's machine-code run shim publishes freshly written code (src/machine_code_shim/instruction_cache.zig)"
+        },
+        {
           "name": "_task_info",
           "evidence": "task_info, with MACH_TASK_BASIC_INFO for the current resident size ROC_BENCH reports (apple-oss-distributions/xnu, osfmk/mach/task_info.h), in libSystem's libsystem_kernel"
         },
         {
           "name": "_unlink",
           "evidence": "unlink, POSIX.1 (man 2 unlink), in libSystem's libsystem_kernel: removing the temporary file a worker job's builder wrote (Files.build!)"
+        },
+        {
+          "name": "_write",
+          "evidence": "write, POSIX.1 (man 2 write), in libSystem's libsystem_kernel: Roc's run-mode shims (roc-lang/roc src/machine_code_shim, src/interpreter_shim) (src/shim_io.zig)"
         },
         {
           "name": "dyld_stub_binder",
