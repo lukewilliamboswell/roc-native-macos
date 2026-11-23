@@ -1,5 +1,4 @@
 import Engine exposing [Elem, Handler, HandlerOf, Signal]
-import Core
 
 ## Native macOS controls for the roc-signals engine.
 ##
@@ -732,16 +731,16 @@ Ui := [].{
 	shortcut : List(Engine.Chord), ShortcutProps(ctx) -> Elem(ctx)
 		where [ctx.outside_rows : () -> Engine.OutsideRows(ctx)]
 	shortcut = |chords, props|
-		Engine.element("ui-shortcut", [Engine.on_document_key({ keymap: Engine.const(Core.Keymap.prevent(chords)) }, props.on_key)], [])
+		Engine.element("ui-shortcut", [Engine.on_document_key({ keymap: Engine.const(Engine.Keymap.prevent(chords)) }, props.on_key)], [])
 
 	## The chord of Command and `key` (a lower-case letter, or a key name
 	## such as `"Enter"`).
 	command : Str -> Engine.Chord
-	command = |key| Core.Chord.plain(key).with_meta()
+	command = |key| Engine.Chord.plain(key).with_meta()
 
 	## The chord of `key` with no modifiers, such as `"Escape"`.
 	plain_key : Str -> Engine.Chord
-	plain_key = |key| Core.Chord.plain(key)
+	plain_key = |key| Engine.Chord.plain(key)
 
 	## A button that opens an open panel (several files may be chosen).
 	FileButtonProps(ctx) := {

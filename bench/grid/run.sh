@@ -79,14 +79,14 @@ done
 #
 # Mount: fail if the mount's engine time grows more than 3 times faster
 # than linear (a ratio above 27; a quadratic mount gives about 80). Mount
-# was quadratic until engine patches 0001 and 0002 (patches/roc-signals),
+# was quadratic until roc-signals 0.8.0-rc2 (roc-signals#305, #306),
 # which work around compiler behaviour a later engine change could bring
 # back. The smaller time is floored at 2 ms so timer noise on a fast
 # machine cannot fail it.
 #
 # Turns: a hover writes one cell's state, so its engine time must not grow
 # with the grid. Fail if the hover turns' p50 at N=60 is more than 4 times
-# N=20's (linear would be 9; before engine patch 0003 it was about 9:
+# N=20's (linear would be 9; before roc-signals#307 it was about 9:
 # 0.1 and 0.9 ms). The smaller is floored at 0.1 ms, the host's resolution.
 scaling_run() {
 	local n=$1 side a b
@@ -111,7 +111,7 @@ if [[ -n $smoke && -z ${NO_SCALING:-} ]]; then
 	ratio="$(perl -e 'my ($s, $l) = @ARGV; printf "%.1f", $l / ($s < 2 ? 2 : $s)' "$small" "$large")"
 	echo "== mount scaling: N=20 $small ms, N=60 $large ms: ratio $ratio for 9x the cells (linear 9, fails above 27)"
 	if perl -e 'exit($ARGV[0] > 27 ? 0 : 1)' "$ratio"; then
-		echo "bench/grid --smoke: mount grows superlinearly with the cells; see patches/roc-signals/README.adoc" >&2
+		echo "bench/grid --smoke: mount grows superlinearly with the cells; see roc-signals#305 and #306" >&2
 		exit 1
 	fi
 	small="$(hover_p50 <<<"$small_log")"
@@ -123,7 +123,7 @@ if [[ -n $smoke && -z ${NO_SCALING:-} ]]; then
 	ratio="$(perl -e 'my ($s, $l) = @ARGV; printf "%.1f", $l / ($s < 0.1 ? 0.1 : $s)' "$small" "$large")"
 	echo "== turn scaling: hover engine p50 N=20 $small ms, N=60 $large ms: ratio $ratio for 9x the cells (constant 1, linear 9, fails above 4)"
 	if perl -e 'exit($ARGV[0] > 4 ? 0 : 1)' "$ratio"; then
-		echo "bench/grid --smoke: a hover turn's engine time grows with the cells; see patches/roc-signals/README.adoc (0003)" >&2
+		echo "bench/grid --smoke: a hover turn's engine time grows with the cells; see roc-signals#307" >&2
 		exit 1
 	fi
 fi

@@ -12,6 +12,11 @@ every 100 ms. With `LIST=every` the list is instead a `Ui.list` of a
 each operation: does it cost what changed (the rows selected, scrolled
 into sight, written or filtered in or out), or does it cost N?
 
+The engine patches these results name (0001 to 0006) were this
+repository's series on roc-signals, measured as listed. roc-signals
+0.8.0-rc2 took all six (roc-signals#305 to #310), and the platform now uses
+that release's engine package unpatched.
+
 *In short:* selecting, scrolling and writing rows cost the same at a
 million rows as at ten thousand (2–3 ms, 20 ms a screenful; a turn that
 writes 3 rows is 0.1–0.3 ms of engine time and 2 ms of host time).

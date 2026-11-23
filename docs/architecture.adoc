@@ -10,30 +10,23 @@ none of it; xref:ui.adoc#builders[the Ui reference] is theirs.
 [mermaid]
 ....
 flowchart TB
-    App["app (Roc)"] -- "Ui / Engine" --> Engine["engine: Core.roc, pure Roc"]
+    App["app (Roc)"] -- "Ui / Engine" --> Engine["engine: roc-signals package, pure Roc"]
     Engine -- "command stream (roc-signals wire protocol 23)" --> Host["Swift host: host/Host.swift"]
     Host --> Views["AppKit views"]
     Host -- "AppKit events, effect results: one engine turn each" --> Engine
 ....
 
-Engine:: `Core.roc`, `Engine.roc` and the modules they import (`Web`,
-`EntryRoutes`, `Url`, `ReadyIndex`, `Spelling`, `Layout`, `TableCore`, `View`,
-`Seq`, `MarkupAdvice`, `SignalCore`), and the worker layer (`Worker`,
-`WorkerCodec`, `Wire`, `Files`, `Hosted`, `Effects`), are copies of roc-signals `a13ff70e`
-plus the patch series in `patches/roc-signals/`, whose `README.adoc` lists the
-patches in order with their upstream status
-(xref:contributing.adoc#engine-patches[Engine patches]). Two patches split
-`Core.roc`'s mount functions so the compiler keeps the turn and the block
-unshared, which makes mounting linear, and a third changes how a site is
-called so it owns its storage, which makes a turn's cost independent of
-the number of sites beside the ones it touches. 0004 and 0005 take a
-table and the root's answer apart with `match`, so a table write costs the
-rows written. 0006 adds
-`table_view_counted`, a `table_view` that reports how many rows its query
-keeps, for the windowed list. `tests/engine-modules.sha256` records
-the pristine digests, and `check` reverse-applies the series and compares.
+Engine:: roc-signals 0.8.0-rc2's standalone engine package, which
+`platform/main.roc` names as `engine`. `platform/Engine.roc`, `Layout.roc`,
+`Wire.roc` and `Worker.roc` are generated facades that re-expose the
+package's modules of the same names, since a platform cannot expose a
+package's module itself (xref:contributing.adoc#engine-package[The engine
+package]). The worker layer's platform side, `Files`, `Hosted` and
+`Effects`, is this platform's: it binds the job effects to the
+`roc_task_*` hosted functions.
 
-Platform root:: `platform/main.roc` is a trimmed copy of roc-signals' root.
+Platform root:: `platform/main.roc` is a trimmed copy of roc-signals' root,
+built on the package's `EngineHost`.
 It provides `roc_engine_keys`, `roc_engine_init`, `roc_engine_event`,
 `roc_engine_files` (a files-kind event, copied as is), `roc_engine_drop` and
 `roc_engine_version` for the page's instance, and `roc_engine_work`,

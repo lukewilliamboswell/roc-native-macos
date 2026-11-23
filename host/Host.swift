@@ -1,6 +1,6 @@
 // The native macOS host of the platform.
 //
-// The reactive engine is pure Roc (copied verbatim from roc-signals). Its
+// The reactive engine is pure Roc (roc-signals' engine package). Its
 // only output is the roc-signals command stream (design.md, Appendix B of
 // roc-signals): this host decodes the subset the `Ui` vocabulary produces,
 // keeps a small node tree mirroring what the engine built, and gives each

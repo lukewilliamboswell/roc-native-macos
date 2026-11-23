@@ -5,12 +5,12 @@ Build := [].{
 	## What `scripts/build.roc` was asked to do. `link_inputs` is a candidate
 	## directory from `link_inputs.roc build`, or empty for the lock's
 	## release.
-	Command : [All, Platform, Examples(List(Str)), Glue, GlueCheck, Host, HostFingerprint, HostReproduce]
+	Command : [All, Platform, Examples(List(Str)), Glue, GlueCheck, Engine, EngineCheck, Host, HostFingerprint, HostReproduce]
 
 	Options : { command : Command, link_inputs : Str }
 
 	usage : Str
-	usage = "usage: build [--link-inputs DIR] [--platform | NAME... | glue [--check] | host [--fingerprint | --reproduce]]"
+	usage = "usage: build [--link-inputs DIR] [--platform | NAME... | glue [--check] | engine [--check] | host [--fingerprint | --reproduce]]"
 
 	options : List(Str) -> Try(Options, [Usage])
 	options = |raw| {
@@ -21,10 +21,12 @@ Build := [].{
 			["--platform"] => Platform
 			["glue"] => Glue
 			["glue", "--check"] => GlueCheck
+			["engine"] => Engine
+			["engine", "--check"] => EngineCheck
 			["host"] => Host
 			["host", "--fingerprint"] => HostFingerprint
 			["host", "--reproduce"] => HostReproduce
-			names if names.all(|name| !name.starts_with("-") and name != "glue" and name != "host") => Examples(names)
+			names if names.all(|name| !name.starts_with("-") and name != "glue" and name != "engine" and name != "host") => Examples(names)
 			_ => return Err(Usage)
 		}
 		Ok({ command, link_inputs })
@@ -141,6 +143,7 @@ expect Build.options(["--", "--platform"]) == Ok({ command: Platform, link_input
 expect Build.options(["counter", "todos"]) == Ok({ command: Examples(["counter", "todos"]), link_inputs: "" })
 expect Build.options(["--link-inputs", "build/li", "--platform"]) == Ok({ command: Platform, link_inputs: "build/li" })
 expect Build.options(["glue", "--check"]) == Ok({ command: GlueCheck, link_inputs: "" })
+expect Build.options(["engine", "--check"]) == Ok({ command: EngineCheck, link_inputs: "" })
 expect Build.options(["host", "--fingerprint"]) == Ok({ command: HostFingerprint, link_inputs: "" })
 expect Build.options(["--bogus"]) == Err(Usage)
 expect Build.options(["--link-inputs"]) == Err(Usage)
