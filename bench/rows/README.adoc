@@ -2,27 +2,42 @@
 
 A million simultaneously visible cells is not a realistic interface; a
 million rows in a list that shows forty of them is. This harness is that
-list: N generated rows (N = 10,000, 100,000 and 1,000,000) in a `Ui.list`,
-a view-based `NSTableView` that makes views only for the rows in sight,
-drawn by an `Engine.table_view` with a search field filtering it, a
-selection shown below the list, and a "Tick" checkbox that starts an
-interval changing three rows' values every 100 ms. It asks one question of
+list: N generated rows (N = 10,000, 100,000 and 1,000,000) in a
+`Ui.table_list`, a view-based `NSTableView` that makes views only for the
+rows in sight, over an `Engine.table_view` that draws only the rows near
+them, with a search field filtering it, a selection shown below the list,
+and a "Tick" checkbox that starts an interval changing three rows' values
+every 100 ms. With `LIST=every` the list is instead a `Ui.list` of a
+`table_view` drawing every row (`Engine.every_row`), as before windowing. It asks one question of
 each operation: does it cost what changed (the rows selected, scrolled
 into sight, written or filtered in or out), or does it cost N?
 
-*In short:* selecting, scrolling and a written row's repaint cost the same
-at a million rows as at ten thousand (2–3 ms, 18 ms a screenful, 2 ms of
-host time). A million rows open in 2.5 s and 1.6 GB. What still costs N is
-in the engine: every write of the table (3 rows written: 80 ms at a
-million), every filter keystroke (by design: a new query rebuilds the view
-in the size of the table), and, because the list draws every row the query
-keeps (`Engine.every_row`), the rows a filter lets in or out. See
+*In short:* selecting, scrolling and writing rows cost the same at a
+million rows as at ten thousand (2–3 ms, 20 ms a screenful; a turn that
+writes 3 rows is 0.1–0.3 ms of engine time and 2 ms of host time).
+Windowed, a million rows open in 0.3–0.4 s and 370 MB (2.5 s and 1.6 GB
+drawing every row), and clearing a filter takes 30–40 ms (2.7 s): see
+<<windowed>>. What still costs N is in the engine: building the table and
+the view at mount, and every filter keystroke (by design: a new query
+rebuilds the view in the size of the table, 12–21 ms at a million). See
 <<scaling>>.
 
 It is a harness, not an example. The gate's `bench` stage builds it and runs
 `run.sh --smoke`: 200 rows through every phase below, which fails unless
 each phase ran and the list holds all 200 rows again once the filter is
-cleared.
+cleared. Then three guards, each comparing two sizes in fresh processes:
+the windowing guard (`window_guard`): the list mounted over 2,000 rows and
+over 200,000 must draw the same window (at most 300 rows, from the `stats`
+line `bench: list rows N drawn D`) and apply its mount in about the same
+time (at most three times the small one's, plus 15 ms); the engine's mount
+time is not compared, since building the table and its view is linear in
+the rows, windowed or not. A write-scaling check: the tick's engine p50 at
+200,000 rows must be at most 5 times its p50 at 2,000 (it is about 1;
+before engine patches 0004 and 0005 it was 38). And an insert-loop check:
+it builds 2,000 and 18,000 rows with `Table.insert` in a loop
+(`-rows-build insert`, the faster of two runs each) and fails if the
+larger mount's engine time is 25 times the smaller's or more: linear is
+about 9, and before engine patch 0004 it was about 96.
 
 == Running it
 
@@ -32,11 +47,13 @@ blueprint run build -- --platform   # the host, once
 bench/rows/run.sh                # N = 10000 100000 1000000
 bench/rows/run.sh 50000          # other sizes
 bench/rows/run.sh --smoke        # what the gate runs
+LIST=every bench/rows/run.sh     # a Ui.list drawing every row
 ----
 
 Each N is a fresh process. N reaches the app as the local storage key
 `rows-n` (`-rows-n 1000000`, as `bench/grid` passes `grid-n`), so the mount
-itself builds the table. `ROC_BENCH=1` turns on the host's timings, and a
+itself builds the table (keyed once from a list; `-rows-build insert`
+inserts the rows one at a time instead). `ROC_BENCH=1` turns on the host's timings, and a
 script runs one phase after another, each named with `phase:NAME` so
 `stats` reports its operations apart (`event/select`, `scroll/scroll`, …):
 
@@ -56,10 +73,16 @@ A run still going after `TIMEOUT` seconds (300) is killed.
 
 == Results
 
+Drawing every row (`Ui.list` over `Engine.every_row`, now `LIST=every`),
+before windowing:
+
 Apple M-series, 8 cores, 16 GB, macOS 26.3, `roc` 0.1.0 RC1, engine patches
 0001–0003, measured 2026-11-23 with a load average of 4 to 6 from other
 builds; ±20%. Times are p50/p95 in ms, as engine + apply + layout (display
-is under 2 ms throughout).
+is under 2 ms throughout). The tick row is engine time with patches
+0001–0005, against 0001–0003 in brackets, both measured the same afternoon
+with a load average of 3 to 4; the host's part of a tick is 2 to 7 ms
+(layout) whatever N.
 
 [cols="2,3,3,3",options="header"]
 |===
@@ -69,7 +92,7 @@ is under 2 ms throughout).
 | Peak RSS | 134 MB | 316 MB | 1.57 GB
 | Select a row | 2.2 / 2.5 (0.0 + 0.0 + 2.0) | 2.2 / 2.4 | 2.2 / 2.5
 | Scroll a screenful (about 20 new rows) | 17 / 18 (layout) | 18 / 19 | 18 / 18
-| Tick: 3 rows written | 2.4 / 2.7 (0.5 + 0.0 + 1.9) | 8.6 / 9.4 (6.6 + 0 + 1.9) | 81 / 107 (79 + 0 + 2.0)
+| Tick: 3 rows written (engine p50 / p95; before 0004 and 0005) | 0.3 / 0.7 (2.7 / 4.1) | 0.3 / 0.4 (12 / 20) | 0.1 / 0.4 (63 / 104)
 | Filter keystroke | 31 / 35 (1.1 + 3.6 + 20) | 51 / 96 (11 + 5.6 + 31) | 220 / 949 (143 + 29 + 81; p95 702 + 176 + 140)
 | Clear the filter (every row back) | 57 (14 + 7 + 34) | 257 (141 + 69 + 45) | 2,700 (1,758 + 772 + 164)
 |===
@@ -77,6 +100,82 @@ is under 2 ms throughout).
 Before this branch's host changes the million-row list took 7.3 s to open
 (engine 1.5 s, apply 4.4 s, layout 1.2 s) and 2.25 GB, and clearing the
 filter took 8 s; see <<host>>.
+
+[#windowed]
+== Windowed (`Ui.table_list`)
+
+The list keeps the view's window in an `Engine.state` of its own and the
+host moves it as the list scrolls; the engine tells the host how many rows
+the view keeps (`table_view_counted`, engine patch 0006), so the table is
+sized for every row while only the window's rows (55 to 100 here) exist as
+nodes. See docs/architecture.adoc, Lists.
+
+Same machine, 2026-11-23, load average 7 to 11; engine patches 0001–0003
+and 0006 (measured before 0004 and 0005, as patch 0007; see <<combined>>
+for all six). Each column is two runs of the windowed list (`run.sh`) and
+two of the list drawing every row (`LIST=every run.sh`) in the same build,
+taken in turn; a range is the two runs. Times in ms as engine + apply +
+layout.
+
+[cols="2,3,3,3",options="header"]
+|===
+| | N = 10,000 | N = 100,000 | N = 1,000,000
+
+| First display, windowed | 184–194 ms (2.5 + 8 + 35) | 228–229 ms (16 + 9 + 37) | 315–388 ms (151–211 + 8 + 26–37)
+| First display, every row | 164–232 ms (13–18 + 14–21 + 26–40) | 454–535 ms (173–195 + 100–117 + 44–52) | 2.7–3.6 s (1.6–2.1 s + 0.85–1.1 s + 0.14–0.17 s)
+| Peak RSS, windowed / every row | 109–116 / 134–137 MB | 170–174 / 285–300 MB | 366–378 MB / 1.57–1.60 GB
+| Clear the filter, windowed | 26–29 (0.3 + 3.5 + 21–23) | 22–28 (1–1.6 + 3 + 17–21) | 29–40 (8–11 + 3 + 17–24)
+| Clear the filter, every row | 71–87 (18–21 + 9–11 + 42–52) | 292–414 (160–239 + 79–105 + 51–69) | 3.1–3.7 s (2.0–2.3 s + 0.94–1.08 s + 0.19–0.29 s)
+| Filter keystroke p50, windowed / every row | 20–26 / 39–45 | 22–27 / 60–92 | 28–45 / 231–287
+| Scroll a screenful (`scroll`, layout) | 21–26 (both) | 25–30 (both) | 19–26 (both)
+| A window move after a scroll (`event/scroll`, p50/p95) | 4–7 / 8–18 | 5–9 / 9–26 | 4–6 / 9–18
+| Select a row | 2.5–3.4 (both) | 3.1–3.8 (both) | 2.4–3.1 (both)
+| Tick, engine p50, windowed / every row | 0.3–0.4 / 0.6–0.7 | 5 / 8–9 | 35–44 / 76–83
+|===
+
+What windowing changed:
+
+* *Mount, a filter that lets many rows in or out, and memory* cost the
+  window: the host applies the mount of a million-row list in 8 ms, as it
+  does ten thousand (the guard checks this), and clearing the filter
+  applies in 3 ms. The engine's share is the table and view build at mount
+  (151–211 ms at a million, from 1.6–2.1 s) and the query's rebuild on a
+  filter change (8–19 ms at a million): drawing a million rows and
+  diffing a million-row window were most of the old engine time.
+* *Scrolling* is unchanged for the rows in sight, plus a window move each
+  time the visible rows come within half a screen of the window's edge:
+  one turn removing and drawing about a screenful of rows (engine 0.2 ms,
+  apply 1–2 ms; its layout reloads the rows in sight that were
+  placeholders). A jump far down the list (`scroll:500000`) shows
+  placeholder rows until that turn, on the next pass of the run loop.
+* *A table write* (Tick) cost about half before engine patches 0004 and
+  0005: the `table_view` over every row was half of it, and the rest the
+  table's own write. With them it is under a millisecond either way (see
+  <<combined>>).
+
+[#combined]
+=== Combined (0001–0006)
+
+All six engine patches, one run each at a million rows, 2026-11-23, load
+average about 4 (`run.sh 1000000`, `LIST=every run.sh 1000000`, and two
+mounts with `-rows-build insert`). Times in ms as engine + apply + layout.
+
+[cols="2,3,3",options="header"]
+|===
+| N = 1,000,000 | Windowed (`Ui.table_list`) | Every row (`Ui.list`)
+
+| First display | 316 ms (139 + 10 + 24) | 2.3 s (1,323 + 724 + 138)
+| Peak RSS | 316 MB | 1.35 GB
+| Tick: 3 rows written, engine p50 / p95 | 0.2 / 0.2 | 0.1 / 0.2
+| Filter keystroke, p50 total (engine) | 46 (21) | 201 (117)
+| Clear the filter | 52 (18 + 7 + 25) | 2.6 s (1,666 + 741 + 177)
+| Mount built with `Table.insert` in a loop (`-rows-build insert`), engine | 352–359 ms (first display 0.51 s, 248–252 MB) | not run
+|===
+
+A table write no longer costs the table under either list, and the
+windowed list opens a million rows in about a third of a second; what
+still scales with N is building the table and the view at mount and the
+query's rebuild on each keystroke.
 
 [#scaling]
 == What scales with what
@@ -90,34 +189,38 @@ Proportional to what changed (good)::
   views and the table sizes it (`usesAutomaticRowHeights`). Rows already
   seen keep their cell views.
 * *A written row's repaint*: the host's part of a tick is 2 ms whatever N.
+* *Writing the table.* A turn that writes three rows (`cells.rows.update`
+  with three `Table.update` calls) costs 0.1–0.3 ms of engine time at
+  every N. It cost 0.5 ms at 10,000 rows, 6.6 ms at 100,000 and 79 ms at
+  1,000,000 until engine patches 0004 and 0005: every `Table.update` copied
+  the table's rows (`TableCore.write` took the table apart with a
+  destructuring statement, which the compiler leaves shared), the first
+  write of each turn copied them again (the cell's lens), and the root's
+  pass read its block shared, so the `table_view` copied its per-row
+  columns (marks, a hole column, the shown column: 196 MB at a million
+  rows) on every turn. The reader was never the cost. See
+  xref:../../patches/roc-compiler/README.adoc#destructure-sharing[destructure-sharing].
+* *Building a table by inserting rows one at a time.* Inserting the rows
+  in a `var` loop with `Table.insert`, as `examples/contacts` does, was
+  quadratic: the mount's engine time was 0.3 s at 10,000 rows, 4.6–5.4 s
+  at 30,000 and 53 s at 100,000, because every insert copied the table's
+  change record (`Dict.update`, a compiler issue:
+  xref:../../patches/roc-compiler/README.adoc#dict-update-sharing[dict-update-sharing]).
+  Since engine patch 0004 it is 19 ms, 48 ms, 0.15 s and 1.8 s at a
+  million (`-rows-build insert`), against 13 ms, 0.11 s and 1.45 s for
+  `Table.from_list`, which the harness still uses by default.
 
 Proportional to N, in the engine (reported for roc-signals)::
-* *Writing the table.* A turn that writes three rows (`cells.rows.update`
-  with three `Table.update` calls) costs 0.5 ms of engine time at 10,000
-  rows, 6.6 ms at 100,000 and 79 ms at 1,000,000. Measured apart with
-  variants of this app: with no `table_view` and no reader of the table at
-  all the write alone costs 3.5 ms at 100,000 and 34 ms at 1,000,000; a
-  `table_view` over every row adds about as much again (71 ms at a
-  million), and the `shown` reader (`cells.rows.signal().map2(…)`, which
-  only does a `Table.get`) about 20 ms more. A write of k rows should cost
-  k; the linear part suggests the table's dictionary is copied once per
-  write (not uniquely referenced when `TableCore.update` → `write` runs),
-  and that the `table_view` site and the reader each touch the whole table
-  per write.
-* *Building a table by inserting rows one at a time.* `generated`
-  originally inserted the rows in a `var` loop with `Table.insert`, as
-  `examples/contacts` does: the mount's engine time was 0.42 s at 10,000
-  rows, 13.7 s at 30,000 and 55 s at 100,000 (quadratic: each insert copies
-  the table). Building the list of rows and keying it once with
-  `Table.from_list` takes 0.11 s at 100,000, so the harness does that.
 * *A filter keystroke*: a new query rebuilds the view in the size of the
-  table, as the engine documents (`table_view`): 1.1 ms at 10,000, 11 ms at
-  100,000, 143 ms (p95 0.7 s) at a million.
-* *Every row the query keeps is drawn* (`Engine.every_row`): the mount
-  and a filter that lets many rows in or out emit one `INST` or `REMOVE`
-  per row, so clearing the filter at a million rows is 1.8 s of engine time
-  and 0.8 s of host apply. This is the list's design today, not a bug: see
-  the first recommendation.
+  table, as the engine documents (`table_view`): drawing every row, 1.1 ms
+  at 10,000, 11 ms at 100,000, 143 ms (p95 0.7 s) at a million; windowed,
+  0.3, 1.8 and 12–19 ms, the rebuild alone (a `keep` per row and a sort of
+  what is kept). This stays linear: a new filter must look at every row.
+* *Every row the query keeps is drawn* (`Engine.every_row`, `Ui.list`):
+  the mount and a filter that lets many rows in or out emit one `INST` or
+  `REMOVE` per row, so clearing the filter at a million rows is 1.8 s of
+  engine time and 0.8 s of host apply. `Ui.table_list` draws only a
+  window: <<windowed>>.
 
 Proportional to the rows that changed, in the host [[host]]::
 The host's per-row work at mount and on a filter is now a small node per
@@ -144,24 +247,12 @@ each row's index by a scan of the list's rows, up to 64 scans of N.
 
 == Recommendations, by payoff
 
-. *Window the list to the rows in sight.* `table_view` already draws only
-  a `window` of its order; `Ui.list` should drive it: report the visible
-  row range as an event (`on_scroll`, from the clip view's bounds) into a
-  window cell, and take the full count from the engine (an attribute on
-  `ui-list`) so the table's scroller is sized for N while only the window's
-  rows exist as nodes. Then mount, a filter that lets many rows in or out,
-  and memory cost the window (about 60 rows), not N; only the query's own
-  rebuild stays linear. Payoff: the million-row mount from 2.5 s to about
-  the engine's table build, and clear from 2.7 s to tens of ms. Cost: a
-  new event and attribute in the vocabulary, the host mapping table row
-  `i` to node `i - window.start`, and placeholder rows while the engine
-  catches up.
-. *Make a table write cost the rows written* (roc-signals): above, 79 ms
-  at a million rows for three rows. Find what copies the dictionary per
-  write, and what the `table_view` site and plain readers do per write that
-  is linear.
-. *Make `Table.insert` in a loop linear* (roc-signals or the compiler):
-  apps build tables that way, and it is quadratic.
+. *Window the list to the rows in sight.* Done: `Ui.table_list`, see
+  <<windowed>>.
+. *Make a table write cost the rows written.* Done: engine patches 0004
+  and 0005, see the writing bullet above.
+. *Make `Table.insert` in a loop linear.* Done: engine patch 0004 (a
+  table write records its key without `Dict.update`).
 . *A `Ui.grid` over `NSCollectionView`* (not built; evaluated here). The
   native virtualised grid: `NSCollectionView` with a flow or grid layout
   makes item views only for the visible items and reuses them as they

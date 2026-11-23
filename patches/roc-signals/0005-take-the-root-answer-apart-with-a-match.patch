@@ -1,0 +1,67 @@
+From: roc-native-macos engine patch series
+Subject: [PATCH 0005] Take the root's answer apart with a match
+Upstream: not yet sent
+Applies to: roc-signals a13ff70e + 0001 + 0002 + 0003 + 0004, platform/Core.roc
+
+What
+  `turn` takes the answer of the root's call apart with `match` instead
+  of a destructuring statement, and the rest of the turn moves, unchanged,
+  into a function of its own, `fired_turn`, which the `match` calls.
+  Nothing else changes: same commands, same turns, same work counters.
+
+Why
+  With a `table_view` drawing a table, a turn that wrote a few rows of
+  the table still cost its size after patch 0004: about 45 ms at a
+  million rows. lldb on a --debug build showed three copies per turn in
+  the view site, of columns the size of the table: its pending marks
+  (16,000,000 bytes at a million rows, in `mark`), a hole column
+  (32,000,000, in `settle`) and the shown column (144,000,000, in
+  `settle`). A watchpoint on the marks' refcount showed why: the root's
+  pass replaced the view site in the root block's child list
+  (`refresh`), and that list was shared, so the replace copied the list
+  and the view's captured columns were shared for the whole pass. The
+  root instance was shared because `turn` took `(root2, out, tx2)` apart
+  with a statement: the compiler keeps the parts of a value taken apart
+  that way shared until the function returns (the same behaviour as in
+  patch 0004; patches/roc-compiler, destructure-sharing), and `root2` is
+  then called for the pass. A `match` moves them.
+
+  The other two `(root3, answer3, tx3) = call(..)` statements in `turn`
+  are left as they are: their instance is called again only for a walk of
+  local-state layers after the pass, which bench/rows does not take.
+
+Measured (engine ms p50 of a turn that writes 3 rows, reproducer app as
+in 0004; before = 0001 to 0004)
+                    N=10,000   N=100,000   N=1,000,000
+  view   before       0.3         2.9         44.6
+  view   after        0.3         0.2          0.1
+  bench/rows, tick (3 rows written every 100 ms, a `table_view` over
+  every row and a reader of the table), 0001 to 0003 against 0001 to
+  0005: 2.7 / 12.0 / 63.0 ms against 0.3 / 0.3 / 0.1 ms.
+  The grid bench is unchanged (no table; its smoke's scaling checks pass).
+
+---
+--- a/platform/Core.roc
++++ b/platform/Core.roc
+@@ -10673,8 +10673,19 @@
+ ## commands (resolved now, so a reference mounted later in the same turn
+ ## is found; a missing one is counted stale).
+ turn : App(st), List(U32), U32, Payload -> App(st)
+-turn = |Core.App.(AppBody.({ store, root, tx, programs })), path, h, payload| {
+-	(root2, out, tx2) = call(root, Root.{ store }, Fire(path, 0, h, payload), bump(tx, w_turns, 1))
++turn = |Core.App.(AppBody.({ store, root, tx, programs })), path, h, payload| match call(root, Root.{ store }, Fire(path, 0, h, payload), bump(tx, w_turns, 1)) {
++	(root2, out, tx2) => fired_turn(root2, out, tx2, path, h, programs)
++}
++
++## The rest of a turn, once the event has fired. The root instance comes
++## in through a `match` on the answer of its call, not a destructuring
++## statement: a statement leaves each part of the answer shared until the
++## end of the function, so the root's pass read its block shared and
++## every site below it copied its storage (a table view's columns, the
++## size of its table) on every turn. Compiler side: roc-native-macos
++## patches/roc-compiler, destructure-sharing.
++fired_turn : Inst(Root(st)), Out(Root(st)), Tx, List(U32), U32, Catalogue -> App(st)
++fired_turn = |root2, out, tx2, path, h, programs| {
+ 	(store2, writes) = root_answer(out)
+ 	force = tx2.observations.echo
+ 	if layers_empty(writes) {

@@ -429,9 +429,11 @@ Core := [].{
 				modify: |w, f| modify(
 					w,
 					|t| {
-						began = wrap(TableCore.begin_changes(unwrap(t)))
-						before = TableCore.mark(unwrap(began))
-						wrap(TableCore.kept(unwrap(f(began)), before))
+						# `began` stays unwrapped until the call, so the modifier
+						# receives the table's only reference and writes in place.
+						began = TableCore.begin_changes(unwrap(t))
+						before = TableCore.mark(began)
+						wrap(TableCore.kept(unwrap(f(wrap(began))), before))
 					},
 				),
 			},
@@ -1401,7 +1403,17 @@ Core := [].{
 	## the key.
 	table_view : Cell(st, Table(k, v)), TableViewProps(ctx, q, k, v, s), (Signal(Row(ctx, k), k), State(Row(ctx, k), v) -> Elem(Row(ctx, k))) -> Elem(ctx)
 		where [ctx.store : () -> StoreReach(ctx, st), k.is_eq : k, k -> Bool, k.to_hash : k, Hasher -> Hasher, q.is_eq : q, q -> Bool]
-	table_view = |source, props, template| Site(
+	table_view = |source, props, template| table_view_counted(source, props, "", template)
+
+	## `table_view_counted(table, props, name, template)` is a `table_view`
+	## that also sets the attribute `name` of its parent element to the
+	## number of rows its query keeps, in decimal: at mount, and in each
+	## turn that changes that number. A host that draws a long list through
+	## a small `window` sizes its scroller from it. An empty `name` sets
+	## nothing: that is `table_view`.
+	table_view_counted : Cell(st, Table(k, v)), TableViewProps(ctx, q, k, v, s), Str, (Signal(Row(ctx, k), k), State(Row(ctx, k), v) -> Elem(Row(ctx, k))) -> Elem(ctx)
+		where [ctx.store : () -> StoreReach(ctx, st), k.is_eq : k, k -> Bool, k.to_hash : k, Hasher -> Hasher, q.is_eq : q, q -> Bool]
+	table_view_counted = |source, props, count_attr, template| Site(
 		Mount(
 			|env, args, tx| {
 				get = {
@@ -1444,8 +1456,8 @@ Core := [].{
 				# The query, the window, and one placement for every row of the table.
 				(cols, slots, tx4) = view_enter(cfg, cols_empty(plan.ncols, plan.holes.len()), |_, key| Row.{ outer: env, key: "", item: key }, view.shown_keys(), count_evals(tx3, 2 + rows.len()))
 				reads = cell_bit(source.cell).bitwise_or(eff_mask(props.query)).bitwise_or(eff_mask(props.window)).bitwise_or(outer_mask).bitwise_or(plan.kreads.bitwise_and(above_bits(depth)))
-				shows = { get, query: props.query, plan: props.plan, window: props.window }
-				(view_inst(cfg, shows, q, view, [], cols, slots), reads, tx4)
+				shows = { get, query: props.query, plan: props.plan, window: props.window, count_attr }
+				(view_inst(cfg, shows, q, view, [], cols, slots), reads, view_count(shows, cfg.parent, view.len(), tx4))
 			},
 		),
 		|d| {
@@ -7773,8 +7785,19 @@ view_chunk : U64
 view_chunk = 1024
 
 ## Fixed per view site: the table's getter, the query and how it selects
-## and orders rows, and the window.
-Shows(ctx, q, k, v, s) : { get : (ctx -> Table(k, v)), query : Signal(ctx, q), plan : (q -> Core.QueryPlan(k, v, s)), window : Signal(ctx, Core.Window) }
+## and orders rows, the window, and the parent's attribute that counts the
+## rows the query keeps ("" for none: `table_view_counted`).
+Shows(ctx, q, k, v, s) : { get : (ctx -> Table(k, v)), query : Signal(ctx, q), plan : (q -> Core.QueryPlan(k, v, s)), window : Signal(ctx, Core.Window), count_attr : Str }
+
+## Set a counted view's parent attribute to `count`, the number of rows
+## its query keeps; nothing for a view that is not counted.
+view_count : Shows(ctx, q, k, v, s), U32, U64, Tx -> Tx
+view_count = |shows, parent, count, tx|
+	if shows.count_attr.is_empty() {
+		tx
+	} else {
+		emit_op(tx, 9, |c| put_presence(put_expanded_name(put_u32(c, parent), None, Unprefixed, shows.count_attr), Present(count.to_str())))
+	}
 
 ## A view row's key. It is fixed for the row's lifetime, so it never
 ## triggers a refresh.
@@ -7975,6 +7998,7 @@ view_inst = |cfg0, shows0, q0, view0, adopted0, cols0, slots0| {
 					full = if (all) every_layer else mask.bitwise_and(cfg.outer_mask.bitwise_or(cols.kid_mask)).bitwise_and(above_bits(cfg.depth))
 					c1 = if (full != 0) mark_all(cols, full) else cols
 					window = view.window_of()
+					kept = view.len()
 					# `view` moves into `follow` and is not used again, so the ordered
 					# keys are changed in place.
 					{ view: v1, placed, reached, touched, wrote, .. } = view.follow(table)
@@ -8000,7 +8024,8 @@ view_inst = |cfg0, shows0, q0, view0, adopted0, cols0, slots0| {
 						(drawn.view, drawn.changes, count_evals(t1, table.len()))
 					}
 					(c4, s4, t4) = view_apply(cfg, c1, slots, mk, v2, changes, t2)
-					(c5, t5) = settle(cfg, c4, mk, t4)
+					t4c = if (v2.len() == kept) t4 else view_count(shows, cfg.parent, v2.len(), t4)
+					(c5, t5) = settle(cfg, c4, mk, t4c)
 					(c6, orph) = take_dropped_view(c5, cfg.depth, shows.get)
 					(view_inst(cfg, shows, q2, v2, adopted.concat(orph), c6, s4), Done, fx_adopt(t5, cfg.path, orph))
 				}
@@ -10671,8 +10696,19 @@ new_tx = |cmds| { cmds: cmds.append(0), next: 1, free: [], routes: [], work: wor
 ## commands (resolved now, so a reference mounted later in the same turn
 ## is found; a missing one is counted stale).
 turn : App(st), List(U32), U32, Payload -> App(st)
-turn = |Core.App.(AppBody.({ store, root, tx, programs })), path, h, payload| {
-	(root2, out, tx2) = call(root, Root.{ store }, Fire(path, 0, h, payload), bump(tx, w_turns, 1))
+turn = |Core.App.(AppBody.({ store, root, tx, programs })), path, h, payload| match call(root, Root.{ store }, Fire(path, 0, h, payload), bump(tx, w_turns, 1)) {
+	(root2, out, tx2) => fired_turn(root2, out, tx2, path, h, programs)
+}
+
+## The rest of a turn, once the event has fired. The root instance comes
+## in through a `match` on the answer of its call, not a destructuring
+## statement: a statement leaves each part of the answer shared until the
+## end of the function, so the root's pass read its block shared and
+## every site below it copied its storage (a table view's columns, the
+## size of its table) on every turn. Compiler side: roc-native-macos
+## patches/roc-compiler, destructure-sharing.
+fired_turn : Inst(Root(st)), Out(Root(st)), Tx, List(U32), U32, Catalogue -> App(st)
+fired_turn = |root2, out, tx2, path, h, programs| {
 	(store2, writes) = root_answer(out)
 	force = tx2.observations.echo
 	if layers_empty(writes) {

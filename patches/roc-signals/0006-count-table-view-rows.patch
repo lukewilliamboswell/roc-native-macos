@@ -1,0 +1,138 @@
+From: roc-native-macos engine patch series
+Subject: [PATCH 0006] Count the rows a table view keeps, on its parent
+Upstream: not yet sent
+Applies to: roc-signals a13ff70e + 0001 + 0002 + 0003 + 0004 + 0005,
+  platform/Core.roc and platform/Engine.roc
+
+What
+  `table_view_counted(table, props, name, template)`, in Core and
+  Engine: a `table_view` that also sets the attribute `name` of its
+  parent element to the number of rows its query keeps, in decimal
+  (`ATTR parent name count`), at mount and in each pass that changes
+  that number. `table_view` is `table_view_counted` with an empty name,
+  which sets nothing, so every existing view emits exactly what it did.
+  The site's fixed record (`Shows`) carries the name, and a pass reads
+  the view's length (`View.len`, the ordered keys' count) before
+  `follow`, as it already reads the window, and compares it after
+  `draw`.
+
+Why
+  A view's window draws `count` rows from `start`; nothing outside the
+  site knew how many rows the query keeps, which a list that draws a
+  small window needs to size its scroller for every row. An app could
+  count with a reader of the table and the query, but that is a pass
+  over the table on every write and every keystroke; the site already
+  holds the count. With it, `Ui.table_list` windows the view to the
+  rows near those in sight (its own `Engine.state` holds the window, and
+  the host asks for a new one as the user scrolls), and the host sizes
+  the `NSTableView` from the attribute.
+
+Measured (bench/rows, Apple M-series, RC1, a loaded machine, before
+0004 and 0005; `Ui.list`
+over `every_row` against `Ui.table_list`, in the same build; ms)
+                                  N=10,000      N=100,000     N=1,000,000
+  mount engine, every row             18           173          2,130
+  mount engine, windowed             2.6            16            211
+  mount apply, every row              21           100          1,120
+  mount apply, windowed              7.5             9            8.2
+  clear filter engine, every row      18           239          2,289
+  clear filter engine, windowed      0.3           1.6             11
+  peak RSS (MB), every row           137           285          1,569
+  peak RSS (MB), windowed            109           170            366
+  A view that is not counted reads one more field per pass.
+
+---
+diff --git a/platform/Core.roc b/platform/Core.roc
+index fa24b8b..8475934 100644
+--- a/platform/Core.roc
++++ b/platform/Core.roc
+@@ -1401,7 +1401,17 @@ Core := [].{
+ 	## the key.
+ 	table_view : Cell(st, Table(k, v)), TableViewProps(ctx, q, k, v, s), (Signal(Row(ctx, k), k), State(Row(ctx, k), v) -> Elem(Row(ctx, k))) -> Elem(ctx)
+ 		where [ctx.store : () -> StoreReach(ctx, st), k.is_eq : k, k -> Bool, k.to_hash : k, Hasher -> Hasher, q.is_eq : q, q -> Bool]
+-	table_view = |source, props, template| Site(
++	table_view = |source, props, template| table_view_counted(source, props, "", template)
++
++	## `table_view_counted(table, props, name, template)` is a `table_view`
++	## that also sets the attribute `name` of its parent element to the
++	## number of rows its query keeps, in decimal: at mount, and in each
++	## turn that changes that number. A host that draws a long list through
++	## a small `window` sizes its scroller from it. An empty `name` sets
++	## nothing: that is `table_view`.
++	table_view_counted : Cell(st, Table(k, v)), TableViewProps(ctx, q, k, v, s), Str, (Signal(Row(ctx, k), k), State(Row(ctx, k), v) -> Elem(Row(ctx, k))) -> Elem(ctx)
++		where [ctx.store : () -> StoreReach(ctx, st), k.is_eq : k, k -> Bool, k.to_hash : k, Hasher -> Hasher, q.is_eq : q, q -> Bool]
++	table_view_counted = |source, props, count_attr, template| Site(
+ 		Mount(
+ 			|env, args, tx| {
+ 				get = {
+@@ -1444,8 +1454,8 @@ Core := [].{
+ 				# The query, the window, and one placement for every row of the table.
+ 				(cols, slots, tx4) = view_enter(cfg, cols_empty(plan.ncols, plan.holes.len()), |_, key| Row.{ outer: env, key: "", item: key }, view.shown_keys(), count_evals(tx3, 2 + rows.len()))
+ 				reads = cell_bit(source.cell).bitwise_or(eff_mask(props.query)).bitwise_or(eff_mask(props.window)).bitwise_or(outer_mask).bitwise_or(plan.kreads.bitwise_and(above_bits(depth)))
+-				shows = { get, query: props.query, plan: props.plan, window: props.window }
+-				(view_inst(cfg, shows, q, view, [], cols, slots), reads, tx4)
++				shows = { get, query: props.query, plan: props.plan, window: props.window, count_attr }
++				(view_inst(cfg, shows, q, view, [], cols, slots), reads, view_count(shows, cfg.parent, view.len(), tx4))
+ 			},
+ 		),
+ 		|d| {
+@@ -7773,8 +7783,19 @@ view_chunk : U64
+ view_chunk = 1024
+ 
+ ## Fixed per view site: the table's getter, the query and how it selects
+-## and orders rows, and the window.
+-Shows(ctx, q, k, v, s) : { get : (ctx -> Table(k, v)), query : Signal(ctx, q), plan : (q -> Core.QueryPlan(k, v, s)), window : Signal(ctx, Core.Window) }
++## and orders rows, the window, and the parent's attribute that counts the
++## rows the query keeps ("" for none: `table_view_counted`).
++Shows(ctx, q, k, v, s) : { get : (ctx -> Table(k, v)), query : Signal(ctx, q), plan : (q -> Core.QueryPlan(k, v, s)), window : Signal(ctx, Core.Window), count_attr : Str }
++
++## Set a counted view's parent attribute to `count`, the number of rows
++## its query keeps; nothing for a view that is not counted.
++view_count : Shows(ctx, q, k, v, s), U32, U64, Tx -> Tx
++view_count = |shows, parent, count, tx|
++	if shows.count_attr.is_empty() {
++		tx
++	} else {
++		emit_op(tx, 9, |c| put_presence(put_expanded_name(put_u32(c, parent), None, Unprefixed, shows.count_attr), Present(count.to_str())))
++	}
+ 
+ ## A view row's key. It is fixed for the row's lifetime, so it never
+ ## triggers a refresh.
+@@ -7975,6 +7996,7 @@ view_inst = |cfg0, shows0, q0, view0, adopted0, cols0, slots0| {
+ 					full = if (all) every_layer else mask.bitwise_and(cfg.outer_mask.bitwise_or(cols.kid_mask)).bitwise_and(above_bits(cfg.depth))
+ 					c1 = if (full != 0) mark_all(cols, full) else cols
+ 					window = view.window_of()
++					kept = view.len()
+ 					# `view` moves into `follow` and is not used again, so the ordered
+ 					# keys are changed in place.
+ 					{ view: v1, placed, reached, touched, wrote, .. } = view.follow(table)
+@@ -8000,7 +8022,8 @@ view_inst = |cfg0, shows0, q0, view0, adopted0, cols0, slots0| {
+ 						(drawn.view, drawn.changes, count_evals(t1, table.len()))
+ 					}
+ 					(c4, s4, t4) = view_apply(cfg, c1, slots, mk, v2, changes, t2)
+-					(c5, t5) = settle(cfg, c4, mk, t4)
++					t4c = if (v2.len() == kept) t4 else view_count(shows, cfg.parent, v2.len(), t4)
++					(c5, t5) = settle(cfg, c4, mk, t4c)
+ 					(c6, orph) = take_dropped_view(c5, cfg.depth, shows.get)
+ 					(view_inst(cfg, shows, q2, v2, adopted.concat(orph), c6, s4), Done, fx_adopt(t5, cfg.path, orph))
+ 				}
+diff --git a/platform/Engine.roc b/platform/Engine.roc
+index bc8c15e..5134312 100644
+--- a/platform/Engine.roc
++++ b/platform/Engine.roc
+@@ -501,6 +501,15 @@ Engine := [].{
+ 		where [ctx.store : () -> Reach(ctx, st), k.is_eq : k, k -> Bool, k.to_hash : k, Hasher -> Hasher, q.is_eq : q, q -> Bool]
+ 	table_view = |{ c }, { query, plan, window }, template| Core.table_view(inner_cell(c), { query: core_signal(query), plan, window: core_signal(window) }, |key, row| template(SignalCore.varying(key), { s: row }))
+ 
++	## `table_view_counted(table, props, name, template)` is a `table_view`
++	## that also sets the attribute `name` of its parent element to the
++	## number of rows its query keeps, in decimal: at mount, and in each
++	## turn that changes that number. It is for a host that draws a long
++	## list through a small `window` and sizes its scroller for every row.
++	table_view_counted : Cell(st, Table(k, v)), TableViewProps(ctx, q, k, v, s), Str, (Signal(Row(ctx, k), k), State(Row(ctx, k), v) -> Elem(Row(ctx, k))) -> Elem(ctx)
++		where [ctx.store : () -> Reach(ctx, st), k.is_eq : k, k -> Bool, k.to_hash : k, Hasher -> Hasher, q.is_eq : q, q -> Bool]
++	table_view_counted = |{ c }, { query, plan, window }, name, template| Core.table_view_counted(inner_cell(c), { query: core_signal(query), plan, window: core_signal(window) }, name, |key, row| template(SignalCore.varying(key), { s: row }))
++
+ 	## An app's store: the cells it holds, their starting values, and the
+ 	## cells it gives to readers. Build it once with `store`, as a top-level value a
+ 	## module that composes the app can import, and hand it to

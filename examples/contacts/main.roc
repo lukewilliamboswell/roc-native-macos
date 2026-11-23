@@ -3,9 +3,10 @@ app [main] { pf: platform "../../platform/main.roc" }
 import pf.Engine exposing [Elem, Signal, State, Table]
 import pf.Ui
 
-## Ten thousand generated contacts in a `Ui.list` (a view-based
-## NSTableView): a search field filters them through the `table_view`'s
-## query, and selecting a row shows that contact below the list.
+## Ten thousand generated contacts in a `Ui.table_list` (a view-based
+## NSTableView that draws only the rows near those in sight): a search
+## field filters them through the list's query, and selecting a row shows
+## that contact beside the list.
 main : Engine.Program(_)
 main = Engine.program_store({}, |_boot| store.with_initial(cells.contacts, generated(contact_count)), |_boot| view())
 
@@ -43,15 +44,9 @@ view = || {
 			Ui.hstack(
 				{ spacing: 16, align: Fill, width: Fill, height: Fill },
 				[
-					## The sidebar: a list of every match, 10,000 rows at most.
-					Ui.list(
-						{ width: Fixed(300), opening_height: 400 },
-						Engine.table_view(
-							cells.contacts,
-							{ query: cells.search.signal(), plan, window: Engine.const(Engine.every_row) },
-							|key, contact| row(key, contact),
-						),
-					),
+					## The sidebar: a list of every match, 10,000 rows at most,
+					## of which only those near the visible ones are drawn.
+					Ui.table_list({ width: Fixed(300), opening_height: 400 }, cells.contacts, { query: cells.search.signal(), plan }, |key, contact| row(key, contact)),
 
 					## The detail pane for the selected contact.
 					Ui.box(

@@ -4,7 +4,9 @@
 #   bench/rows/run.sh                 # N = 10000 100000 1000000
 #   bench/rows/run.sh 50000           # just these sizes
 #   NO_BUILD=1 bench/rows/run.sh      # reuse bench/rows/rows (BIN=path runs another build)
-#   bench/rows/run.sh --smoke         # the gate's check: 200 rows, every phase, exit 0
+#   bench/rows/run.sh --smoke         # the gate's check: 200 rows, every phase, exit 0, then the
+#                                     # window, write-scaling and insert-loop guards (end of this file)
+#   LIST=every bench/rows/run.sh      # a Ui.list drawing every row instead of the windowed Ui.table_list
 #
 # Each N is a fresh process with ROC_BENCH=1 and a scripted session, one
 # phase each (`phase:NAME`, reported as `event/NAME` and so on): select
@@ -31,6 +33,42 @@ if [[ -z ${NO_BUILD:-} ]]; then
 	(cd "$here" && "$ROC" build main.roc --output="$here/rows")
 fi
 
+# The windowing guard (part of --smoke): the windowed list mounted over
+# 2,000 rows and over 200,000 draws the same rows, and the host applies the
+# mount in about the same time (at most 3 times the small mount's, plus
+# 15 ms); a list that drew every row would apply 100 times the rows. The
+# engine's time is not compared: building the table and the view of it is
+# linear in the rows, windowed or not.
+window_guard() {
+	local n log drawn apply
+	local -a drawns=() applies=()
+	for n in 2000 200000; do
+		log="$(mktemp)"
+		ROC_BENCH=1 ROC_STORAGE_SUITE=dev.roc.bench.rows ROC_SCRIPT="wait:300;stats;quit" \
+			perl -e 'alarm shift; exec @ARGV' "$timeout" "${BIN:-$here/rows}" -rows-n "$n" -rows-list window >"$log" 2>&1 || true
+		drawn=$(sed -n 's/^bench: list rows [0-9]* drawn \([0-9]*\) .*/\1/p' "$log")
+		apply=$(sed -n 's/^bench: first-display .* apply \([0-9.]*\) layout .*/\1/p' "$log")
+		if ! grep -q "^bench: list rows $n drawn" "$log" || [[ -z $drawn || -z $apply ]]; then
+			echo "bench/rows --smoke: the windowed list over $n rows did not report its rows and mount:" >&2
+			cat "$log" >&2
+			rm -f "$log"
+			return 1
+		fi
+		rm -f "$log"
+		echo "== window guard: N=$n draws $drawn rows, mount apply $apply ms"
+		drawns+=("$drawn")
+		applies+=("$apply")
+	done
+	if [[ ${drawns[0]} != "${drawns[1]}" ]] || ((drawns[1] > 300)); then
+		echo "bench/rows --smoke: the windowed list draws ${drawns[0]} rows of 2,000 and ${drawns[1]} of 200,000; it should draw the same window, at most 300" >&2
+		return 1
+	fi
+	if ! awk -v a="${applies[0]}" -v b="${applies[1]}" 'BEGIN { exit !(b <= 3 * a + 15) }'; then
+		echo "bench/rows --smoke: the mount's apply took ${applies[0]} ms at 2,000 rows and ${applies[1]} ms at 200,000; windowed, it should not grow with the rows" >&2
+		return 1
+	fi
+}
+
 for n in "${sizes[@]}"; do
 	# Scroll a screenful at a time from the top, then jump to the middle
 	# and near the end.
@@ -46,7 +84,7 @@ for n in "${sizes[@]}"; do
 	status=0
 	log="$(mktemp)"
 	ROC_BENCH=1 ROC_STORAGE_SUITE=dev.roc.bench.rows ROC_SCRIPT="$script" \
-		perl -e 'alarm shift; exec @ARGV' "$timeout" "${BIN:-$here/rows}" -rows-n "$n" 2>&1 | tee "$log" || status=${PIPESTATUS[0]}
+		perl -e 'alarm shift; exec @ARGV' "$timeout" "${BIN:-$here/rows}" -rows-n "$n" -rows-list "${LIST:-window}" 2>&1 | tee "$log" || status=${PIPESTATUS[0]}
 	echo "== N=$n: exit $status after $(($(date +%s) - start)) s"
 	if [[ -n $smoke ]]; then
 		# Every phase must have run: rows selected, scrolled, ticked,
@@ -66,3 +104,70 @@ for n in "${sizes[@]}"; do
 	fi
 	rm -f "$log"
 done
+
+# The --smoke guards: the window guard (defined above), then the write-scaling
+# and insert-loop guards below.
+if [[ -n $smoke ]]; then
+	window_guard
+fi
+
+# The write-scaling check, part of --smoke. It mounts 2,000 and 200,000
+# rows (100 times as many) and ticks for a second: ten turns that each
+# write three rows of the table, under the list's table_view and the
+# selection's reader. A write must cost the rows written, so fail if the
+# ticks' engine p50 at 200,000 rows is more than 5 times 2,000's. Before
+# engine patches 0004 and 0005 (patches/roc-signals) it grew with the
+# rows: 0.5 and 18.8 ms, a ratio of 38; with them, 0.3 and 0.3. The
+# smaller is floored at 0.2 ms, twice the host's resolution, so timer
+# noise on a fast machine cannot fail it.
+tick_p50() {
+	ROC_BENCH=1 ROC_STORAGE_SUITE=dev.roc.bench.rows ROC_SCRIPT="wait:300;phase:tick;toggle:Tick;wait:1000;toggle:Tick;wait:200;stats;quit" \
+		perl -e 'alarm shift; exec @ARGV' "$timeout" "${BIN:-$here/rows}" -rows-n "$1" 2>&1 | sed -n 's/^bench: timer\/tick .*| engine \([0-9.]*\)\/.*/\1/p' | head -1
+}
+if [[ -n $smoke && -z ${NO_SCALING:-} ]]; then
+	small="$(tick_p50 2000)"
+	large="$(tick_p50 200000)"
+	if [[ -z $small || -z $large ]]; then
+		echo "bench/rows --smoke: no tick turns at 2,000 or 200,000 rows (did the interval run?)" >&2
+		exit 1
+	fi
+	ratio="$(perl -e 'my ($s, $l) = @ARGV; printf "%.1f", $l / ($s < 0.2 ? 0.2 : $s)' "$small" "$large")"
+	echo "== write scaling: tick engine p50 2,000 rows $small ms, 200,000 rows $large ms: ratio $ratio for 100x the rows (constant 1, linear 100, fails above 5)"
+	if perl -e 'exit($ARGV[0] > 5 ? 0 : 1)' "$ratio"; then
+		echo "bench/rows --smoke: a 3-row table write's engine time grows with the table; see patches/roc-signals/README.adoc (0004, 0005)" >&2
+		exit 1
+	fi
+fi
+
+# Building a table with `Table.insert` in a loop must cost time linear in
+# the rows (engine patch 0004): the mount's engine time for 18,000 rows
+# inserted one at a time (`-rows-build insert`), against 2,000. Linear is
+# about 9 times (less, with the mount's fixed costs); quadratic is about
+# 81 (it was 50 to 60 before the patch). The faster of two runs each.
+insert_scaling_guard() {
+	local small large
+	small=$(insert_mount_ms 2000)
+	large=$(insert_mount_ms 18000)
+	echo "== insert loop: mount engine ${small} ms at 2000 rows, ${large} ms at 18000"
+	if ! awk -v s="$small" -v l="$large" 'BEGIN { exit !(s > 0 && l > 0 && l < 25 * (s > 1 ? s : 1)) }'; then
+		echo "bench/rows --smoke: building 18000 rows with Table.insert took ${large} ms, more than 25 times the ${small} ms for 2000 (quadratic?)" >&2
+		exit 1
+	fi
+}
+
+# The faster mount engine time (ms) of two runs inserting `$1` rows.
+insert_mount_ms() {
+	local best="" ms
+	for _ in 1 2; do
+		ms=$(ROC_BENCH=1 ROC_STORAGE_SUITE=dev.roc.bench.rows ROC_SCRIPT='stats;quit' \
+			perl -e 'alarm shift; exec @ARGV' "$timeout" "${BIN:-$here/rows}" -rows-n "$1" -rows-build insert 2>&1 |
+			sed -n 's/.*first-display.*mount engine \([0-9.]*\).*/\1/p' | head -n 1)
+		if [[ -z $best ]] || awk -v a="$ms" -v b="$best" 'BEGIN { exit !(a != "" && a + 0 < b + 0) }'; then
+			best="$ms"
+		fi
+	done
+	echo "${best:-0}"
+}
+
+[[ -n $smoke ]] && insert_scaling_guard
+exit 0

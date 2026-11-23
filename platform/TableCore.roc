@@ -227,26 +227,24 @@ TableCore := [].{
 
 ## Remember `key`'s state when the turn began (its first write wins) and
 ## apply the write: `Ok(row)` stores the row, `Err(Missing)` removes it.
+## The table is taken apart by `match`: a destructuring statement leaves
+## its dictionaries shared until the function returns, so the insert
+## would copy every row. The change record takes the key with `contains`
+## and `insert`, not `Dict.update`, which copies a record it shares.
 write : Table(k, v), k, [Absent, Was(v)], Try(v, [Missing]) -> Table(k, v)
 	where [k.is_eq : k, k -> Bool, k.to_hash : k, Hasher -> Hasher]
-write = |table, key, before, after| {
-	{ rows, record, whole, version: now, start, id, phase } = table
-	next_record = match whole {
-		Rewritten => record
-		Keyed =>
-			record.update(
-				key,
-				|found| match found {
-					Ok(first) => Ok(first)
-					Err(Missing) => Ok(before)
-				},
-			)
+write = |table, key, before, after| match table {
+	{ rows, record, whole, version: now, start, id, phase } => {
+		next_record = match whole {
+			Rewritten => record
+			Keyed => if (record.contains(key)) record else record.insert(key, before)
+		}
+		next_rows = match after {
+			Ok(row) => rows.insert(key, row)
+			Err(Missing) => rows.remove(key)
+		}
+		{ rows: next_rows, record: next_record, whole, version: now + 1, start, id, phase }
 	}
-	next_rows = match after {
-		Ok(row) => rows.insert(key, row)
-		Err(Missing) => rows.remove(key)
-	}
-	{ rows: next_rows, record: next_record, whole, version: now + 1, start, id, phase }
 }
 
 ## How many keys a table's changes hold, or `Rewritten`.
