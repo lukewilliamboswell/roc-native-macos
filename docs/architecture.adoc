@@ -712,25 +712,73 @@ hosted function, on anything else. The list helpers were the point: the stock C 
 leaves list construction to the host, and a hand-written list encoding is
 easy to get wrong (see xref:contributing.adoc#findings[Constraints to build with]).
 
+The glue serves both of the platform's architectures unchanged. Apple
+silicon and Intel Macs are both 64-bit and little-endian, with the same C
+layout of every shape above, and the Intel `roc` generates byte-for-byte the
+glue the Apple silicon `roc` does; the Intel CI job's `glue` stage checks
+that on every pull request.
+
+[#targets]
+== Targets
+
+The platform declares three Roc targets, each with its own `libhost.a`
+under `platform/targets/<target>/`, as Roc's target model expects: one
+host library per target, which `roc build --target=…` links with the app's
+object. They are `arm64mac` (Apple silicon), `x64mac` (Intel, x86-64-v3,
+which every Intel Mac that runs macOS 15 has) and `x64v1mac` (Roc's
+baseline Intel target, which `roc` picks on a machine whose CPU does not
+report v3, such as Rosetta or some virtual machines). The Swift host is
+compiled for each architecture with an explicit `-target`
+(`arm64-apple-macos15.0`, `x86_64-apple-macos15.0`), so either Mac builds
+both and the bytes do not depend on the machine; it uses no v3 instruction,
+so `x64v1mac` links a copy of the `x64mac` host. All three link against the
+one `targets/macos-sysroot`, whose stubs list both TAPI targets
+(xref:architecture.adoc#linker-inputs[Linker inputs]).
+
+The deployment target, macOS 15, is the oldest macOS an app runs on, and so
+its `LSMinimumSystemVersion`. Roc's linker writes `minos` 11.0 into every
+program, but Swift 6.2 compiling for macOS 15 references Swift runtime
+symbols, such as `_swiftImmortalRefCount` and
+`swift_getTypeByMangledNameInContext2`, that older macOS releases do not
+export, so an earlier macOS could not load the program.
+
+An app is universal. `macos.roc build` builds the app for `arm64mac` and for
+`x64mac` and joins the two programs into one fat Mach-O file (`cli/Universal.roc`),
+written byte for byte as `lipo -create` writes it, so that it needs no Apple
+tool and works on Linux and Windows too: a big-endian header, then each
+thin program at its CPU's page alignment, the Intel one first. Each slice
+keeps the ad hoc signature Roc's linker gave it, and macOS runs the slice
+for its own CPU. `LSArchitecturePriority` is left out: with both slices
+native, macOS's own choice is the right one. A bare `roc build` makes one
+program for one target.
+
 [#linker-inputs]
 == Linker inputs: no Apple SDK files
 
 Following roc-gui, the platform ships no Apple SDK material. Roc's linker
-links a platform's `targets/macos-sysroot`: minimal TAPI v4 `.tbd` stubs
-written only from the reviewed catalog `host/interfaces.json`, which records
-each library's install name and evidence and each symbol's own evidence
-(`host/PROVENANCE.md` states what may count as evidence and what is never
-read). The platform bundle carries these generated stubs, never an SDK file.
+links a platform's `targets/macos-sysroot`, the same one for every macOS
+target: minimal TAPI v4 `.tbd` stubs written only from the reviewed catalog
+`host/interfaces.json`, which records each library's install name and
+evidence and each symbol's own evidence (`host/PROVENANCE.md` states what
+may count as evidence and what is never read). Each stub lists both TAPI
+targets, `arm64-macos` and `x86_64-macos`, and the linker reads the slice
+of the architecture it links. The catalog (schema 3) names its targets in
+`tapi_targets`; a symbol only one architecture exports, such as x86-64's
+`objc_msgSend_stret` or `stat$INODE64`, names it in `only`, and its stub
+exports it for that target alone. The platform bundle carries these
+generated stubs, never an SDK file.
 
 The stubs are an external linker input with a release of their own, as
 roc-automation's "Publish linker inputs from a pull request" describes.
 `scripts/link_inputs.roc` (the `link-inputs` task) writes them, with the
 catalog, `PROVENANCE.md` and the licence, into a deterministic
-`link-inputs-arm64mac.tar`, and a `build-input-release.json` manifest that
-binds its SHA-256 and size to the source commit and an input fingerprint (the
-catalog, the provenance statement, the licence, the producer's source and the
+`link-inputs-macos.tar`, which serves every macOS target, and a
+`build-input-release.json` manifest that binds its SHA-256 and size (its one
+asset, `macos`) to the source commit and an input fingerprint (the catalog,
+the provenance statement, the licence, the producer's source and the
 tooling compiler). The producer workflow `link-inputs.yml` builds it twice,
-requires identical bytes, and links and runs every example against it; the
+requires identical bytes, and links and runs every example against it on
+an Apple silicon and on an Intel Mac; the
 trusted publisher `publish-link-inputs.yml` (`actions/publish-build-inputs`)
 publishes it as `linker-inputs-sha256-<manifest digest>` and commits
 `link-inputs.lock.json` to the pull request. Every other build installs the
@@ -738,8 +786,9 @@ archive the lock selects (`scripts/build.roc`, cached under
 `build/link-inputs-cache` and verified by size and SHA-256), and fails when
 the lock's fingerprint is not the checkout's. Before the first release, with
 no lock, the build generates the stubs from the catalog. After installing
-them it audits `libhost.a`: a reference the catalog does not own fails the
-build, so adding one is a reviewed edit that names its library and evidence.
+them it audits each `libhost.a` against what the catalog exports for its
+architecture: a reference the catalog does not own there fails the build,
+so adding one is a reviewed edit that names its library and evidence.
 
 The stubs have a second consumer: Roc's run mode. `roc main.roc` (and
 `roc run`, with `--opt=dev`, the default, or `--opt=interpreter`) links the
@@ -759,6 +808,10 @@ their `nm -u` less their own definitions and the `_roc_*` symbols the host
 and the compiler's generated objects supply, and fails on an import the
 catalog does not own or `run_shim` does not list; a `run_shim` name the
 shims no longer import is only noted, as another supported compiler's may.
+A `roc` embeds the shims of its own architecture, and they are audited
+against what the catalog exports for it: the Intel `roc`'s import the libm
+rounding functions (`ceil`, `floor`, `trunc` and their `f` forms) and
+`__bzero`, which Apple silicon's inline, so the Intel CI job audits them.
 The check's `examples` stage then runs the counter's first recorded case
 through `roc main.roc`, so a run mode the stubs cannot link fails the gate.
 
