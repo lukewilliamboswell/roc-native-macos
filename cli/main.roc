@@ -6,5 +6,5 @@ package
 	[MacOS]
 	{
 		cli: platform "https://github.com/roc-lang/basic-cli/releases/download/0.28.1/7brgwR8YUqfeGrkdfF1V4GPPN7DnP7ftqub9KcrTEZtr.tar.zst",
-		zip: "https://github.com/lukewilliamboswell/roc-zip/releases/download/0.3.0-rc3/6mG588AqUqfCmEpBJ2dSF9ynjMvQNFg2GKQakf11gFyD.tar.zst",
+		zip: "https://github.com/lukewilliamboswell/roc-zip/releases/download/0.3.0-rc4/7KtXa6LGYfVGZK5kDMtkHeumUJywvSR15YdQoRvfzxg1.tar.zst",
 	}
