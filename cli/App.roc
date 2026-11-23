@@ -149,6 +149,32 @@ App := [].{
 		}
 	}
 
+	## Start `roc main.roc` in this directory, with this terminal, until it
+	## ends: Roc's run mode, which rebuilds the app when a file it reads is
+	## saved and swaps the new code in, for Command-R (*Reload*) to remount.
+	## The bare program finds `assets/` here; `macos.json` and the icon
+	## belong to the `.app`, which this does not make.
+	dev! : () => Try({}, _)
+	dev! = || {
+		if !(Path.exists!(Path.utf8("main.roc"))?) {
+			return Err(NoMainRoc)
+		}
+		match App.system(System.target!()) {
+			AppleSilicon => {}
+			Other(here) => return Err(DevNotAppleSilicon(here))
+		}
+		if !Cmd.check_available!("roc") {
+			return Err(RocMissing)
+		}
+		Stdout.line!("Running main.roc with `roc main.roc`: it rebuilds when you save, and Command-R in the app shows the new code.")?
+		ran = Cmd.new("roc").args(["main.roc"].map(OsStr.from_str)).inherit_stdio().run!()?
+		match ran.status {
+			Exited(0) => Ok({})
+			Exited(code) => Err(DevFailed({ how: "exited with code ${code.to_str()}", code }))
+			Signaled(signal) => Err(DevFailed({ how: "stopped on signal ${signal.to_str()}", code: 128 + signal }))
+		}
+	}
+
 	## Whether the app can run here: only an Apple silicon Mac runs it.
 	## Otherwise, the system's name for a sentence.
 	system : System.Target -> [AppleSilicon, Other(Str)]

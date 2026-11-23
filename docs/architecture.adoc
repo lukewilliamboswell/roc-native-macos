@@ -16,17 +16,26 @@ flowchart TB
     Host -- "AppKit events, effect results: one engine turn each" --> Engine
 ....
 
-[#engine-revision]
 Engine:: `Core.roc`, `Engine.roc` and the modules they import (`Web`,
 `EntryRoutes`, `Url`, `ReadyIndex`, `Spelling`, `Layout`, `TableCore`, `View`,
-`Seq`, `MarkupAdvice`, `SignalCore`) are byte-identical copies of roc-signals
-`a13ff70e`. Nothing in the engine was changed. `tests/engine-modules.sha256`
-records their digests, and `check` compares them.
+`Seq`, `MarkupAdvice`, `SignalCore`), and the worker layer (`Worker`,
+`WorkerCodec`, `Wire`, `Files`, `Hosted`, `Effects`), are copies of roc-signals `a13ff70e`
+plus the patch series in `patches/roc-signals/`, whose `README.adoc` lists the
+patches in order with their upstream status
+(xref:contributing.adoc#engine-patches[Engine patches]). Two patches split
+`Core.roc`'s mount functions so the compiler keeps the turn and the block
+unshared, which makes mounting linear, and a third changes how a site is
+called so it owns its storage, which makes a turn's cost independent of
+the number of sites beside the ones it touches. `tests/engine-modules.sha256` records
+the pristine digests, and `check` reverse-applies the series and compares.
 
 Platform root:: `platform/main.roc` is a trimmed copy of roc-signals' root.
 It provides `roc_engine_keys`, `roc_engine_init`, `roc_engine_event`,
 `roc_engine_files` (a files-kind event, copied as is), `roc_engine_drop` and
-`roc_engine_version`, with no hosted functions, workers, ports or crypto.
+`roc_engine_version` for the page's instance, and `roc_engine_work`,
+`roc_engine_prepare`, `roc_engine_ask` and `roc_engine_forget` for worker
+instances (xref:architecture.adoc#workers[Workers]), with the `roc_task_*`
+hosted functions a job calls. It has no ports or crypto.
 `roc_engine_keys` returns the engine's declarations without roc-signals'
 section 12 (protocol facts): that CBOR item needs the cbor package and
 `ProtocolFacts`, and this host binds no roles from it.
@@ -243,6 +252,34 @@ Signing:: Roc's linker signs the program ad hoc; nothing seals the bundle's
 resources (`_CodeSignature/CodeResources`), as before. Gatekeeper's
 quarantine applies to a downloaded `.app` whatever it holds.
 
+[#layout]
+== Layout
+
+Stacks are `NSStackView`s and Auto Layout sizes the window, with one
+exception: a stack whose children all have a size known without solving
+anything places them by frame (`host/Frames.swift`). A stack is framed
+when its `distribution` is `gravity`, its `align` is not `fill` (nor
+`first-baseline`), its own `width`, `height` and `squeeze` are the usual
+ones, the window lays out left to right, and every child (at least one) is
+an element, visible, not a scroll area, list or spacer, with a `fixed`
+width and height or itself a framed stack. It places them where
+NSStackView would (spacing and padding along the stack; across it a
+leading or top alignment keeps that edge's padding, a centred or trailing
+one keeps none; slack after the last child) and reports the total as its
+content size, with NSStackView's own hugging. A child with nothing to
+solve (an empty box, an inner framed stack) leaves Auto Layout entirely,
+since AppKit gives every view that translates its autoresizing mask four
+constraints; any other keeps its frame through those. Only the outermost
+framed stack takes part in Auto Layout. `sync` arranges the deepest stacks
+first and again until none changes, so a stack sees its children's sizes.
+A grid of 10,000 fixed-size boxes lays out in 0.09 s instead of 3.2 s
+(`bench/grid`). A box draws its fill and solid border as its layer's
+properties (`updateLayer`), so it has no backing store.
+
+A batch that only repaints (`fill`, `border`, `radius`, `color`, and no
+structure or text) skips layout and is only drawn. Hit testing a framed
+stack searches its children by position.
+
 [#lists]
 == Lists
 
@@ -251,14 +288,20 @@ move of a row is one `insertRows`, `removeRows` or `moveRow`, inside one
 `beginUpdates` per batch. A batch of more than 64 row changes (a mount, a new
 query, a `CLEAR`) reloads once instead. A row's own view is its cell view
 (row heights by Auto Layout, `usesAutomaticRowHeights`). A template row
-inside a list gets its views only when the table first asks for it.
+inside a list is only its hole values until the table first asks for it
+(`Host.materialize`): `TEXT`, `HATTR` and `HPROP` update the values, and
+the row's nodes and views are made when it is first shown. A node's
+children take inserts and removals in one pass when next read, so a
+filter that lets a million rows back in is linear.
 
-`examples/contacts` mounts 10,000 rows in about 0.6 s of engine time and
-0.1 s of host time; a search that drops thousands of rows takes tens of
-milliseconds in the host. The engine still draws every row that passes the
-query (`Engine.every_row`). Windowing the `table_view` to the rows in sight,
-with a `window` signal fed by the table's scroll position and the table told
-the full count, is the next cost to cut.
+`bench/rows` measures a list of 10,000 to 1,000,000 rows: selecting,
+scrolling and repainting a written row cost the same at every size, and a
+million rows open in 2.5 s. The engine still draws every row that passes
+the query (`Engine.every_row`), so a mount or a filter that lets many rows
+in or out costs those rows in the engine and the host. Windowing the
+`table_view` to the rows in sight, with a `window` signal fed by the
+table's scroll position and the table told the full count, is the next
+cost to cut.
 
 [#keys]
 == Keys
@@ -314,10 +357,11 @@ a timer cannot re-enter Roc after a crash. `dbg` still prints to stderr.
 [#effects-and-threads]
 == Effects and threads
 
-Roc runs on the main thread only. An effect that blocks or waits (HTTP and
-files now, anything later) follows the same rules, which play the part
-roc-signals' Workers play on the web: the work leaves the thread, Roc does
-not.
+The page's Roc instance runs on the main thread only. An effect that blocks
+or waits (HTTP and files) follows the rules below: the work leaves the
+thread, Roc does not. The one other place Roc runs is a worker instance, on
+its own worker thread, which follows the same rules from the other side
+(xref:architecture.adoc#workers[Workers]).
 
 . *Nothing Roc owns crosses a thread.* The `FX` operands are decoded on the
   main thread into a plain Swift value (`HttpRequest`). The engine state, the
@@ -445,36 +489,161 @@ applied, then after it an `NSSavePanel` sheet opens with the suggested name
 (one at a time), and the range is copied off the main thread. As in the
 browser, Roc learns nothing of the outcome; it is reported on stderr.
 
-Not built: uploads (`FX` 12), fetched files (`FX` 15), pasted files, files in
-a worker's answer, and building files (`Files.build!`), which needs worker
-instances.
+Not built: uploads (`FX` 12), fetched files (`FX` 15) and pasted files.
 
-=== Workers (design note, not built)
+[#workers]
+== Workers
 
-roc-signals runs a task's job in a separate Wasm instance per Web Worker
-(design.md, "Workers"). Natively the same shape fits: one more Roc engine
-instance per worker thread, each with its own heap, never sharing a Roc value
-with another, because Roc's reference counts are not atomic. A job crosses as
-bytes, as `roc_engine_work` takes them: `name:str input:rest` plus the
-handles the worker's own table mints for the files it names. The answer comes
-back as `n:u32 (token:u64)*n output:rest`, a plain byte buffer copied to the
-main thread and delivered as result tag 10 (with the answer's files minted in
-the page's table, through `roc_engine_files` on the effect node). The pieces
-that make it work natively:
+A task's job (`FX` 8, roc-signals design.md "Workers" and "Prepared
+state") runs in a _worker instance_: the app's own compiled module, entered
+through `roc_engine_work`, `roc_engine_prepare`, `roc_engine_ask` and
+`roc_engine_forget` on a worker thread (`host/Workers.swift`). The page's
+instance never runs a job, and a worker instance never mounts.
 
-* *Per-thread runtime symbols.* `roc_alloc`, `roc_dealloc` and the handle
-  table route are process-global C symbols. Each would dispatch on a
-  thread-local "current instance" (its heap accounting and handle table), set
-  by the worker thread before it calls Roc.
-* *Hosted effects for jobs.* `File.read!` and the `Files.build!` builder are
-  hosted functions, which SwiftGlue does not generate yet. A worker thread
-  may call them synchronously: it is the thread the job runs on.
-* *Files across instances.* A file crosses as its `FileEntry` (path and
-  range), never as a box; each side mints its own handle.
-* *Cancellation and faults.* `CANCEL` marks the job. A worker thread cannot
-  be killed safely, so `on_cancel: Stop` would poison and discard that
-  instance and start a fresh one, and a `roc_crashed` in a worker would have
-  to unwind that thread only (today it exits the process).
+[mermaid]
+....
+flowchart LR
+    Page["page instance (main thread)"] -- "FX 8: task, input bytes, file tokens" --> Pool["WorkPool (main thread)"]
+    Pool -- "JobOrder: bytes + FileEntry" --> W1["worker thread 1: instance, heap, handle table"]
+    Pool -- "JobOrder" --> W2["worker thread 2 …"]
+    W1 -- "JobOutcome: answer bytes + FileEntry, or a fault" --> Pool
+    Pool -- "result tag 10 / 11 / 7 through Host.send" --> Page
+....
+
+=== Instances, heaps and threads
+
+Each worker thread holds one instance at a time, and an instance is three
+things only that thread touches:
+
+Its heap:: Every allocation Roc makes on that thread. `roc_alloc`,
+`roc_dealloc` and `roc_realloc` are process-wide symbols; each looks up the
+calling thread's `WorkerContext` (`pthread_getspecific`, set only by worker
+threads; nil on the main thread, which keeps the plain allocator). A worker
+allocation carries a 32-byte link before what Roc sees (previous, next,
+size, header size), so the instance's live allocations form one list that
+can be freed at once.
+Its handle table:: A `HandleTable` of 64 `Box(U64)` slots, like the page's.
+`roc_dealloc` on a worker thread offers an address to that thread's table
+only, and a page handle reaching a worker is a fatal error.
+Its prepared state:: The `Box(Kept)` `roc_engine_prepare` returns, which the
+thread passes to `roc_engine_ask` and back, and to `roc_engine_forget`.
+
+Roc's reference counts are not atomic, and never need to be: no Roc value
+is reachable from two threads. A job crosses to the worker as a `JobOrder`
+(the payload bytes `name:str input:rest`, and the job's files as
+`FileEntry` values: a path and a size); the worker builds the Roc lists and
+mints its own handles for those files on its thread. The answer,
+`n:u32 (token:u64)*n output:rest`, is copied out, the instance's tokens
+resolved to `FileEntry` values, and the Roc list released, all on the
+worker thread; the main thread gets bytes and `FileEntry` values and mints
+the page's handles when it delivers result tag 10 through
+`roc_engine_files` on the effect node (with no files, through
+`roc_engine_event`). When the page has no free slots for an answer's files
+the job is `WorkLost(ResourceLimit)` and nothing is minted.
+
+Each worker thread has a 64 MiB stack (reserved, not committed): a job
+recurses through the payload codec, up to 128 levels of the app's data, and
+a secondary thread's default stack is 512 KiB.
+
+=== The pool
+
+`WorkPool` (main thread only) holds the worker slots, the jobs waiting for
+one, and every job in flight by id, as `Host.flights` does for HTTP.
+
+Size:: One worker per core but one, from 1 to 8:
+`max(1, min(8, activeProcessorCount - 1))`. The main thread keeps a core for
+AppKit and the page's turns, so a full pool never starves the UI; 8 is
+roc-signals' default `maxWorkers`; the engine's in-flight bound (32 by
+default) bounds the queue. Workers start when a job needs one. `ROC_WORKERS=N`
+sets the size, as does the scripted step `pool:N` before any job.
+Placement:: As roc-signals' pool: a job of a preparation's task runs on an
+idle worker that holds its state (`ask`), or waits for a busy one that does;
+any other job takes an idle worker holding nothing, a new worker while the
+pool has room, or the least recently used idle holder, whose state it
+replaces (`prepare`). A state is keyed by the preparation's name, its input
+bytes and the page tokens and ranges of its files; when the page releases
+one of those files every state keyed on it is let go (`forget`).
+Stale answers:: The main thread decides whether an answer exists. A reply
+counts only from a worker still in the pool, for the job it was given, and
+enters Roc only while the job's id is still tracked by that job; `CANCEL`, a
+timeout and teardown untrack the id first.
+Cancellation:: `CANCEL` of a waiting job drops it. A running job with
+`on_cancel: Stop` has its worker stopped: the slot leaves the pool at once
+(a new worker takes its place when a job needs one), the thread's stop flag
+is set, and the job unwinds at its next allocation or hosted call. With
+`on_cancel: Finish` the job runs on and its answer is dropped, so the worker
+and its prepared state are kept, until its timeout or ten minutes after it
+was performed, when its worker is stopped. `on_dispose` is the engine's and
+does not reach the host.
+Timeouts:: A main-thread `Timer` per job (`timeout_ms`, capped at 600 s):
+the id is untracked, the job dropped or its worker stopped, a finishing one
+included, and `Timeout` (tag 7) delivered.
+Teardown:: `Host.stop` stops every worker and drops every job; nothing is
+delivered after it, and the temporary files builders wrote are removed.
+
+=== Containment
+
+Every call into a worker instance goes through a guarded call that
+glue/SwiftGlue.roc generates (`Roc.workForHostGuarded` and so on): a C
+function, `roc_guarded_<symbol>`, that takes a jump point with `_setjmp` and
+calls the Roc symbol directly. Anything that must end the call
+`roc_guard_unwind`s (`_longjmp`) back to it from the runtime symbol or
+hosted function that met it:
+
+* `roc_crashed`: the class from the message (`contract:`, `resource_limit:`,
+  otherwise `app_crash`), and up to 512 bytes of it;
+* `roc_expect_failed` (`expect_failed`), and an allocation that fails
+  (`out_of_memory`);
+* a job holding more than 64 handles (`resource_limit`), or a builder whose
+  temporary file cannot be written (`executor`);
+* a stop request (no class: the job's answer was already dropped).
+
+The thread then frees the instance's whole heap, drops its prepared state
+and replaces its handle table, so the next job runs in a fresh instance on
+the same thread (a stopped thread ends instead). The job is answered
+`WorkLost(class)` (tag 11), and `roc worker fault [class] in task "…": …` is
+printed. The page's instance and every other worker are untouched.
+
+Why unwinding is safe::
++
+. *Only the abandoned call's own state is skipped.* The frames between the
+  jump point and the unwind are Roc's and the one runtime symbol or hosted
+  function that unwinds. Roc frames own no resources but heap allocations,
+  which are all in the instance's list and are all freed; Roc code takes no
+  locks and touches no shared mutable memory (its constants are static data,
+  never written). The host frames that unwind hold no lock and no Swift
+  access in progress; at worst a Swift temporary's release is skipped, a
+  leak, never corruption. The jump point's frame is C, never inlined into
+  Swift.
+. *Nothing outside the instance can refer to what is freed.* No Roc value
+  crosses threads, and the handle table, the only host structure Roc
+  pointers reach, is replaced with the heap. Files the instance's handles
+  named are `FileEntry` values; a builder's temporary file is removed when
+  the last entry naming it goes.
+. *An unwind happens only inside a guarded call on its own thread.* Each
+  path checks the context's `inCall` flag; outside a call (a host bug) it
+  stops the app instead. The page's instance has no context, so a crash
+  there still stops the app, as before.
+. *A stop never interrupts the host.* The stop flag is read only where the
+  host already is (an allocation or hosted call), before it does anything,
+  so a stop never lands inside `malloc` or a file write. The cost: a job
+  that computes without allocating or calling an effect runs on until it
+  next does or ends; its worker has already left the pool, so it holds no
+  slot and its answer is dropped.
+
+=== Hosted effects
+
+The `roc_task_*` functions (`Hosted.roc`, reached through `Effects.roc` and
+`Files.roc`) run synchronously on the worker thread, inside the job's call:
+`read` reads a range of a file the job holds into a fresh list (empty when
+the file can no longer be read), `size` gives a file's size, `mint` a fresh
+handle, and a builder (`open`, `append`, `append_file`, `finish`) writes a
+temporary file in `TMPDIR`. `append` counts against the job's output bound
+(256 MiB; `ROC_MAX_OUTPUT_BYTES` lowers it) and answers 1 past it;
+`append_file` and `start_from` copy the file's range and do not count.
+`finish` makes the builder a file the answer may hold. Every builder a call
+opened is closed when it returns (status 3 afterwards). Called outside a job
+(on the page's instance) any of them is a contract error that stops the app.
 
 == Glue
 
@@ -500,12 +669,24 @@ that make it work natively:
    `ROC_BOX_U64_*` constants, which the Swift helpers read, and checks them
    against the C types with `_Static_assert`s;
 ** one typed Swift function per provided procedure (`Roc.eventForHost(...)`),
-   with its ownership contract.
+   with its ownership contract, and its guarded twin
+   (`Roc.workForHostGuarded(jump, ...)`), over the header's
+   `roc_guarded_<symbol>` C trampoline and `roc_guard_unwind`
+   (xref:architecture.adoc#workers[Containment]);
+** `RocList.releaseBytes()`, which releases a `List(U8)` the host owns (a
+   hosted function's argument, a returned answer) exactly as Roc decrements
+   one;
+** for the hosted functions: the C declaration of each `roc_task_*` symbol
+   in the header, the `RocHostedFunctions` protocol (one typed static
+   requirement each, `hostedRead(_:_:_:)` for `Hosted.read!`), and a
+   `@_cdecl` export per symbol forwarding to the host's `RocHosted`, which
+   must conform. The host never spells a hosted C signature.
 
 It covers only the shapes this platform uses (byte lists, opaque boxes,
-lists of boxes of an integer, integers, records of those, unit) and 64-bit
-hosts. It fails generation, naming the entry point, on anything else,
-including hosted functions. The list helpers were the point: the stock C glue
+lists of boxes of an integer, integers, records of those, unit; a hosted
+function takes integers and byte lists and returns one of those or a box of
+an integer) and 64-bit hosts. It fails generation, naming the entry point or
+hosted function, on anything else. The list helpers were the point: the stock C glue
 leaves list construction to the host, and a hand-written list encoding is
 easy to get wrong (see xref:contributing.adoc#findings[Constraints to build with]).
 
@@ -537,6 +718,27 @@ the lock's fingerprint is not the checkout's. Before the first release, with
 no lock, the build generates the stubs from the catalog. After installing
 them it audits `libhost.a`: a reference the catalog does not own fails the
 build, so adding one is a reviewed edit that names its library and evidence.
+
+The stubs have a second consumer: Roc's run mode. `roc main.roc` (and
+`roc run`, with `--opt=dev`, the default, or `--opt=interpreter`) links the
+host not with the app's object but with one of the compiler's own run shims,
+`libroc_machine_code_shim.a` or `libroc_interpreter_shim.a`, which load the
+program the compiler publishes into shared memory. Roc embeds both in the
+`roc` binary and extracts one for every run. Their system imports (file and
+mapping calls, futex waits, `dlsym`, `sys_icache_invalidate`,
+`_tlv_bootstrap` and a few others) are not the host's, so the catalog lists
+them as its own consumer, `run_shim`, each owned by a library with its own
+evidence like any other symbol. They are the imports roc-lang/roc's
+`src/machine_code_shim/archive_check.zig` allows a macOS shim, as the shims
+of 0.1.0 RC1 and the nightlies of November 2026 reference them. The build
+audits them as it audits the host: it carves the shims out of the `roc` it
+builds with (`LinkInputs.embedded_archives`, into `build/run-shims`), takes
+their `nm -u` less their own definitions and the `_roc_*` symbols the host
+and the compiler's generated objects supply, and fails on an import the
+catalog does not own or `run_shim` does not list; a `run_shim` name the
+shims no longer import is only noted, as another supported compiler's may.
+The check's `examples` stage then runs the counter's first recorded case
+through `roc main.roc`, so a run mode the stubs cannot link fails the gate.
 
 Swift is compiled with `-disable-autolink-frameworks` and
 `-disable-force-load-symbols`, so the frameworks linked are exactly the

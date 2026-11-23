@@ -41,6 +41,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// Closing the window or quitting tears the engine down once.
     func applicationWillTerminate(_ note: Notification) { host?.stop() }
+
+    /// Reload (Cmd-R, or the scripted `reload` step): retire the engine and
+    /// mount a fresh one in the same window, as a browser reloads a page.
+    /// Local and session storage carry over; everything else starts again.
+    /// Under `roc main.roc` the mount is a Roc entry point, so it runs the
+    /// newest code hot reloading has loaded (docs/apps.adoc, "Hot reloading").
+    @discardableResult
+    func reload() -> Host? {
+        guard let old = host, !halted else { return nil }
+        old.retire()
+        let fresh = Host(window: old.window)
+        host = fresh
+        fresh.start()
+        fresh.trace("RELOAD")
+        return fresh
+    }
+
+    @objc func reloadEngine(_ sender: Any?) { reload() }
+
+    /// Whether this program offers Reload: a bare program (a development
+    /// build, or `roc main.roc`'s), not an app bundle a person was given.
+    static var reloads: Bool { !Bundle.main.bundlePath.hasSuffix(".app") }
 }
 
 extension Host {
@@ -54,6 +76,23 @@ extension Host {
         engine.drop()
         trace("DROP")
     }
+
+    /// Reload's half of teardown: cancel every effect in flight and stop
+    /// listening, but leave the engine's state unreleased. After a hot
+    /// reload, `roc_engine_drop` runs the newest code, which may describe a
+    /// different `Store` than the state was built with; leaking one state
+    /// per reload is the safe trade in development.
+    func retire() {
+        guard !engine.dropped else { return }
+        teardownEffects()
+        for timer in timers.values { timer.invalidate() }
+        timers.removeAll()
+        if let keyMonitor { NSEvent.removeMonitor(keyMonitor) }
+        keyMonitor = nil
+        engine.abandon()
+        // Nodes hold their parents strongly: let go, so the old tree is freed.
+        root.walk { $0.parent = nil }
+    }
 }
 
 @main
@@ -65,10 +104,13 @@ struct Main {
         let menu = NSMenu()
         let item = NSMenuItem()
         item.submenu = NSMenu()
+        let delegate = AppDelegate()
+        if AppDelegate.reloads {
+            item.submenu?.addItem(withTitle: "Reload", action: #selector(AppDelegate.reloadEngine(_:)), keyEquivalent: "r").target = delegate
+        }
         item.submenu?.addItem(withTitle: "Quit", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         menu.addItem(item)
         app.mainMenu = menu
-        let delegate = AppDelegate()
         app.delegate = delegate
         app.run()
     }

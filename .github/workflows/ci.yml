@@ -46,6 +46,7 @@ jobs:
 
   host:
     name: Build the Swift host
+    needs: nightly
     runs-on: macos-15
     timeout-minutes: 30
     permissions:
@@ -59,6 +60,11 @@ jobs:
       # same one release.yml builds with.
       - uses: ./.github/actions/setup-xcode
       - uses: lukewilliamboswell/roc-automation/actions/setup-blueprint@acc5efdcd929b38e665cd3ae6e694d1c4887f9c7
+      # Blueprint's dev environment expects `roc` on PATH for every task,
+      # and the host's glue is generated with the package compiler.
+      - uses: lukewilliamboswell/roc-automation/actions/setup-roc-nightly@acc5efdcd929b38e665cd3ae6e694d1c4887f9c7
+        with:
+          nightly-tag: ${{ needs.nightly.outputs.tag }}
       - id: fingerprint
         run: blueprint run build -- host --fingerprint
       # A cache is storage, not trust: the entry is this repository's own

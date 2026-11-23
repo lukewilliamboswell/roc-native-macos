@@ -1,7 +1,7 @@
 #!/usr/bin/env roc-stable
 app [main!] {
 	cli: platform "https://github.com/roc-lang/basic-cli/releases/download/0.28.1/7brgwR8YUqfeGrkdfF1V4GPPN7DnP7ftqub9KcrTEZtr.tar.zst",
-	roc: "nightly-2026-11-14-a87808d",
+	roc: "nightly-2026-11-22-3350b1c",
 }
 
 import cli.Cmd
@@ -44,6 +44,8 @@ import src/Recorded
 ## recorded cases, through the tool, checks that its bundle holds the assets
 ## and an icon made from `assets/icon.png`, and runs a case on the program
 ## inside the bundle, which must find its images in `Contents/Resources`.
+## Last, it runs that case under `roc macos.roc dev`, whose bare program
+## must find them in `assets/` of the app's directory.
 ##
 ## The package compiler is the `roc` on PATH.
 main! : List(OsStr) => Try({}, _)
@@ -138,7 +140,7 @@ consumer_test! = |root, out, bundle| {
 	server.close!() ?? {}
 	match result {
 		Ok({}) => {
-			note!("bundle: macos.roc created, built, tested and packaged a counter, and built and tested ${Bundle.assets_example} with its assets, against the served bundle")
+			note!("bundle: macos.roc created, built, tested and packaged a counter, and built, tested and ran under dev ${Bundle.assets_example} with its assets, against the served bundle")
 			Ok({})
 		}
 		Err(problem) => {
@@ -151,7 +153,7 @@ consumer_test! = |root, out, bundle| {
 ## The port the server reports, from its first line of output.
 served! : Cmd.Child => Try(U16, Str)
 served! = |server|
-	match server.read!(Duration.seconds(10)) {
+	match server.read!(Duration.seconds(30)) {
 		Ok(Stdout(bytes)) => Bundle.served_port(Str.from_utf8_lossy(bytes)).map_err(|_| "the local server printed no port: ${Str.from_utf8_lossy(bytes)}")
 		Ok(Stderr(bytes)) => Err("the local server failed: ${Str.from_utf8_lossy(bytes)}")
 		Err(error) => Err("the local server did not start: ${Str.inspect(error)}")
@@ -245,7 +247,7 @@ package_counter! = |dir| {
 ## The repository's example with assets, as an author would have it beside
 ## the tool: `main.roc` naming the served bundle, `assets/` and `tests/`.
 ## `macos.roc build` and `test` it, check the bundle it made, and run its
-## case on the program inside the bundle.
+## case on the program inside the bundle, then under `macos.roc dev`.
 assets_app! : Str, Str, Str => Try({}, Str)
 assets_app! = |root, dir, url| {
 	name = Bundle.assets_example
@@ -288,7 +290,22 @@ assets_app! = |root, dir, url| {
 	if ran.status != Exited(0) or !Recorded.matches(expected, printed) {
 		return Err("${name}.app's own program did not print tests/${Bundle.assets_case}.expected; it printed:\n${printed}")
 	}
-	Ok({})
+	# `macos.roc dev`: `roc main.roc` here, which finds assets/ in this directory.
+	note!("RUN roc macos.roc dev (in ${name}/) with tests/${Bundle.assets_case}.script")
+	dev = Cmd.new("roc")
+		.args(["macos.roc", "dev"].map(OsStr.from_str))
+		.cwd(Path.utf8(app_dir))
+		.env("XDG_CACHE_HOME", OsStr.from_str(cache))
+		.env("ROC_SCRIPT", OsStr.from_str(steps.trim()))
+		.stdin(Null)
+		.stderr(MergeWithStdout)
+		.timeout(Duration.seconds(120))
+		.run!() ? |error| "roc macos.roc dev did not finish: ${Str.inspect(error)}"
+	dev_printed = Str.from_utf8_lossy(dev.stdout_bytes)
+	match dev_printed.split_on("\n") {
+		[first, .. as rest] if dev.status == Exited(0) and first.starts_with("Running main.roc") and Recorded.matches(expected, Str.join_with(rest, "\n")) => Ok({})
+		_ => Err("roc macos.roc dev (in ${name}/) did not print tests/${Bundle.assets_case}.expected after its first line; it printed:\n${dev_printed}")
+	}
 }
 
 ## Every file under `base/sub`, relative to `base`.

@@ -1,4 +1,13 @@
 // Runtime symbols compiled Roc calls, defined by the host.
+//
+// Two kinds of Roc instance call them: the page's, on the main thread, and
+// a worker instance, on its own worker thread (Workers.swift). Each symbol
+// asks which one is running on the calling thread (`WorkerContext.current`,
+// a thread-specific pointer that only a worker thread sets) and acts for
+// that instance alone: a worker instance allocates from its own heap and
+// releases handles in its own table, and a crash in it unwinds only its
+// call. The page's instance keeps the plain allocator, and a crash in it
+// stops the app.
 
 import AppKit
 
@@ -6,6 +15,7 @@ import AppKit
 
 @_cdecl("roc_alloc")
 public func rocAlloc(_ size: Int, _ alignment: Int) -> UnsafeMutableRawPointer {
+    if let context = WorkerContext.current { return context.allocate(size, alignment) }
     var out: UnsafeMutableRawPointer? = nil
     let align = max(alignment, 16)
     if posix_memalign(&out, align, max(size, 1)) != 0 || out == nil {
@@ -22,14 +32,19 @@ let poisonAllocations = getenv("ROC_POISON") != nil
 @_cdecl("roc_dealloc")
 public func rocDealloc(_ ptr: UnsafeMutableRawPointer?, _ alignment: Int) {
     guard let ptr else { return }
+    if let context = WorkerContext.current { return context.deallocate(ptr) }
     // A file handle's box lives in the handle table, not the heap: releasing
     // it retires its slot (Files.swift).
-    if fileHandles.route(ptr) { return }
+    if fileHandles.contains(ptr) {
+        if pthread_main_np() == 0 { fatal("a page file handle was released off the main thread") }
+        if fileHandles.route(ptr) { return }
+    }
     free(ptr)
 }
 
 @_cdecl("roc_realloc")
 public func rocRealloc(_ ptr: UnsafeMutableRawPointer?, _ size: Int, _ alignment: Int) -> UnsafeMutableRawPointer {
+    if let context = WorkerContext.current { return context.reallocate(ptr, size, alignment) }
     // Every allocation is 16-byte aligned by posix_memalign, and realloc
     // keeps malloc's 16-byte alignment, which covers every Roc layout here.
     guard let next = realloc(ptr, max(size, 1)) else { fatal("out of memory reallocating \(size) bytes") }
@@ -38,16 +53,23 @@ public func rocRealloc(_ ptr: UnsafeMutableRawPointer?, _ size: Int, _ alignment
 
 @_cdecl("roc_dbg")
 public func rocDbg(_ bytes: UnsafePointer<UInt8>?, _ len: Int) {
+    if let context = WorkerContext.current { context.checkStop() }
     fputs("[dbg] \(text(bytes, len))\n", __stderrp)
 }
 
 @_cdecl("roc_expect_failed")
 public func rocExpectFailed(_ bytes: UnsafePointer<UInt8>?, _ len: Int) {
+    // A failed `expect` in a job poisons its worker instance, as in
+    // roc-signals (class expect_failed); on the page it is reported.
+    if let context = WorkerContext.current, context.pointee.inCall { context.fault(.expectFailed, bytes, len) }
     fputs("[expect failed] \(text(bytes, len))\n", __stderrp)
 }
 
 @_cdecl("roc_crashed")
 public func rocCrashed(_ bytes: UnsafePointer<UInt8>?, _ len: Int) {
+    // A crash in a job unwinds that job's call and discards its instance;
+    // the page and every other worker are untouched (Workers.swift).
+    if let context = WorkerContext.current, context.pointee.inCall { context.fault(nil, bytes, len) }
     fatal("Roc crashed: \(text(bytes, len))")
 }
 

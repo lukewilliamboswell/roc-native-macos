@@ -1,7 +1,7 @@
 #!/usr/bin/env roc-stable
 app [main!] {
 	cli: platform "https://github.com/roc-lang/basic-cli/releases/download/0.28.1/7brgwR8YUqfeGrkdfF1V4GPPN7DnP7ftqub9KcrTEZtr.tar.zst",
-	roc: "nightly-2026-11-14-a87808d",
+	roc: "nightly-2026-11-22-3350b1c",
 }
 
 import cli.Cmd
@@ -21,7 +21,8 @@ import src/Repo
 ##
 ## - `pins`: only the scripts pin a compiler, and they pin `roc-stable`
 ##   (`roc-policy check`, from Blueprint.roc's `repository_policy`).
-## - `engine`: the engine modules match their recorded roc-signals digests.
+## - `engine`: the engine modules are roc-signals' (their recorded digests)
+##   plus the patch series in `patches/roc-signals`, and nothing else.
 ## - `fmt`: `roc fmt --check` over the platform, glue, examples and the
 ##   `macos.roc` tool (`cli/`), and `roc-stable fmt --check` over the scripts.
 ## - `scripts`: the scripts' `expect` tests.
@@ -35,7 +36,9 @@ import src/Repo
 ##   example.
 ## - `test`: `roc test` on the platform root and on every example.
 ## - `examples`: every example's recorded scripted runs; `examples --update`
-##   records what they print now.
+##   records what they print now. Then the counter's first case once more
+##   through Roc's run mode, `roc main.roc`, which links the host with the
+##   compiler's own run shim against the stubs, and must print the same.
 ## - `bench`: every harness under `bench/` (`bench/<name>/run.sh --smoke`),
 ##   built and run at a token size, so it never goes stale.
 ## - `bundle`: the platform bundle from the inputs `build` made, and an
@@ -135,14 +138,38 @@ pins! = || {
 	Ok($problems)
 }
 
-## The engine modules are the roc-signals copies, unchanged: their digests
-## are the ones `tests/engine-modules.sha256` records.
+## The engine modules are the roc-signals copies plus the patch series in
+## `patches/roc-signals`, and nothing else: reverse-applying the series,
+## last patch first, to copies of them under `build/engine-check` gives
+## back the pristine digests `tests/engine-modules.sha256` records.
 engine! : () => Try(List(Str), _)
 engine! = || {
 	recorded = Path.read_utf8!(Path.utf8("tests/engine-modules.sha256"))?
-	missing = Repo.engine_modules.keep_if(|path| !recorded.contains("  ${path}\n"))
-	digests = run!("shasum", ["-a", "256", "--check", "tests/engine-modules.sha256"])?
-	Ok(missing.map(|path| "tests/engine-modules.sha256 records no digest for ${path}").concat(digests))
+	missing = Repo.engine_modules.keep_if(|path| !recorded.contains("  ${path}\n")).map(|path| "tests/engine-modules.sha256 records no digest for ${path}")
+	dir = Repo.engine_patches
+	present = Path.list!(Path.utf8(dir))?.keep_oks(|path| Path.filename(path).map_ok(Path.display)).keep_if(|name| name.ends_with(".patch")).sort_with(compare_str)
+	series = Repo.series_problems(present, Repo.listed_patches(Path.read_utf8!(Path.utf8("${dir}/README.adoc"))?))
+	if !(missing.is_empty() and series.is_empty()) {
+		return Ok(missing.concat(series))
+	}
+	stage = "build/engine-check"
+	if Path.exists!(Path.utf8(stage))? {
+		Path.delete_all!(Path.utf8(stage))?
+	}
+	Path.create_all!(Path.utf8("${stage}/platform"))?
+	for path in Repo.engine_modules {
+		Path.copy!(Path.utf8(path), Path.utf8("${stage}/${path}"))?
+	}
+	for name in present.sort_with_reversed(compare_str) {
+		# `-d` first: `patch` reads the file relative to the stage.
+		reversed = run!("patch", ["-s", "-t", "-R", "-p1", "-d", stage, "-i", "../../${dir}/${name}"])?
+		if !reversed.is_empty() {
+			return Ok(["${dir}/${name} does not reverse-apply to the engine modules: they differ from roc-signals' files plus the series (${dir}/README.adoc)"])
+		}
+	}
+	computed = Cmd.new("shasum").args(["-a", "256"].concat(Repo.engine_modules.map(|path| "${stage}/${path}")).map(OsStr.from_str)).capture!()?
+	note!("${present.len().to_str()} engine patches reverse-apply to roc-signals' files")
+	Ok(Repo.digest_problems(recorded, computed, "${stage}/"))
 }
 
 fmt! : Bool => Try(List(Str), _)
@@ -252,7 +279,7 @@ examples! = |update, colour| {
 	for case in $cases {
 		$index = $index + 1
 		case_start = Monotonic.now!()
-		outcome = run_case!(case, update)?
+		outcome = run_case!(case, if (update) Update else Built)?
 		ms = Monotonic.elapsed!(case_start).to_millis()
 		label = match outcome {
 			Ok(Passed) => "PASS"
@@ -270,21 +297,46 @@ examples! = |update, colour| {
 		}
 	}
 	note!("Summary: ${$passed.to_str()} passed, ${($cases.len() - $passed).to_str()} failed in ${Repo.millis(Monotonic.elapsed!(start).to_millis())}")
+	# Roc's run mode, which `roc build` never exercises: a run shim import
+	# the stubs lack fails this link.
+	if !update {
+		match $cases.find_first(|case| case.example == "counter") {
+			Ok(case) => {
+				run_start = Monotonic.now!()
+				outcome = run_case!(case, RunMode)?
+				label = if (outcome.is_ok()) "PASS" else "FAIL"
+				note!(Repo.progress({ index: 1, total: 1, name: "counter/${case.name} via roc main.roc", outcome: Repo.paint(label, colour), ms: Monotonic.elapsed!(run_start).to_millis() }))
+				match outcome {
+					Ok(_) => {}
+					Err(problem) => {
+						$problems = $problems.append("counter/${case.name} via `roc main.roc`: ${problem}")
+					}
+				}
+			}
+			Err(_) => {
+				$problems = $problems.append("the counter has no recorded case to run through `roc main.roc`")
+			}
+		}
+	}
 	Ok($problems)
 }
 
-run_case! : { example : Str, name : Str, base : Str }, Bool => Try(Try([Passed, Recorded], Str), _)
-run_case! = |{ example, base, .. }, update| {
+## One recorded case: the built app (`Built`), recording its output when
+## `Update`, or `roc main.roc` in the example's directory (`RunMode`).
+run_case! : { example : Str, name : Str, base : Str }, [Built, Update, RunMode] => Try(Try([Passed, Recorded], Str), _)
+run_case! = |{ example, base, .. }, how| {
 	exe = "examples/${example}/${example}"
-	if !(Path.exists!(Path.utf8(exe))?) {
+	update = how == Update
+	if how != RunMode and !(Path.exists!(Path.utf8(exe))?) {
 		return Ok(Err("${exe} is not built: run `blueprint run build` first"))
 	}
 	steps = Path.read_utf8!(Path.utf8("${base}.script"))?.trim()
-	result = Cmd.new(OsStr.from_str(exe))
+	command = if (how == RunMode) Cmd.new("roc").args(["main.roc"]).cwd(Path.utf8("examples/${example}")) else Cmd.new(OsStr.from_str(exe))
+	result = command
 		.env("ROC_SCRIPT", OsStr.from_str(steps))
 		.stdin(Null)
 		.stderr(MergeWithStdout)
-		.timeout(Duration.seconds(60))
+		.timeout(Duration.seconds(if (how == RunMode) 600 else 60))
 		.run!()
 	output = match result {
 		Ok(done) => done

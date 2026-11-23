@@ -16,6 +16,7 @@ import Package
 ## ```sh
 ## roc macos.roc init my-app   # create an app
 ## roc macos.roc run           # build it and start it
+## roc macos.roc dev           # start it with hot reloading
 ## roc macos.roc build         # build my-app.app, on any system
 ## roc macos.roc test          # run its recorded cases
 ## roc macos.roc package       # dist/my-app-<version>.zip, to share
@@ -23,11 +24,11 @@ import Package
 MacOS :: [].{
 
 	## What the user asked for.
-	Command : [Help, CommandHelp(Str), Init(Str), Build(Meta.Fields), Run(Meta.Fields), Test({ update : Bool }), Package(Package.Options), CiPackage(Meta.Fields), CiRelease]
+	Command : [Help, CommandHelp(Str), Init(Str), Build(Meta.Fields), Run(Meta.Fields), Dev, Test({ update : Bool }), Package(Package.Options), CiPackage(Meta.Fields), CiRelease]
 
 	## The commands, in the order `help` lists them.
 	commands : List(Str)
-	commands = ["init", "build", "run", "test", "package", "ci"]
+	commands = ["init", "build", "run", "dev", "test", "package", "ci"]
 
 	## Run the tool on the arguments `roc macos.roc` passed it. Every failure
 	## is explained in a sentence on standard error and ends the program with
@@ -41,6 +42,7 @@ MacOS :: [].{
 			Ok(Init(dir)) => Init.run!(dir)
 			Ok(Build(chosen)) => App.build!(chosen).map_ok(|_| {})
 			Ok(Run(chosen)) => App.run!(chosen)
+			Ok(Dev) => App.dev!()
 			Ok(Test({ update })) => Cases.run!(update)
 			Ok(Package(chosen)) => Package.run!(chosen, Package.environment!()).map_ok(|_| {})
 			Ok(CiPackage(fields)) => Ci.package!(fields)
@@ -71,6 +73,7 @@ MacOS :: [].{
 			["package", .. as rest] => MacOS.options("package", rest, nothing).map_ok(|chosen| Package(chosen))
 			["ci", "package", .. as rest] => MacOS.options("ci package", rest, nothing).map_ok(|chosen| CiPackage(chosen.fields))
 			["ci", "release"] => Ok(CiRelease)
+			["dev"] => Ok(Dev)
 			["test"] => Ok(Test({ update: Bool.False }))
 			["test", "--update"] => Ok(Test({ update: Bool.True }))
 			[command, .. as extra] if MacOS.commands.contains(command) => Err(UnexpectedArguments({ command, extra }))
@@ -106,6 +109,7 @@ MacOS :: [].{
 		\\  roc macos.roc init [DIR]       Create an app in DIR, or in this directory.
 		\\  roc macos.roc build            Build the app, <name>.app, on any system.
 		\\  roc macos.roc run              Build it and start it, its output in this terminal.
+		\\  roc macos.roc dev              Start it with roc main.roc, which reloads it as you save.
 		\\  roc macos.roc test [--update]  Build it and run its recorded cases, tests/*.script.
 		\\  roc macos.roc package          Build it, sign it and zip it, as dist/<name>-<version>.zip.
 		\\  roc macos.roc ci package       Package it in CI, signing it as the secrets allow.
@@ -119,8 +123,9 @@ MacOS :: [].{
 		\\icon. `roc macos.roc COMMAND --help` describes a command.
 		\\
 		\\They need Roc as `roc`, on macOS, Linux or Windows; no Xcode is needed. The app
-		\\runs on Apple silicon Macs with macOS 11 or later, so run and test work only there.
+		\\runs on Apple silicon Macs with macOS 11 or later, so run, dev and test work only there.
 		\\This is roc-native-macos ${Bundle.version}, tested with Roc ${Bundle.roc_version}.
+		\\Documentation: https://lukewilliamboswell.github.io/roc-native-macos/apps.html
 
 	## Describe one command, without looking at the app or building anything.
 	command_usage : Str -> Str
@@ -161,6 +166,23 @@ MacOS :: [].{
 				\\It builds <name>.app as build does, then runs the program inside it, so dbg
 				\\output and crash reports appear here. Quit the app to return. It takes the
 				\\metadata flags build takes.
+			"dev" =>
+				\\Start the app with hot reloading, with its output in this terminal.
+				\\
+				\\Usage: roc macos.roc dev
+				\\
+				\\Run from the app's directory, containing main.roc, on an Apple silicon Mac.
+				\\It runs `roc main.roc` there: Roc builds the app with its development
+				\\backend and starts it, with no .app, and watches main.roc and the modules
+				\\it imports. When you save a change that compiles, Roc rebuilds the app and
+				\\swaps the new code in; press Command-R (Reload in the app menu) to remount
+				\\the window with it, which starts the state again. A change that does not
+				\\compile prints its errors and leaves the app running. Quit the app to return.
+				\\
+				\\The app finds its images in assets/ here. macos.json and the icon belong to
+				\\the .app, which dev does not make, so they do not apply here and dev takes
+				\\no metadata flags; run builds and starts the app as people will see it.
+				\\Variables such as ROC_SCRIPT and ROC_APPEARANCE reach the app as under run.
 			"package" =>
 				\\Build the app, sign it, and zip it as dist/<name>-<version>.zip, to share.
 				\\
@@ -233,6 +255,7 @@ MacOS :: [].{
 	synopsis = |command|
 		match command {
 			"init" => "Use it as `roc macos.roc init [DIR]`."
+			"dev" => "Use it as `roc macos.roc dev`, with no arguments; `roc macos.roc dev --help` describes it."
 			"build" | "run" => "Use it as `roc macos.roc ${command} [METADATA FLAGS]`; `roc macos.roc ${command} --help` lists the flags."
 			"package" => "Use it as `roc macos.roc package [--sign] [--notarize] [METADATA FLAGS]`; `roc macos.roc package --help` lists the flags."
 			"ci" | "ci package" => "Use it as `roc macos.roc ci package [METADATA FLAGS]` or `roc macos.roc ci release`; ci decides how to sign from the secrets that are set. `roc macos.roc ci --help` describes them."
@@ -267,7 +290,7 @@ MacOS :: [].{
 	explain : _ -> { text : Str, code : I32 }
 	explain = |problem|
 		match problem {
-			UnknownCommand(command) => { code: 2, text: "There is no command \"${command}\". The commands are init, build, run, test, package and ci; `roc macos.roc help` describes them." }
+			UnknownCommand(command) => { code: 2, text: "There is no command \"${command}\". The commands are init, build, run, dev, test, package and ci; `roc macos.roc help` describes them." }
 			UnexpectedArguments({ command, extra }) => { code: 2, text: "${command} does not take ${Str.join_with(extra.map(|a| "\"${a}\""), " ")}. ${MacOS.synopsis(command)}" }
 			BadField({ field, value, from }) => { code: if (from == Flag) 2 else 1, text: MacOS.bad_field(field, value, from) }
 			MetaMalformed({ line, expected }) => { code: 1, text: "${Meta.file} is not the JSON object the tool reads: on line ${line.to_str()} it expected ${expected}. It holds one object of text fields, such as { \"version\": \"1.2.0\" }." }
@@ -306,6 +329,8 @@ MacOS :: [].{
 				} else {
 					{ code: 1, text: "The recorded cases run the app, which runs only on an Apple silicon Mac, and this is ${system}, so test cannot run them here. `roc macos.roc build` builds the app on any system." }
 				}
+			DevNotAppleSilicon(system) => { code: 1, text: "dev starts the app, which runs only on an Apple silicon Mac, and this is ${system}, so it cannot start it here. `roc macos.roc build` builds the app on any system." }
+			DevFailed({ how, code }) => { code, text: "roc main.roc ${how}: its output is above." }
 			NoCases => { code: 1, text: "There are no recorded cases to run: tests/ holds no .script files. `roc macos.roc init` writes tests/increment.script as an example, and `roc macos.roc test --help` describes them." }
 			CasesFailed({ failed, total }) => { code: 1, text: "${failed.len().to_str()} of ${total.to_str()} recorded cases failed: ${Str.join_with(failed, ", ")}. If the app changed on purpose, record what it prints now with `roc macos.roc test --update`." }
 			AppFailed(how) => { code: 1, text: "The app ${how}: its output is above." }
@@ -344,8 +369,8 @@ metadata_help =
 
 ## Each command line names its command, with the defaults filled in.
 expect {
-	actual = [[], ["help"], ["init"], ["init", "my-app"], ["build"], ["run", "--id", "org.me.app", "--name", "My App"], ["test"], ["test", "--update"]].map(MacOS.parse)
-	expected = [Ok(Help), Ok(Help), Ok(Init(".")), Ok(Init("my-app")), Ok(Build(Meta.none)), Ok(Run({ ..Meta.none, id: "org.me.app", name: "My App" })), Ok(Test({ update: Bool.False })), Ok(Test({ update: Bool.True }))]
+	actual = [[], ["help"], ["init"], ["init", "my-app"], ["build"], ["run", "--id", "org.me.app", "--name", "My App"], ["dev"], ["test"], ["test", "--update"]].map(MacOS.parse)
+	expected = [Ok(Help), Ok(Help), Ok(Init(".")), Ok(Init("my-app")), Ok(Build(Meta.none)), Ok(Run({ ..Meta.none, id: "org.me.app", name: "My App" })), Ok(Dev), Ok(Test({ update: Bool.False })), Ok(Test({ update: Bool.True }))]
 	actual == expected
 }
 
@@ -431,4 +456,21 @@ expect {
 		Err(UnexpectedArguments({ command: "ci", extra: [] })),
 	]
 	actual == expected
+}
+
+## dev takes no arguments: the metadata flags belong to the .app, which it
+## does not make, and `--` with arguments after it is refused, not passed on.
+expect {
+	actual = [["dev", "--id", "org.me.app"], ["dev", "main.roc"], ["dev", "-h"]].map(MacOS.parse)
+	expected = [Err(UnexpectedArguments({ command: "dev", extra: ["--id", "org.me.app"] })), Err(UnexpectedArguments({ command: "dev", extra: ["main.roc"] })), Ok(CommandHelp("dev"))]
+	actual == expected
+}
+
+## dev elsewhere points at build; a failed run keeps roc's exit code.
+expect {
+	explained = [DevNotAppleSilicon("Linux"), DevFailed({ how: "exited with code 3", code: 3 })].map(MacOS.explain)
+	explained == [
+		{ code: 1, text: "dev starts the app, which runs only on an Apple silicon Mac, and this is Linux, so it cannot start it here. `roc macos.roc build` builds the app on any system." },
+		{ code: 3, text: "roc main.roc exited with code 3: its output is above." },
+	]
 }

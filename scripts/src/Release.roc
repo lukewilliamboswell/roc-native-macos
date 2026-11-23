@@ -173,6 +173,7 @@ Release := [].{
 		\\#
 		\\#     roc macos.roc init my-app    create an app in my-app/
 		\\#     roc macos.roc run            build it and start it
+		\\#     roc macos.roc dev            start it, reloading it as you save
 		\\#     roc macos.roc build          build my-app.app, on any system
 		\\#     roc macos.roc test           run its recorded cases, tests/*.script
 		\\#

@@ -315,7 +315,70 @@ of the whole file (`FileFailed(Unavailable)` for a range); and `File.save`
 opens a save panel with a suggested name. The app learns nothing of a save's
 outcome. Uploads, fetched files and pasted files are not built.
 
-Not built:: workers, ports and crypto keys, and hosted functions.
+Workers:: See xref:ui.adoc#workers[Workers] below.
+
+Not built:: ports and crypto keys.
+
+[#workers]
+== Workers
+
+A computation that would hold up the window runs as a worker task: a Roc
+function whose jobs run on a background thread, in an instance of the app
+of their own, while the window goes on answering. The API is roc-signals'
+`Worker` module, unchanged.
+
+[source,roc]
+----
+import pf.Engine
+import pf.Files
+import pf.Worker
+
+## A task: a namespaced name and what a job does with its input.
+count : Worker.Task(Str, U64, Worker.Never)
+count = Worker.task({ name: "example.org/words/count", run!: |text| Ok(text.split_on(" ").len()) })
+
+## Register every task once, on the program.
+main = Engine.program_store({}, |_| store, |_| view()).with_workers([count.registration()])
+
+## Ask for a job from a watch site; the answer is a result like any other.
+Engine.watch_latest(cells.text.signal(), |text| [count.ask(text)], Engine.react(|_, res| [cells.words.set(res ?? 0)]))
+----
+
+* A task's input, output and error cross as bytes the compiler derives from
+  their types (`Wire.Sendable`: numbers, `Bool`, `Str`, lists, sets,
+  dictionaries, records, tuples, tags and `File` handles). Send bulk bytes
+  as `Wire.Bytes`. A task that cannot fail names its error `Worker.Never`.
+* The answer is `Try(output, Worker.Error(error))`: `Failed(error)` is the
+  task's own; `Timeout`, `Refused`, `TooDeep`, `NanKeys`, `TooManyFiles`
+  and `Lost(fault)` are the platform's. A job that crashes is
+  `Lost(AppCrash)` (or `Contract`, `OutOfMemory`, …): only that job is lost,
+  the app keeps running, and the next job runs in a fresh instance.
+* `Worker.resource`, `Worker.resource_when` and `Worker.gather` follow a
+  task's answers for an input, or for one job per shard; `watch_latest` and
+  `ask` work as for any effect. A new input stops the job for the old one.
+* `timeout: Ms(n)` stops a job that has not answered in `n` ms (`Timeout`).
+  `on_cancel: Stop`, the default, stops a cancelled job's worker;
+  `on_cancel: Finish` lets the job complete and drops its answer, keeping
+  the worker and any prepared state. `on_dispose: Keep` keeps a job running
+  when its site goes.
+* `Worker.preparation` and its `task`s share an expensive first step: a
+  worker that prepared an input may keep the state and answer later
+  questions over the same input from it.
+
+What a job may do:: Compute, and call the job effects on the files its
+input holds: `file.read!(range)`, `file.contents!()` and
+`file.contents_utf8!()` read; `Files.build!({ name, mime, start_from })`
+opens a builder, and `append!`, `append_file!` and `finish!` write a new
+file the answer may hold, which the page can read, digest and save like a
+file the user gave it. A builder never outlives its job, and a job may
+append at most 256 MiB. A job cannot wait for a timer, an event or the
+network, and the window sees nothing of it until it answers. These effects
+are only for jobs: page code cannot call them.
+
+The pool:: One worker per core but one, from one to eight. Jobs beyond
+that wait their turn; a stopped job's worker is replaced. `ROC_WORKERS=N`
+sets the size, and a test's `pool:N` step does too
+(xref:apps.adoc#test-an-app[Steps]).
 
 == The environment at launch
 

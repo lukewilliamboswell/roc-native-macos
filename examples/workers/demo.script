@@ -1,0 +1,8 @@
+wait:800
+choose:Fast;click:Draw;wait:900
+choose:Fine;click:Zoom In;wait:1500
+click:Zoom In;wait:1500
+choose:Extreme;click:Draw;wait:1800
+click:Cancel;wait:800
+choose:Fine;click:Reset;wait:2000
+quit

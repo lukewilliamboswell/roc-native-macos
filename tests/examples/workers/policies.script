@@ -1,0 +1,1 @@
+pool:2;choose:Lab;click:Slow job;wait:300;click:Cancel;wait:100;workers;click:Timed job;wait:3000;workers;dump;quit

@@ -60,8 +60,14 @@ extension Host {
                     control.selectedSegment = Host.choices(n.attrs["choices"]).firstIndex(of: arg) ?? -1
                     segmentChanged(control)
                 }
+            case "select" where arg.hasPrefix("#"):
+                // `select:#k`: the k-th row (from 1) of the first list.
+                guard let box = firstList(), let k = Int(arg.dropFirst()), k >= 1, k <= box.rows.count else { fatal("script: no list row \(arg)") }
+                box.select(box.rows[k - 1])
             case "select":
-                // The list row holding a text exactly `arg`.
+                // The list row holding a text exactly `arg` (built, if
+                // the list has not shown it yet, to be searched).
+                firstList()?.rows.forEach(materialize)
                 guard let row = find({ n in n.parent?.view is ListBox && n.name != nil && n.contains { $0.textContent == arg && $0.name != nil } }),
                       let box = row.parent?.view as? ListBox
                 else { fatal("script: no list row \(arg)") }
@@ -84,6 +90,14 @@ extension Host {
                 let prevented = deliverKey(down: true, key: name, code: code, flags: flags, target: nil, inText: false)
                 _ = deliverKey(down: false, key: name, code: code, flags: flags, target: nil, inText: false)
                 say("key \(arg)\(prevented ? " (heard)" : "")")
+            case "pool":
+                // `pool:N`: at most N worker threads, so a recorded case runs
+                // the same on any machine. Before the first job.
+                guard let n = Int(arg), n >= 1, work.slots.isEmpty else { fatal("script: pool:\(arg) needs a count of at least 1, before any job runs") }
+                work.limit = n
+            case "workers":
+                // The pool's counts so far.
+                say(work.summary)
             case "hover":
                 // The pointer to the middle of a hover target: the one whose
                 // text is `arg`, or with `#k` the k-th in the tree.
@@ -121,6 +135,22 @@ extension Host {
                 }
                 move(0)
                 return
+            case "phase":
+                // `phase:NAME`: `stats` reports the operations from here on
+                // as `KIND/NAME`, apart from the earlier ones.
+                guard let bench else { fatal("script: phase needs ROC_BENCH=1") }
+                bench.phase = arg
+            case "scroll":
+                // `scroll:k`: the first list scrolled so that its row k
+                // (from 0) is at the top, as a person scrolling would leave
+                // it; with `ROC_BENCH=1` the scroll, the views it makes and
+                // its drawing are one `scroll` operation.
+                guard let box = firstList(), let k = Int(arg), k >= 0, k < max(box.table.numberOfRows, 1) else { fatal("script: no list row \(arg) to scroll to") }
+                bench?.begin(.scroll)
+                bench?.engine(0)
+                box.scroll(toRow: k)
+                window.contentView?.layoutSubtreeIfNeeded()
+                bench?.end(self)
             case "stats":
                 // `ROC_BENCH=1`'s timings so far, on stdout.
                 guard let bench else { fatal("script: stats needs ROC_BENCH=1") }
@@ -133,6 +163,12 @@ extension Host {
             case "dump":
                 let size = window.contentView?.frame.size ?? .zero
                 say("--- \(Int(size.width))x\(Int(size.height))"); dump(root, 0)
+            case "reload":
+                // Reload, as Cmd-R does; the rest of the script drives the
+                // fresh engine.
+                guard let fresh = (NSApp.delegate as? AppDelegate)?.reload() else { fatal("script: reload found no engine to reload") }
+                fresh.run(script: steps.joined(separator: ";"))
+                return
             case "quit":
                 NSApp.terminate(nil)  // through teardown (effects, then the engine), as a person quitting would
             default:
@@ -158,6 +194,16 @@ extension Host {
         return content.convert(NSPoint(x: p.x, y: content.isFlipped ? p.y : content.bounds.height - p.y), to: nil)
     }
 
+    /// The first list's view, found without walking its rows.
+    func firstList() -> ListBox? {
+        func search(_ n: Node) -> ListBox? {
+            if let box = n.view as? ListBox { return box }
+            for child in n.children { if let found = search(child) { return found } }
+            return nil
+        }
+        return search(root)
+    }
+
     func find(_ test: (Node) -> Bool) -> Node? {
         var found: Node?
         root.walk { if found == nil, test($0) { found = $0 } }
@@ -174,7 +220,7 @@ extension Host {
         }
         switch n.view {
         case let s as NSStackView where n.name != nil:
-            say("\(pad)\(name) [\(s.arrangedSubviews.count) views]")
+            say("\(pad)\(name) [\((s as? Stack)?.shownCount ?? s.arrangedSubviews.count) views]")
             for c in n.children where c.name != nil || !c.text.isEmpty { dump(c, depth + 1) }
         case let box as ScrollBox:
             say("\(pad)\(name) [\(box.stack.arrangedSubviews.count) views, \(Int(box.frame.height))pt high]")

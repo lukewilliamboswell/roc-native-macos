@@ -36,11 +36,12 @@ roc macos.roc run
 
 `init` writes a counter app, `main.roc`, whose header names the platform
 release, and two recorded runs of it in `tests/`. `run` builds `counter.app`
-and starts it. Edit `main.roc` and run it again; `roc macos.roc build` builds
-the app on any system, and `roc macos.roc test` runs its recorded cases.
-`roc macos.roc package` zips the app for people to download, signed and
-notarized with a Developer ID if you have one, and the workflow `init` writes
-does that on GitHub when you push a tag ([Ship your app](docs/apps.adoc#ship-your-app)).
+and starts it. While you edit `main.roc`, `roc macos.roc dev` runs the app
+with hot reloading: it rebuilds as you save, and Command-R shows the new code.
+`roc macos.roc build` builds the app on any system, and `roc macos.roc test`
+runs its recorded cases. `roc macos.roc package` zips the app for people to
+download, signed and notarized with a Developer ID if you have one, and the
+workflow `init` writes does that on GitHub when you push a tag ([Ship your app](https://lukewilliamboswell.github.io/roc-native-macos/apps.html#ship-your-app)).
 
 An app is one `main.roc`. A smaller counter than the one `init` writes:
 
@@ -73,8 +74,8 @@ view = |count|
 	)
 ```
 
-[Build an app](docs/apps.adoc) covers the tool, writing an app, testing it
-with recorded runs, and shipping it. [The `Ui` reference](docs/ui.adoc) lists
+[Build an app](https://lukewilliamboswell.github.io/roc-native-macos/apps.html) covers the tool, writing an app, testing it
+with recorded runs, and shipping it. [The `Ui` reference](https://lukewilliamboswell.github.io/roc-native-macos/ui.html) lists
 every builder with its signature, what it draws and the events it sends.
 Both are chapters of [the manual](https://lukewilliamboswell.github.io/roc-native-macos/)
 ([PDF](https://lukewilliamboswell.github.io/roc-native-macos/roc-native-macos.pdf)).
@@ -83,7 +84,7 @@ Both are chapters of [the manual](https://lukewilliamboswell.github.io/roc-nativ
 
 Each example is a complete app. To try one, download the examples archive
 from the [latest release](https://github.com/lukewilliamboswell/roc-native-macos/releases/latest)
-and run it with `macos.roc`, as [Try an example](docs/apps.adoc#try-an-example)
+and run it with `macos.roc`, as [Try an example](https://lukewilliamboswell.github.io/roc-native-macos/apps.html#try-an-example)
 describes.
 
 <table>
@@ -100,10 +101,11 @@ describes.
 <tr>
 <td width="33%" valign="top"><a href="examples/file-inspector/"><img src="docs/images/file-inspector.gif" width="100%" alt="The file-inspector example running"></a><br><a href="examples/file-inspector/"><code>file-inspector</code></a>: dropped files: sizes, digests, previews</td>
 <td width="33%" valign="top"><a href="examples/about/"><img src="docs/images/about.gif" width="100%" alt="The about example running"></a><br><a href="examples/about/"><code>about</code></a>: images from the app's assets, and its icon</td>
+<td width="33%" valign="top"><a href="examples/workers/"><img src="docs/images/workers.gif" width="100%" alt="The workers example running"></a><br><a href="examples/workers/"><code>workers</code></a>: Roc jobs on background threads, with Cancel</td>
 </tr>
 </table>
 
-[What each example shows](docs/apps.adoc#the-examples) lists the API each one
+[What each example shows](https://lukewilliamboswell.github.io/roc-native-macos/apps.html#the-examples) lists the API each one
 uses.
 
 ## Contributing

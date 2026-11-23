@@ -8,24 +8,37 @@ the live timers are the trail. A reactive UI draws nothing between events,
 so this measures three things: how many elements the platform holds, what
 one event costs at that size, and what many short-lived timers cost.
 
-*In short:* once a batch that only repaints skips layout, a hover answers
-in under 1 ms up to 2,500 cells and about 4 ms at 10,000, and the trail
-behaves at every size. The ceiling is opening the window: 10,000 cells
-take 13–30 s and over a GB, and 22,500 never opened (killed in Auto Layout
-at 3.4 GB). The engine's quadratic mount and Auto Layout are the walls;
-see <<where-it-breaks>>.
+*In short:* a hover answers in about 0.2 ms at every size up to 250,000
+cells (two engine turns of 0.1 ms or less, no layout), and the trail behaves
+at every size. Opening the window is the ceiling: 10,000 cells open in
+0.45 s and 177 MB, 100,000 in 4.9 s and 1.2 GB, 250,000 in 22 s and 2.2 GB.
+Since stacks of fixed-size cells are placed by frame, Auto Layout is out of
+it; what remains is AppKit's cost per `NSView`, which grows with the number
+of views (<<where-it-breaks>>). A million cells (N=1000) is not a
+reasonable target for one view per cell; see <<ceiling>>.
 
 It is a harness, not an example. The gate's `bench` stage builds it and runs
 `run.sh --smoke`: a 4×4 grid and a 12-move sweep, which fails unless the
 cells were hovered and every trail timer has cooled. That keeps it from going
-stale without putting any load on the gate.
+stale without putting any load on the gate. `--smoke` then checks that mount
+and turns scale: it mounts N=20 and N=60 (400 and 3,600 cells) and sweeps
+40 moves across each. It fails if the larger mount engine time is more
+than 27 times the smaller (9 times the cells, so 3 times the linear
+expectation; the smaller time is floored at 2 ms; a quadratic mount gives
+about 87), or if the hover turns' engine p50 at N=60 is more than 4 times
+N=20's (a turn should not grow with the cells; the smaller is floored at
+0.1 ms, the host's resolution; before engine patch 0003 the ratio was
+about 7 to 9, 0.1 against 0.7 to 0.9 ms, and it is now 1). Engine patches
+0001 and 0002 (`patches/roc-signals`) made mount linear and 0003 made
+turns independent of the grid, all by working around compiler behaviour,
+and this keeps them from regressing silently. `NO_SCALING=1` skips both.
 
 == Running it
 
 [source,sh]
 ----
 blueprint run build -- --platform   # the host, once
-bench/grid/run.sh                # N = 10 32 100 316 1000
+bench/grid/run.sh                # N = 10 32 100 150 200 316
 bench/grid/run.sh 50 70          # other sizes
 bench/grid/run.sh --smoke        # what the gate runs
 TIMEOUT=600 bench/grid/run.sh 100
@@ -63,8 +76,10 @@ means turns took longer than the 10 ms between moves.
 yourself. Under `ROC_BENCH=1` (and only then) the host draws a small panel
 over the window's top-right corner, refreshed twice a second from a host
 timer, never through the engine, so it does not perturb what it shows. It
-sits in the window's frame view, outside the content's layout. Over the
-last second:
+is a borderless child window that never becomes key and lets the mouse
+through, so it is outside the content's layout and hit testing (and a
+`screencapture -l` of the app's window leaves it out). Over the last
+second:
 
 * *event→paint*, p50 and p95: from the mouse event's timestamp to the end
   of the forced display that drew its answer, which is what a person feels
@@ -84,119 +99,134 @@ last second:
 The grid size is fixed per launch: relaunch at another N rather than switch
 in the app. A switch would be cheap to write (`Engine.switch` over the
 sizes) but measures badly: the engine evaluates every branch's description
-at mount (1.2 s for the million-cell one), and remounting at 10,000 cells
-or more takes as long as the first mount (the quadratic copy below).
+at mount (1.2 s for the million-cell one), and remounting takes as long as
+the first mount.
 
 == Results
 
-Apple M-series, 8 cores, 16 GB, macOS 26.3, `roc` 0.1.0 RC1, measured 2026-11-23
-on a machine that was also building other worktrees (load average 8 to 50),
-so treat the numbers as ±30% (more for the slow mounts). Times are
-p50/p95/max in ms. "Before" is the
-host as it was (commit 9740c54), "after" with the layout pass skipped for a
-batch that only repaints (85a0951).
+Apple M-series, 8 cores, 16 GB, macOS 26.3, `roc` 0.1.0 RC1, measured
+2026-11-23 with engine patches 0001–0003, on a machine also building other
+worktrees (load average 3 to 6 for the "after" runs, up to 9 for the
+"before" ones), so treat the numbers as ±20%. "Before" is the host at
+df14a67, which arranged every stack with NSStackView and drew every box
+into a backing store; "after" places stacks of fixed-size children by
+frame and gives a box's fill to its layer (this branch). First display is
+from `main` to the window drawn, with the mount's engine / apply / layout
+time; a hover move is one pointer move's leave and enter turns, p50 / p95
+in ms (engine and display are each 0.1 ms or less).
 
-[cols="1,1,1,2,1,3,3,1",options="header"]
+[cols="1,1,1,2,1,2,1,2,1",options="header"]
 |===
-| N | Cells | Views | First display (mount engine / layout) | Peak RSS | Hover move, before | Hover move, after (engine / apply / layout / display) | Result
+| N | Cells | Views | First display, before | Peak RSS, before | First display, after (engine / apply / layout) | Peak RSS, after | Hover move, after | Sweep, after
 
-| 10 | 100 | 116 | 98 ms (2 / 9) | 72 MB | 15 / 19 / 19, almost all layout | 0.2 / 0.5 / 0.5 (0.1 / 0.1 / 0 / 0.1) | pass
-| 32 | 1,024 | 1,062 | 0.28 s (49 / 101) | 140 MB | 52 / 53 / 96, almost all layout | 0.3 / 0.3 / 0.4 (0.1 / 0.1 / 0 / 0.0) | pass
-| 50 | 2,500 | 2,556 | 1.2 s (0.44 s / 0.56 s) | 252 MB | not measured | 0.7 / 0.9 / 0.9 (0.5 / 0.1 / 0 / 0.1) | pass
-| 70 | 4,900 | 4,976 | 4.8 s (3.0 s / 1.5 s) | 593 MB | not measured | 1.2 / 1.4 / 1.7 (1.1 / 0.1 / 0 / 0.1) | pass, slow to open
-| 100 | 10,000 | 10,106 | 13–30 s (9.7–23 s / 3.2–5.8 s) | 1.3–1.7 GB | 2,140 / 2,155 / 2,155, almost all layout; the 2 s sweep had not finished after 15 min | 3.0 / 3.4 / 3.8 (2.8 / 0.1 / 0 / 0.1) | slow to open, then usable
-| 150 | 22,500 | – | never: killed (SIGKILL, twice, after 145 s and 175 s) in the mount's first Auto Layout pass, with RSS climbing from 0.5 to 3.4 GB on a 16 GB machine under memory pressure | 3.4 GB+ | – | – | fail (killed)
-| 316 | 99,856 | – | never: still in the mount's engine call after 600 s (RSS steady near 0.5 GB) | – | – | – | fail (timeout)
-| 1000 | 1,000,000 | | not run: 316 already failed | | | | not run
+| 10 | 100 | 116 | 0.16 s (layout 10 ms) | 73 MB | 0.12 s (2 / 2 / 3 ms) | 69 MB | 0.2 / 0.5 | on time
+| 32 | 1,024 | 1,062 | 0.25 s (layout 112 ms) | 136 MB | 0.13 s (10 / 16 / 11 ms) | 79 MB | 0.1 / 0.2 | on time
+| 50 | 2,500 | 2,556 | 0.56 s (layout 391 ms) | 258 MB | – | – | – | –
+| 100 | 10,000 | 10,106 | 3.5 s (layout 3.16 s) | 1.6 GB | 0.45 s (79 / 145 / 92 ms) | 177 MB | 0.2 / 0.2 | on time
+| 150 | 22,500 | 22,656 | never: killed in the first Auto Layout pass at 3.4 GB | 3.4 GB+ | 0.90 s (175 / 342 / 212 ms) | 312 MB | 0.1 / 0.2 | on time
+| 200 | 40,000 | 40,206 | not run (150 failed) | – | 1.6 s (309 / 669 / 402 ms) | 498 MB | 0.2 / 0.4 | +12%
+| 316 | 99,856 | 100,178 | never (as 150) | – | 4.9 s (0.88 / 2.50 / 1.01 s) | 1.2 GB | 0.2 / 0.2 | +17%
+| 500 | 250,000 | 250,506 | – | – | 22 s (1.9 / 16.2 / 2.7 s) | 2.2 GB | 0.1 / 0.3 | +25%
+| 1000 | 1,000,000 | | – | – | not run: projected several minutes and about 9 GB (below) | | |
 |===
 
-The HUD's event→paint latency during the scripted sweep, after the fix:
-p50 0.5 ms and p95 0.5 ms at 1,024 cells, p50 3.9 ms and p95 5.5 ms at
-10,000 (one more display refresh to reach the glass).
+The sweep column is how much longer the scripted sweep took than planned
+(10 ms a move): the main thread's other work between moves, mostly Core
+Animation committing the frame. Before the box drew through its layer, the
+N=316 sweep took twice its plan (13.6 s for 6.3 s), with the main thread in
+`CA::Transaction::commit` redrawing backing stores.
 
-A hover move is the leave and enter turns of one pointer move (two engine
-turns, one layout); a timer turn, cooling one cell, costs about half a
-move's engine time (1.4 ms at 10,000 cells). The trail behaves: the live
-timers peak at the trail's length (3 at N=10, 8 at N=32, 21 at N=100, for
-500 ms of a 2 s sweep), never at N², and fall to 0 once it cools; every
-cell entered was cooled by its own timer, and re-entering a hot cell
-cancels its earlier timer (`watch_latest`).
+The steps between "before" and "after", at N=100: placing fixed-size
+stacks by frame took the mount's layout from 3.16 s to 0.36 s and RSS from
+1.6 GB to 0.61 GB; taking the framed children out of Auto Layout altogether
+(no autoresizing constraints) took layout to 0.09 s and RSS to 0.45 GB;
+drawing boxes through their layers took RSS to 0.18 GB.
+
+A hover move is engine-bound and tiny at every size: the host's side of a
+turn that only repaints is the commands it applies (0.1 ms), a hit test
+that searches each framed stack by position instead of trying every child,
+and a forced display of the dirty cells (0.1 ms). Nothing walks the views
+or nodes per turn: `sync` returns at once for a batch with no structural,
+text or layout change, the HUD recounts views only after a turn that laid
+the window out, and `stats` counts them only when asked. A turn that does
+change structure or text still walks the node tree outside lists once
+(`layoutPass`, finding scroll areas); the grid has no such turn.
+
+The trail behaves: the live timers peak at the trail's length (3 at N=10, 8
+at N=32, about 22 from N=100 up, for 500 ms of the sweep), never at N², and
+fall to 0 once it cools; every cell entered was cooled by its own timer,
+and re-entering a hot cell cancels its earlier timer (`watch_latest`).
 
 [#where-it-breaks]
 == Where it breaks, and why
 
-There are three costs, and each has its own cliff.
-
 Layout on every turn (fixed):: Before 85a0951 every batch, even one that
-only changed a cell's fill, ran the host's whole layout pass: it walked the
-node tree, laid the window out twice and measured its fitting size.
-`sample` of a 10,000-cell hover turn puts 99% of it in
-`-[NSView systemLayoutSizeFittingSize:…]` →
-`_populateEngineWithConstraintsForViewSubtree:forComputingFittingSizeOfView:`,
-which builds a fresh Auto Layout solver over every view's constraints
-(`NSLayoutConstraint _addToEngine:`, `expression_merge`, `NSBitSet…` in
-CoreAutoLayout). That is 15 ms at 100 views, 52 ms at 1,000 and 2.1 s at
-10,000: the platform stopped being interactive near 1,000 elements. A batch
-that sets only `fill`, `border`, `radius` or `color` and changes no
-structure or text now skips the pass and is only drawn. After it a hover
-move is engine-bound at every size measured.
+only changed a cell's fill, ran the host's whole layout pass, which builds
+a fresh Auto Layout solver over every view's constraints (2.1 s per hover
+at 10,000 cells). A batch that sets only `fill`, `border`, `radius` or
+`color` and changes no structure or text skips the pass and is only drawn.
 
-The engine's mount is quadratic (open):: Mounting static boxes alone takes
-28 ms of engine time for 1,024 cells, 140 ms for 2,500, 1.2 s for 4,900 and
-6.4 s for 10,000 (time grows as cells^2.4), with a peak RSS of 1.65 GB.
-`sample` puts about 85% of it in `memcpy` under `list.RocList.reallocate`
-(and most of the rest in freeing the old buffers: `free_medium`, `madvise`);
-`lldb` on a `--debug` build places that `reallocate` in a `List.append`
-inside `mount_elem` (Core.roc:5275, the recursive mount of an element's
-children) on the command buffer (`put_u32`/`put_str`, Core.roc:4474–4482,
-called through `emit_op`). The appends take the copying path, so the
-command buffer is not uniquely referenced when they run: each one that has
-to grow copies the whole buffer, which is megabytes at 10,000 cells. Two
-guesses at the extra reference (the `describe` closures capturing the
-block, and the `var` loops threading `Tx`) were tried in a scratch copy of
-the engine and changed nothing; the fix belongs in roc-signals (or the Roc
-compiler's ownership inference), and the engine here is a verbatim copy.
-This is the cliff for opening the window: 10,000 cells take 10–15 s, and
-100,000 had not opened after 10 minutes.
+The engine's mount was quadratic (fixed):: Mounting copied the whole
+command buffer on every append that grew it (6.4 s of engine time at 10,000
+cells). Engine patches 0001 and 0002 (`patches/roc-signals`) made it
+linear: about 8 µs a cell now (79 ms at 10,000, 0.88 s at 100,000, 1.9 s
+at 250,000). The `--smoke` mount-scaling check guards it.
 
-The engine's turn is linear in the grid (open):: After the layout fix a
-turn costs 0.05 ms at 100 cells, 0.15 ms at 1,024 and 1.4–1.9 ms at 10,000:
-about 0.15–0.2 µs per cell per turn, though a turn writes one cell's local
-state and changes one attribute. The samples show reference-count traffic
-(`roc_llvm_rc_incref`/`decref`) and some copying across the whole site
-tree. Projected, a turn would cost 15–20 ms at 100,000 cells (just within
-a frame per move) and 150–200 ms at a million.
+The engine's turn was linear in the grid (fixed):: Each turn copied the
+root site's child list (a 2.4 MB `memcpy` at 10,000 cells, 2.5 ms a hover),
+because an erased call borrowed the site's captures. Engine patch 0003
+(`patches/roc-signals`, `patches/roc-compiler` "erased-captures") fixed it:
+a hover's engine time is 0.1 ms (p50) at every size measured, up to
+250,000 cells, and the `--smoke` turn-scaling check guards it.
 
-AppKit's own cost (the next wall):: The mount's layout (NSStackView and
-Auto Layout solving each cell's fixed width and height and the stacks'
-arrangement constraints) is 0.1 s at 1,000 views and 3.2–3.7 s at 10,000,
-superlinear, and its memory grows faster still: at 22,500 views the first
-`layoutSubtreeIfNeeded` (`updateConstraintsIfNeeded`, `NSBitSetFindNext`,
-`__bzero` in CoreAutoLayout) took RSS from 0.5 to 3.4 GB before the process
-was killed. That, not the engine, is what stopped N=150. Even with the
-engine fixed, a million stack-arranged NSViews is not a reasonable target.
-Drawing is not a problem: one cell's repaint is under 0.1 ms.
+Auto Layout at mount (fixed):: NSStackView arranged every cell with
+constraints, and the first `layoutSubtreeIfNeeded` solved them all: 3.2 s
+at 10,000 views, and at 22,500 the solver (`updateConstraintsIfNeeded`,
+`NSBitSetFindNext` in CoreAutoLayout) took RSS past 3.4 GB before the
+process was killed. A stack whose children all have fixed sizes now places
+them by frame (`host/Frames.swift`, rule in `docs/architecture.adoc`),
+and the cells it places are not in Auto Layout at all: AppKit gives every
+view that translates its autoresizing mask four constraints of its own
+(`NSViewSetAutoresizingConstraints`), which alone was 40,000 constraints
+and most of the remaining time at 10,000 cells, so an empty box or an inner
+framed stack keeps neither. Only the outermost stack of the grid takes part
+in Auto Layout, with its total as its content size.
 
+Backing stores (fixed):: Each box drew its fill in `draw(_:)`, so Core
+Animation kept a backing store per box: at 100,000 boxes, 99,868 regions
+and 1.5 GB (`vmmap`), and seconds of `CA::Transaction::commit` redrawing
+them after the mount. A box's fill and solid border are now its layer's
+properties (`updateLayer`), with no backing store.
+
+AppKit's cost per view (the wall now):: With the engine and Auto Layout out
+of the way, the mount's host time is creating the views, and it grows
+faster than the views: apply is 15 µs a cell at 10,000, 25 µs at 100,000
+and 65 µs at 250,000. `sample` at N=316 puts about 70% of apply in
+`-[NSView initWithFrame:]` → `_commonAwake` →
+`-[NSNotificationCenter addObserverForName:object:queue:usingBlock:]`:
+every `NSView` registers a notification observer as it is made, and
+adding to a registrar that already holds 100,000 observers moves their weak
+references (`objc_moveWeak`, `weak_entry_for_referent`). The host cannot
+avoid it except by making fewer views. Memory is about 9 KB a cell at
+250,000 (12 KB at 100,000): the `NSView` and its `CALayer`, the host's
+node, and the engine's site and state. The rest of the mount is the
+engine (8 µs a cell) and the window's layout (about 10 µs a cell, mostly
+AppKit sizing and positioning the views).
+
+[#ceiling]
 == What would move the ceiling, by payoff
 
-. *Fix the engine mount's copying* (roc-signals): turns 10,000 cells from
-  10–15 s into what the linear part costs (about 0.3 s, extrapolating from
-  1,024 cells), and is the precondition for anything past 10,000. Payoff:
-  very large; cost: find the shared reference in `mount_elem`/`emit_op`.
-. *Make the engine's turn independent of the grid* (roc-signals): route an
-  event to its site without touching the others. Payoff: turns at a million
-  cells from about 200 ms to the 0.1 ms of a small grid.
-. *A canvas element* (`Ui.canvas` or `Ui.grid`: one view drawing N×N cells
-  from a list signal, one CALayer or one `draw(_:)`, hit-testing by
-  arithmetic): no NSView, constraint or engine element per cell, so a
-  million cells is a few MB and a repaint of one cell's rect. Payoff: the
-  only way to a million cells; cost: a new element and a cell-addressed
-  wire shape (a row of a table per cell).
-. *Fixed frames for fixed-size children* (host): a stack whose children all
-  have fixed sizes could place them by frame, without NSStackView's
-  constraints, removing most of the 3.2 s of mount layout at 10,000 and the
-  gigabytes of solver memory that killed 22,500.
-  Payoff: large for mount and memory (it is the wall right after the
-  engine's); cost: a second layout path in the host.
-. *Virtualise* (as `Ui.list` does for rows): build only the cells in sight.
-  Payoff: large for a scrolled grid, none for one that fits the window.
+. *A canvas or collection element* (`Ui.grid`): one view per visible
+  cell, or one view drawing all of them. An `NSCollectionView` (see
+  `bench/rows/README.adoc`) makes item views only for the cells in sight
+  and reuses them, so a million cells costs the visible few hundred views
+  plus one engine row per cell; a canvas (one layer, hit testing by
+  arithmetic) costs no view per cell at all. Payoff: the only way to a
+  million cells; NSView's per-view cost above rules out one view a cell.
+. *Window the engine's rows* (as `table_view`'s `window` allows): build
+  only the cells in sight in the engine too, for a grid larger than the
+  window. Payoff: engine mount and memory proportional to the visible
+  cells.
+. *Fewer views per cell*: each cell here is one view (the hover wrapper has
+  none); a cell with a label inside a box is two or three. Framed stacks
+  already add no constraints, so the cost is the views themselves.

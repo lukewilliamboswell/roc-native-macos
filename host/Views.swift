@@ -77,7 +77,17 @@ enum Stroke {
 /// appearance, so a semantic or adaptive colour follows light and dark mode.
 class Surface: NSView {
     var fill: NSColor = .clear { didSet { needsDisplay = true } }
-    var border: Stroke = .none { didSet { needsDisplay = true } }
+    var border: Stroke = .none {
+        didSet {
+            // Drawn from here on: the layer stops drawing its own fill.
+            if case .dashed = border, let layer {
+                layer.backgroundColor = nil
+                layer.borderWidth = 0
+                layer.cornerRadius = 0
+            }
+            needsDisplay = true
+        }
+    }
     var radius: Double = 8 { didSet { needsDisplay = true } }
     private(set) var child: NSView?
     private var pins: [NSLayoutConstraint] = []
@@ -89,6 +99,8 @@ class Surface: NSView {
 
     init() {
         super.init(frame: .zero)
+        wantsLayer = true
+        layerContentsRedrawPolicy = .onSetNeedsDisplay
     }
 
     required init?(coder: NSCoder) { fatal("Surface is not archived") }
@@ -114,6 +126,36 @@ class Surface: NSView {
             bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: insets[2]),
         ]
         NSLayoutConstraint.activate(pins)
+    }
+
+    /// A fill and a solid border are the layer's own properties: no
+    /// backing store to draw into, which at 100,000 boxes was 1.5 GB of
+    /// Core Animation memory and most of the first frame's time. A dashed
+    /// border is drawn (`draw(_:)`).
+    override var wantsUpdateLayer: Bool {
+        if case .dashed = border { return false }
+        return true
+    }
+
+    override func updateLayer() {
+        guard let layer else { return }
+        var lineWidth: Double = 0
+        var stroke = NSColor.clear
+        if case let .solid(color, width) = border {
+            lineWidth = width
+            stroke = color
+        }
+        // As `draw(_:)` strokes a path inset by half the line: the outer
+        // corner radius is the radius plus half the line.
+        layer.cornerRadius = radius + lineWidth / 2
+        layer.backgroundColor = fill.cgColor
+        layer.borderWidth = lineWidth
+        layer.borderColor = stroke.cgColor
+    }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        needsDisplay = true
     }
 
     override func draw(_ dirtyRect: NSRect) {
@@ -152,7 +194,7 @@ extension Host {
         let view: NSView
         switch name {
         case "ui-hstack", "ui-vstack", "ui-form", "ui-row":
-            let stack = NSStackView()
+            let stack = Stack()  // Frames.swift
             let horizontal = name == "ui-hstack" || name == "ui-row"
             stack.orientation = horizontal ? .horizontal : .vertical
             stack.alignment = horizontal ? .centerY : .leading
@@ -282,6 +324,7 @@ extension Host {
             case let other: fatal("squeeze \(other) is not standard, yield or resist")
             }
             view.setContentCompressionResistancePriority(priority, for: .horizontal)
+            if view is Stack { markChildren(n) }
         // Layout
         case (let stack as NSStackView, "spacing"), (let stack as NSStackView, "padding"),
              (let stack as NSStackView, "align"), (let stack as NSStackView, "distribution"):
@@ -714,6 +757,8 @@ extension Host {
         let natural = axis == .horizontal ? n.natural?.hugWidth : n.natural?.hugHeight
         view.setContentHuggingPriority(fills ? .init(1) : natural ?? .init(250), for: axis)
         if let parent = n.parent { markChildren(parent) }
+        // Whether a stack is framed depends on its own lengths.
+        if view is Stack { markChildren(n) }
     }
 
     /// Set (or, for nil, drop) one of a view's size constraints, by purpose:
@@ -734,7 +779,9 @@ extension Host {
             c = anchor.constraint(equalToConstant: value)
         }
         c.priority = priority
-        c.isActive = true
+        // A view its stack places by frame keeps the constraint for when
+        // it is arranged again (Frames.swift).
+        c.isActive = !framedViews.contains(id)
         constraints[id, default: [:]][key] = c
     }
 
@@ -761,9 +808,15 @@ extension Host {
         }
     }
 
-    func markChildren(_ n: Node) { dirty.append(n) }
+    /// Note that `n`'s children or text changed, once per layout pass
+    /// however many of them did (a list's million rows).
+    func markChildren(_ n: Node) {
+        if n.marked { return }
+        n.marked = true
+        dirty.append(n)
+    }
 
-    func markText(_ n: Node) { dirty.append(n) }
+    func markText(_ n: Node) { markChildren(n) }
 
     /// Bring every view touched by the batch up to date: a text-bearing
     /// control shows its subtree's text, a stack arranges its children's
@@ -777,15 +830,27 @@ extension Host {
     func sync() {
         guard relayout || !dirty.isEmpty else { return }
         relayout = false
-        var seen = Set<ObjectIdentifier>()
-        let pending = dirty
-        dirty = []
-        for start in pending {
-            // The nearest element with a view at or above the changed node.
-            var cursor: Node? = start
-            while let c = cursor, c.view == nil || c.name == nil { cursor = c.parent }
-            guard let owner = cursor, seen.insert(ObjectIdentifier(owner)).inserted else { continue }
-            refresh(owner)
+        // Deepest first, so a stack is arranged after the stacks inside it
+        // have decided whether they are framed and how big they are; one
+        // that changes marks its parent, which a later round arranges.
+        while !dirty.isEmpty {
+            var seen = Set<ObjectIdentifier>()
+            var owners: [(depth: Int, node: Node)] = []
+            let pending = dirty
+            dirty = []
+            for start in pending { start.marked = false }
+            for start in pending {
+                // The nearest element with a view at or above the changed node.
+                var cursor: Node? = start
+                while let c = cursor, c.view == nil || c.name == nil { cursor = c.parent }
+                guard let owner = cursor, seen.insert(ObjectIdentifier(owner)).inserted else { continue }
+                var depth = 0
+                var up = owner.parent
+                while let u = up { depth += 1; up = u.parent }
+                owners.append((depth, owner))
+            }
+            owners.sort { $0.depth > $1.depth }
+            for (_, owner) in owners { refresh(owner) }
         }
         var unsettled: [Box] = []
         let flexibleNow = layoutPass(root, &unsettled)
@@ -846,6 +911,9 @@ extension Host {
             box.finish(owner)
         case let surface as Surface:
             surface.hold(owner.children.first { $0.name != nil }.flatMap(shownView))
+            // A framed box that gains or loses its child changes how its
+            // stack places it (Frames.swift).
+            if framedViews.contains(ObjectIdentifier(surface)), let parent = owner.parent { markChildren(parent) }
         case let button as NSButton where owner.name == "ui-button" || owner.name == "ui-file-button":
             button.title = owner.textContent
             setTitleDisplay(button, owner.attrs["title-display"] ?? "visible")
@@ -861,6 +929,11 @@ extension Host {
     /// child when the stack's `align` is `fill`, else each whose `width` (in
     /// a vertical stack) or `height` (in a horizontal one) is a fill.
     func arrange(_ stack: NSStackView, _ owner: Node, fillAll: Bool = false) {
+        // Fixed-size children are placed by frame (Frames.swift).
+        if let stack = stack as? Stack {
+            if let plan = framePlan(stack, owner) { placeByFrame(stack, owner, plan); return }
+            unframe(stack, owner)
+        }
         var fills: [ObjectIdentifier: Bool] = [:]
         let across = stack.orientation == .vertical ? "width" : "height"
         let all = fillAll || owner.attrs["align"] == "fill"

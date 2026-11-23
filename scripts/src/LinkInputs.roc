@@ -10,7 +10,12 @@ LinkInputs := [].{
 
 	Library : { name : Str, path : Str, install_name : Str, evidence : Str, symbols : List(Symbol) }
 
-	Catalog : { schema_version : U64, target : Str, libraries : List(Library) }
+	## The system symbols Roc's own run-mode shims import (host/PROVENANCE.md,
+	## "Roc's run-mode shims"): a second consumer of the stubs beside the host,
+	## each symbol owned by a library like any other.
+	RunShim : { evidence : Str, symbols : List(Str) }
+
+	Catalog : { schema_version : U64, target : Str, run_shim : RunShim, libraries : List(Library) }
 
 	## The one target the stubs are for, and the Roc target the archive serves.
 	target : Str
@@ -76,6 +81,19 @@ LinkInputs := [].{
 				$owners = $owners.append((symbol.name, library.name))
 			}
 		}
+		if catalog.run_shim.evidence.is_empty() {
+			return Err("run_shim names no evidence")
+		}
+		var $shim = []
+		for name in catalog.run_shim.symbols {
+			if $shim.contains(name) {
+				return Err("run_shim lists ${name} twice")
+			}
+			if !$owners.any(|(owned, _)| owned == name) {
+				return Err("run_shim lists ${name}, which no library owns")
+			}
+			$shim = $shim.append(name)
+		}
 		Ok($owners)
 	}
 
@@ -105,21 +123,123 @@ LinkInputs := [].{
 	stubs = |catalog| catalog.libraries.map(|library| { path: "${LinkInputs.sysroot_dir}/${library.path}", text: LinkInputs.tbd(library) })
 
 	## What a host archive references that the catalog does not own, which
-	## fails the build, and what the catalog owns that the archive does not
-	## reference, which is only noted (the linker and Roc-compiled code may
-	## need it). `undefined` and `defined` are `nm -u` and `nm -gUj`: one
-	## member may reference another's definition, and `_roc_engine_*` are the
-	## Roc application's own.
-	audit : { undefined : List(Str), defined : List(Str), owners : List((Str, Str)) } -> { missing : List(Str), unused : List(Str) }
-	audit = |{ undefined, defined, owners }| {
-		symbols = |lines| lines.map(Str.trim).keep_if(|line| !line.is_empty() and !line.ends_with(":"))
-		local = symbols(defined)
-		wanted = LinkInputs.unique(symbols(undefined).drop_if(|name| local.contains(name)))
+	## fails the build, and what the catalog owns that neither the archive
+	## nor the run shims (`run_shim`) reference, which is only noted (the
+	## linker and Roc-compiled code may need it). `undefined` and `defined`
+	## are `nm -u` and `nm -gUj`: one member may reference another's
+	## definition, and `_roc_engine_*` are the Roc application's own.
+	audit : { undefined : List(Str), defined : List(Str), owners : List((Str, Str)), run_shim : List(Str) } -> { missing : List(Str), unused : List(Str) }
+	audit = |{ undefined, defined, owners, run_shim }| {
+		wanted = LinkInputs.references(undefined, defined)
 		owned = owners.map(|(name, _)| name)
 		missing = wanted.drop_if(|name| owned.contains(name) or LinkInputs.roc_provided(name)).sort_with(LinkInputs.compare)
-		unused = owned.drop_if(|name| wanted.contains(name)).sort_with(LinkInputs.compare)
+		unused = owned.drop_if(|name| wanted.contains(name) or run_shim.contains(name)).sort_with(LinkInputs.compare)
 		{ missing, unused }
 	}
+
+	## An archive's unresolved references: `nm -u` less `nm -gUj`, without
+	## the member headers and blank lines.
+	references : List(Str), List(Str) -> List(Str)
+	references = |undefined, defined| {
+		symbols = |lines| lines.map(Str.trim).keep_if(|line| !line.is_empty() and !line.ends_with(":"))
+		local = symbols(defined)
+		LinkInputs.unique(symbols(undefined).drop_if(|name| local.contains(name)))
+	}
+
+	## The run shims' system imports against the catalog. `shim_refs` is
+	## what a compiler's shim archives reference (`LinkInputs.references` of
+	## each); their `_roc_*` imports are for the host and the compiler's
+	## generated objects to define. A system import the catalog does not own
+	## is `missing`, and fails the build: the stubs cannot link that
+	## compiler's run mode. One the catalog owns that `run_shim` does not
+	## list is `unlisted`, and fails too, so the audit never calls it unused.
+	## A `run_shim` name the shims do not import is `stale`, and only noted:
+	## another supported compiler's shim may import it.
+	shim_audit : { shim_refs : List(Str), owners : List((Str, Str)), run_shim : List(Str) } -> { missing : List(Str), unlisted : List(Str), stale : List(Str) }
+	shim_audit = |{ shim_refs, owners, run_shim }| {
+		wanted = LinkInputs.unique(shim_refs.drop_if(|name| name.starts_with("_roc_")))
+		owned = owners.map(|(name, _)| name)
+		missing = wanted.drop_if(|name| owned.contains(name)).sort_with(LinkInputs.compare)
+		unlisted = wanted.drop_if(|name| run_shim.contains(name) or missing.contains(name)).sort_with(LinkInputs.compare)
+		stale = run_shim.drop_if(|name| wanted.contains(name)).sort_with(LinkInputs.compare)
+		{ missing, unlisted, stale }
+	}
+
+	## Each Unix `ar` archive embedded in `bytes`, with where it starts, how
+	## long it is and its member names: a Roc compiler embeds its run shims
+	## as archives and extracts one for every run. A BSD long name (`#1/N`) is read
+	## from the member's data, and members are padded to an even offset from
+	## the archive's start. An archive ends at the first bytes that are not
+	## a member header.
+	embedded_archives : List(U8) -> List({ start : U64, len : U64, members : List(Str) })
+	embedded_archives = |bytes| {
+		magic = Str.to_utf8("!<arch>\n")
+		total = bytes.len()
+		var $found = []
+		var $index = 0
+		while $index + 8 <= total {
+			if bytes.get($index) == Ok('!') and bytes.sublist({ start: $index, len: 8 }) == magic {
+				var $at = $index + 8
+				var $members = []
+				var $reading = Bool.True
+				while $reading and $at + 60 <= total {
+					header = bytes.sublist({ start: $at, len: 60 })
+					ended = header.sublist({ start: 58, len: 2 }) == ['`', '\n']
+					match LinkInputs.decimal(header.sublist({ start: 48, len: 10 })) {
+						Ok(size) if ended and $at + 60 + size <= total => {
+							raw = Str.from_utf8_lossy(header.sublist({ start: 0, len: 16 })).trim()
+							long = if (raw.starts_with("#1/")) LinkInputs.decimal(raw.drop_prefix("#1/").to_utf8()) ?? 0 else 0
+							name = if (long > 0) Str.from_utf8_lossy(bytes.sublist({ start: $at + 60, len: long }).drop_if(|byte| byte == 0)) else raw
+							$members = $members.append(name)
+							$at = $at + 60 + size
+							if ($at - $index) % 2 == 1 {
+								$at = $at + 1
+							}
+						}
+						_ => {
+							$reading = Bool.False
+						}
+					}
+				}
+				if !$members.is_empty() {
+					$found = $found.append({ start: $index, len: $at - $index, members: $members })
+				}
+				$index = $at
+			} else {
+				$index = $index + 1
+			}
+		}
+		$found
+	}
+
+	## The run shim an archive holds, named by its `roc_<kind>_shim_zcu.o`
+	## member less `_zcu.o`.
+	run_shim_name : List(Str) -> Try(Str, [NotAShim])
+	run_shim_name = |members|
+		match members.find_first(|name| name.starts_with("roc_") and name.ends_with("_shim_zcu.o")) {
+			Ok(member) => Ok(member.drop_suffix("_zcu.o"))
+			Err(_) => Err(NotAShim)
+		}
+
+	## A space-padded decimal field of an `ar` header.
+	decimal : List(U8) -> Try(U64, [NotDecimal])
+	decimal = |field| {
+		digits = field.drop_if(|byte| byte == ' ')
+		if digits.is_empty() or !digits.all(|byte| byte >= '0' and byte <= '9') {
+			return Err(NotDecimal)
+		}
+		Ok(digits.fold(0, |total, byte| total * 10 + (byte - '0').to_u64()))
+	}
+
+	## The shim audit's failures and its note, as the build prints them.
+	shim_missing_message : Str, List(Str) -> Str
+	shim_missing_message = |compiler, missing| "the run shims of ${compiler} import system symbols the catalog does not own, so `roc main.roc` cannot link against the stubs; review and add them to host/interfaces.json, and to its run_shim:\n  ${Str.join_with(missing, "\n  ")}"
+
+	shim_unlisted_message : Str, List(Str) -> Str
+	shim_unlisted_message = |compiler, unlisted| "the run shims of ${compiler} import symbols the catalog owns but its run_shim does not list; add them to run_shim in host/interfaces.json: ${Str.join_with(unlisted, " ")}"
+
+	shim_stale_message : Str, List(Str) -> Str
+	shim_stale_message = |compiler, stale| "note: run_shim symbols the run shims of ${compiler} do not import (another supported compiler's may): ${Str.join_with(stale, " ")}"
 
 	## `_roc_engine_` and one or more word characters: the entry points the
 	## Roc application object provides at the final link.
@@ -274,7 +394,7 @@ lib : LinkInputs.Library
 lib = { name: "libobjc", path: "usr/lib/libobjc.tbd", install_name: "/usr/lib/libobjc.A.dylib", evidence: "objc4", symbols: [{ name: "_objc_retain", evidence: "objc4" }, { name: "_OBJC_CLASS_$_NSObject", evidence: "objc4" }] }
 
 catalog : LinkInputs.Catalog
-catalog = { schema_version: 2, target: "arm64-macos", libraries: [lib] }
+catalog = { schema_version: 2, target: "arm64-macos", run_shim: { evidence: "roc", symbols: ["_objc_retain"] }, libraries: [lib] }
 
 ## The stub the Python generator wrote: sorted symbols, quoted.
 expect
@@ -287,13 +407,38 @@ expect LinkInputs.check({ ..catalog, schema_version: 1 }).is_err()
 expect LinkInputs.check({ ..catalog, libraries: [lib, { ..lib, path: "usr/lib/other.tbd", name: "other" }] }) == Err("_objc_retain is owned by both libobjc and other")
 expect LinkInputs.check({ ..catalog, libraries: [{ ..lib, symbols: [{ name: "_x", evidence: "" }] }] }) == Err("_x names no evidence")
 expect LinkInputs.check({ ..catalog, libraries: [{ ..lib, path: "../x.tbd" }] }) == Err("bad or repeated path ../x.tbd")
+expect LinkInputs.check({ ..catalog, run_shim: { evidence: "roc", symbols: ["_mmap"] } }) == Err("run_shim lists _mmap, which no library owns")
+expect LinkInputs.check({ ..catalog, run_shim: { evidence: "", symbols: [] } }) == Err("run_shim names no evidence")
 expect LinkInputs.symbol_ok("_realpath$DARWIN_EXTSN") and LinkInputs.symbol_ok("dyld_stub_binder") and !LinkInputs.symbol_ok("9x") and !LinkInputs.symbol_ok("a b")
 
 ## A reference the catalog does not own fails; a defined one and a Roc
-## entry point do not; an owned one never referenced is noted.
+## entry point do not; an owned one never referenced is noted, unless the
+## run shims import it.
 expect
-	LinkInputs.audit({ undefined: ["libhost.a(App.o):", "_objc_retain", "_new", "_local", "_roc_engine_init", ""], defined: ["_local"], owners: [("_objc_retain", "libobjc"), ("_free", "libSystem")] })
+	LinkInputs.audit({ undefined: ["libhost.a(App.o):", "_objc_retain", "_new", "_local", "_roc_engine_init", ""], defined: ["_local"], owners: [("_objc_retain", "libobjc"), ("_free", "libSystem"), ("_mmap", "libSystem")], run_shim: ["_mmap"] })
 		== { missing: ["_new"], unused: ["_free"] }
+
+## A shim's import the catalog does not own fails, one it owns but run_shim
+## omits fails, and a listed one no shim imports is stale; `_roc_*` are not
+## system symbols.
+expect
+	LinkInputs.shim_audit({ shim_refs: ["_mmap", "_roc_alloc", "_roc_shim_hosted_fns", "_dlsym", "_free"], owners: [("_mmap", "libSystem"), ("_free", "libSystem"), ("_write", "libSystem")], run_shim: ["_mmap", "_write"] })
+		== { missing: ["_dlsym"], unlisted: ["_free"], stale: ["_write"] }
+
+## An embedded archive between other bytes: its members, a BSD long name,
+## and padding to an even offset from the archive's start.
+expect {
+	member = |name, data| {
+		size = data.len().to_str()
+		Str.to_utf8(name).concat(List.repeat(' ', 48 - name.count_utf8_bytes())).concat(Str.to_utf8(size)).concat(List.repeat(' ', 10 - size.count_utf8_bytes())).concat(['`', '\n']).concat(data)
+	}
+	long = Str.to_utf8("roc_machine_code_shim_zcu.o").append(0)
+	archive = Str.to_utf8("!<arch>\n").concat(member("a.o", [1, 2, 3])).append('\n').concat(member("#1/28", long.concat([9, 9])))
+	found = LinkInputs.embedded_archives([7, 7, 7].concat(archive).concat([0, 0]))
+	found == [{ start: 3, len: archive.len(), members: ["a.o", "roc_machine_code_shim_zcu.o"] }]
+}
+expect LinkInputs.run_shim_name(["a.o", "roc_machine_code_shim_zcu.o"]) == Ok("roc_machine_code_shim") and LinkInputs.run_shim_name(["compiler_rt.o"]) == Err(NotAShim)
+expect LinkInputs.decimal(Str.to_utf8("104       ")) == Ok(104) and LinkInputs.decimal(Str.to_utf8("  ")) == Err(NotDecimal)
 expect !LinkInputs.roc_provided("_roc_engine_") and LinkInputs.roc_provided("_roc_engine_drop") and !LinkInputs.roc_provided("_roc_engine_a.b")
 
 expect LinkInputs.tooling_compiler("tooling = { compiler: \"nightly-2026-11-14-a87808d\" }\n") == Ok("nightly-2026-11-14-a87808d")

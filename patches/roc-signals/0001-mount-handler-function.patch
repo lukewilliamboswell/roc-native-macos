@@ -1,0 +1,92 @@
+From: roc-native-macos engine patch series
+Subject: [PATCH 0001] Mount an event listener in a function of its own
+Upstream: not yet sent
+Applies to: roc-signals a13ff70e, platform/Core.roc
+
+What
+  Move the body of `mount_attr`'s `On` branch (an event listener: its
+  document-key bookkeeping, observation, ADD_LISTENER command and route)
+  into a new function, `mount_handler`, which `mount_attr` calls. Nothing
+  else changes: same commands, same order, same counters.
+
+Why
+  `mount_elem` calls `mount_attr` once per attribute, threading the turn
+  (`Tx`) through. In optimized builds (`roc build`, LLVM, lambda-set
+  specialization) of Roc 0.1.0 RC1 and nightly-2026-11-14, the turn
+  arrived shared: the command buffer's refcount was 2 at the append
+  (lldb: `RocList.reallocate` on a list with spare capacity, refcount word
+  2, length 254k), so every attribute's command copied the whole buffer
+  and mount was quadratic in the number of attributes on the page. With
+  the `On` branch moved out (any one branch moved out does it), the
+  buffer stays unique. `--opt=dev` and `--specialize=no` builds were
+  already linear. This is a compiler behaviour, not an engine bug (see
+  patches/roc-compiler/README.adoc); the patch is the smallest engine-side
+  change that avoids it.
+
+Measured (Apple M-series, RC1, `mount engine` ms from the host's
+ROC_BENCH timings; N cells)
+  static boxes, 7 attributes each (Engine.element):
+                         1024    2500    4900
+    before               34.5   166.0       -
+    after                 4.7    10.0    19.1
+  Ui.box cells (7 attributes + a child):
+    before               31.9   164.2  1478.6
+    after                 5.1    12.0    25.2
+  Engine.state cells (each a site in one block): still quadratic until 0002
+    before               45.6   242.1  1908.2
+    after                16.7    74.2   320.5
+  grid bench (bench/grid, hover cells), mount engine ms:
+                         N=32    N=100
+    before               71.0  17476.3
+    after                33.0   2360.4
+  Hover and timer turns are unchanged (N=100 p50 2.9 -> 2.6 ms, 1.6 -> 1.1 ms).
+
+---
+diff --git a/platform/Core.roc b/platform/Core.roc
+--- a/platform/Core.roc
++++ b/platform/Core.roc
+@@ -5333,24 +5333,32 @@
+ 			next = shown_fact(emit_op(count_property(count_evals(tx, 1), index), 21, |commands| put_str(put_u32(commands, id).append(index), encoded)), id, 256, index, encoded)
+ 			(add_hole(block, { node: id, mask: eff_mask(value), attr: NoAttribute, reference: NotReference, property: index, read: |context| Present((value.read)(context)), last: Present(encoded), dirty: False }), next)
+ 		}
+-		On(ev, handler) => {
+-			tx0 = if ev.policies.bitwise_and(16) != 0 {
+-				if tx.fx.document_nodes.len() >= 32 {
+-					crash "contract: more than 32 live document key handlers at site ${show_path(path)}"
+-				}
+-				with_fx(tx, |fx| { ..fx, document_nodes: fx.document_nodes.append(id) })
+-			} else tx
+-			h = block.handlers.len().to_u32_wrap()
+-			registered = if (ev.kind == 7 or ev.kind == 8) observe_node(tx0, id) else tx0
+-			tx1 = emit_op(registered, 11, |c| put_u32(put_str(put_u32(put_u32(c, id), h), ev.event).append(ev.kind), ev.policies))
+-			(add_handler(block, bind_block_echo(handler, block.holes)), set_route(tx1, id, path, h))
+-		}
++		On(ev, handler) => mount_handler(block, ev, handler, id, path, tx)
+ 		Ref(value) => {
+ 			ref_path = path.append(block.holes.len().to_u32_wrap())
+ 			name = (value.read)(env)
+ 			(add_hole(block, { node: id, mask: eff_mask(value), attr: NoAttribute, reference: Reference(ref_path, value_control), property: 0, read: |context| Present((value.read)(context)), last: Present(name), dirty: False }), with_fx(count_evals(tx, 1), |fx| add_ref(fx, { name, node: id, path: ref_path, value_control })))
+ 		}
+ 	}
++}
++
++## An event listener: its command, its route and the block's handler.
++## This stays out of `mount_attr`, which runs once per attribute: with it
++## inline, the compiler's optimized builds (Roc 0.1.0 RC1) handed the turn
++## to `mount_attr` shared, so each attribute's command copied the whole
++## command buffer and mounting grew quadratically with the page.
++mount_handler : Block(ctx), EventDecl, RoutedHandler(ctx), U32, List(U32), Tx -> (Block(ctx), Tx)
++mount_handler = |block, ev, handler, id, path, tx| {
++	tx0 = if ev.policies.bitwise_and(16) != 0 {
++		if tx.fx.document_nodes.len() >= 32 {
++			crash "contract: more than 32 live document key handlers at site ${show_path(path)}"
++		}
++		with_fx(tx, |fx| { ..fx, document_nodes: fx.document_nodes.append(id) })
++	} else tx
++	h = block.handlers.len().to_u32_wrap()
++	registered = if (ev.kind == 7 or ev.kind == 8) observe_node(tx0, id) else tx0
++	tx1 = emit_op(registered, 11, |c| put_u32(put_str(put_u32(put_u32(c, id), h), ev.event).append(ev.kind), ev.policies))
++	(add_handler(block, bind_block_echo(handler, block.holes)), set_route(tx1, id, path, h))
+ }
+ 
+ add_node : Block(ctx), U32, Bool -> Block(ctx)

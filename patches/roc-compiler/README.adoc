@@ -1,0 +1,171 @@
+= Compiler issues
+
+Engine costs that turned out to be the Roc compiler's. The compiler is never
+patched here: each issue has a reproducer and a write-up, to report to
+roc-lang/roc. An engine patch that only works around one says so in its
+header (xref:../roc-signals/README.adoc[patches/roc-signals]).
+
+== The list
+
+. `erased-captures/`: a call through an erased closure reads its captures
+  borrowed when the call is in tail position or the closure's result holds
+  exactly one function, so a closure that rebuilds itself from the state it
+  captures copies that state on every call. Standalone reproducer of the
+  four combinations. Engine impact: every turn copied the child list of
+  each block on the event's path; worked around by engine patch 0003 (see
+  <<erased-captures>>). Upstream:
+  https://github.com/roc-lang/roc/issues/13374[roc-lang/roc#13374].
+. `mount-sharing/`: in optimized builds the engine's mount passes its turn
+  and its block shared, depending on the size of the functions involved,
+  so appends copy. Reproduced with the engine only, not yet reduced.
+  Worked around by engine patches 0001 and 0002 (see <<mount-sharing>>).
+  Upstream: not yet reported.
+
+Both reproduce with Roc 0.1.0 RC1 (`roc`) and nightly-2026-11-14-a87808d
+(`roc-stable`), with `roc build` (LLVM, `--opt=speed`); `erased-captures`
+also with nightly-2026-11-22-3350b1c.
+
+[#erased-captures]
+== Erased closures borrow their captures
+
+Reported as https://github.com/roc-lang/roc/issues/13374[roc-lang/roc#13374]
+(the text from "Title" to the end of "Suspected mechanism", with `main.roc`
+as the program).
+
+Title:: An erased closure that rebuilds itself copies its captures on every
+call: a tail-position call never transfers it, and a single-function result
+keeps it alive
+
+Summary:: A closure that threads its state through its captures (each call
+updates a captured list and returns the next closure) normally updates the
+list in place. Once a value of its type is boxed, every function the type
+holds is erased, and a call reads the closure's captures borrowed, so the
+list is shared during the call and the update copies it: each call is
+linear in the size of the state. This happens when the erased call is in
+tail position, or when the closure's result holds exactly one function;
+only a call that is neither is in place. Related to #13012 (closed), whose
+shape (the closure returns a list, the caller builds the next closure) is
+now in place.
+
+Reproduction:: `erased-captures/main.roc` (basic-cli 0.28.1) runs the
+machine `Step := [Step((U64 -> (Step, U64))), ...]` for N steps in four
+combinations. `boxed_one` and `boxed_spare` name `Box(One)` and
+`Box(Spare)`, on a path that never runs, which makes every function those
+types hold erased. `tail_*` calls the closure in tail position, `bound_*`
+binds the result and then returns it. `One` returns the next machine (the
+result holds one function); `Spare` adds a variant `Spare(List(Spare))`,
+never built, so the result also holds a list of functions. `Idle` and
+`Spare` give `step` a recursive branch so it is not inlined.
++
+[source,sh]
+----
+roc build main.roc --output=/tmp/erased && /tmp/erased
+----
+
+Expected:: Constant time per step in all four (each step appends one item
+to a list it owns).
+
+Actual:: Time per step grows linearly with N, so the run is quadratic,
+except for `bound_spare`. Apple M-series, `roc build` (LLVM,
+`--opt=speed`), ns per step:
++
+|===
+| N | tail_one | bound_one | tail_spare | bound_spare | all four without the `Box`
+
+6+| Roc 0.1.0 RC1
+| 5,000 | 621 | 604 | 731 | 90 | 1–4
+| 10,000 | 1,291 | 1,202 | 1,181 | 32 | 1–4
+| 20,000 | 2,420 | 2,424 | 2,475 | 31 | 1–2
+| 40,000 | 5,074 | 5,134 | 5,205 | 31 | 0–2
+6+| nightly-2026-11-22-3350b1c
+| 5,000 | 647 | 622 | 632 | 32 | not run
+| 10,000 | 1,200 | 1,703 | 1,271 | 31 | not run
+| 20,000 | 2,584 | 2,698 | 2,790 | 34 | not run
+| 40,000 | 5,202 | 5,381 | 5,298 | 35 | not run
+|===
++
+nightly-2026-11-14-a87808d is quadratic in all four, `bound_spare`
+included (945 to 5,459 ns per step).
+
+Suspected mechanism (compiler at 3ff191391f):: Both cases leave the callee
+reading its capture record borrowed from a closure allocation that stays
+alive for the whole call.
++
+* Tail position. An erased call in tail position is deferred: it is
+  recorded in the caller's pending cell and driven by
+  `native_callable.drivePending` (`src/builtins/native_callable.zig`),
+  which passes the closure as the reuse (ownership) argument only when the
+  record's `transfer` is set. design.md ("A deferred `.lss` call keeps a
+  retained closure reference for whoever drives it and never transfers")
+  makes that never for `.lss`, so the driver keeps its reference, decrefs
+  the closure after the call, and the callee's captures are shared.
+* One function in the result. When the callee's result type holds exactly
+  one erased-callable slot (`erasedResultDemand(entry.ret) ==
+  .single_slot`, `src/postcheck/solved_lir_lower.zig`, where
+  `current_erased_reuse` is set), the reuse argument is kept as the
+  destination for that slot. design.md ("Constraints Per Statement Form",
+  `erased_capture_load`): "emission selects `erased_capture_load_borrowed`
+  while the owner stays live (a repack of the allocation as the
+  procedure's result)". The owner stays live until the result is packed, so
+  the captures are borrowed for the whole body, and only a result with no
+  slot or an ambiguous one (a list of functions, or two) releases the
+  allocation at entry and hands its captures over. Packing a closure of a
+  different capture layout does not help (tried), since the destination
+  is still threaded through.
++
+What would fix both: a call that owns the closure, deferred or not, could
+transfer it; and a callee that owns a unique closure could move its
+captures out at entry (no incref) and keep the emptied allocation only as
+the destination for its result, repacking into it as now.
+
+Engine impact. Every dynamic site of roc-signals is a closure (`Inst`)
+that owns its typed storage, and the platform root boxes the engine's
+state for the host, so all of them are erased. `Core.call` called a site
+in tail position, and a site's answer `(Inst(ctx), Out(ctx), Tx)` holds
+exactly one function, so every site on the event's path read its block
+shared, and rebuilding the block (`fire_kid`'s `List.replace`) copied its
+child list. In the grid bench at N = 100 (10,000 `Engine.state` cells in
+one block) that was a 2,400,000-byte `memcpy` (10,000 children of 240
+bytes) per call, with an incref of every copied child and a decref of
+every old one: most of a 2.5 ms hover turn, which was linear in the sites
+of the blocks on the event's path. Engine patch 0003 avoids both cases (a
+bound result in `call`, and a never-built `Spare(List(Inst(ctx)))`
+variant), and the hover turn is about 0.1 ms at every size measured, up
+to 14,400 cells. The grid's `--smoke` guards it.
+
+[#mount-sharing]
+== Mount shares its turn and its block
+
+`mount-sharing/main.roc` is an app on this platform that mounts N static
+boxes with seven attributes (`-v attrs`) or N `Engine.state` cells
+(`-v sites`). With the pristine engine (reverse-apply engine patches 0002
+and 0001), mounting is quadratic in optimized builds: in `mount_elem`'s
+attribute loop the command buffer (`Tx.cmds`) has refcount 2 when an
+attribute's command is appended, and in its `Site` branch the block's child
+lists have refcount 2 when `add_child` appends (an lldb watchpoint on the
+fresh copy's refcount shows an incref inside `mount_elem` just before the
+append). `--opt=dev` builds and `--specialize=no` builds are linear.
+
+The sharing depends on the size of the functions, not on what they do:
+removing any one of `mount_attr`'s branches (the trivial `Property` one
+included) made the attribute loop linear, and the site appends became
+linear only once the `Element` and the text branches were both moved out of
+`mount_elem`. Engine patches 0001 and 0002 move them into functions of
+their own. Attempts to reduce this to a standalone program (the same loop
+shapes, records, closures and branch counts without the engine) stayed
+linear, so this is reported with the engine as the reproducer.
+
+Engine time of the mount (ms, the `mount engine` figure the host prints
+under `ROC_BENCH=1`, as in
+`ROC_BENCH=1 ROC_SCRIPT='stats;quit' ./main -n 4900 -v sites`):
+
+|===
+| Variant, N | pristine | patches 0001 + 0002
+
+| `attrs`, 1,024 | 44 | 6.5
+| `attrs`, 2,500 | 221 | 14
+| `attrs`, 4,900 | 1,792 | 26
+| `sites`, 1,024 | 71 | 10
+| `sites`, 2,500 | 381 | 21
+| `sites`, 4,900 | 2,858 | 44
+|===
