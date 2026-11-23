@@ -1,0 +1,1 @@
+pool:2;choose:Lab;drop:tests/fixtures/hello.txt;wait:800;type:hello;wait:500;type:fixture;wait:500;workers;dump;quit

@@ -474,7 +474,6 @@ hosted_swift = |table, name, type_id|
 		_ => swift_type(table, name, type_id)
 	}
 
-
 ## The Swift spelling of an argument or result type.
 swift_type : TypeTable, Str, U64 -> Try(Str, Str)
 swift_type = |table, name, type_id|

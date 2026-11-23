@@ -10,8 +10,9 @@
 // retires the slot, and once the batch has been applied (its commands may
 // still name the token) the host drops the entry.
 //
-// Threading follows the rules of roc-signals' Workers: Roc runs only on the
-// main thread and no Roc value or Roc-owned memory crosses threads. A read,
+// Threading: the page's Roc instance runs only on the main thread, and no
+// Roc value or Roc-owned memory crosses threads (a worker job's files cross
+// as `FileEntry` values too; Workers.swift). A read,
 // digest or save resolves its token on the main thread into a `FileEntry`
 // (plain Swift data: a URL and a range), runs on `Files.queue` over that,
 // and returns plain bytes to the main thread, where they are encoded and
