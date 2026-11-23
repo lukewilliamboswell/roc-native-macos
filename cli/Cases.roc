@@ -7,57 +7,101 @@ import cli.Stdout
 import cli.System
 import App
 import Recorded
+import SpecRun
 
-## `test [--update]`: build the app and run its recorded cases.
+## `test [--update | --check]`: build the app and run its specs, then any
+## legacy recorded cases.
 ##
-## `tests/<case>.script` holds the steps of a run (`click:+;dump;quit`),
-## which the platform's host performs when `ROC_SCRIPT` names them, driving
-## the real controls without taking focus. `tests/<case>.expected` holds
-## what the run prints. A case passes when the app exits normally having
-## printed that, under `Recorded.matches`' rules, with the app's directory
-## written `<app>`. `--update` records what each case prints now.
+## `specs/<name>.scm` holds one behaviour spec (`Spec.roc`): steps that drive
+## the real controls without taking focus, and expectations of what the app
+## then shows. `--update` rewrites each spec's `expect-dump` bodies with what
+## the run printed, and nothing else; `--check` only parses every spec, on
+## any system.
+##
+## For one release a `tests/<case>.script` case still runs too: it holds the
+## steps of a run (`click:+;dump;quit`), which the host performs when
+## `ROC_SCRIPT` names them, and `tests/<case>.expected` what the run prints.
+## A case passes when the app exits normally having printed that, under
+## `Recorded.matches`' rules, with the app's directory written `<app>`.
+## `--update` records what each case prints now.
 Cases := [].{
 
-	## Where an app keeps its recorded cases.
+	## Where an app keeps its legacy recorded cases.
 	dir : Str
 	dir = "tests"
+
+	## Where an app keeps its specs.
+	specs : Str
+	specs = "specs"
 
 	## What one case came to.
 	Outcome : [Passed, Recorded, Failed(Str)]
 
-	run! : Bool => Try({}, _)
-	run! = |update| {
+	run! : { update : Bool, check : Bool } => Try({}, _)
+	run! = |{ update, check }| {
 		if !(Path.exists!(Path.utf8("main.roc"))?) {
 			return Err(NoMainRoc)
+		}
+		checked = SpecRun.names(files!(Cases.specs)).map(|name| "${Cases.specs}/${name}")
+		found = Cases.names(files!(Cases.dir))
+		if checked.is_empty() and found.is_empty() {
+			return Err(NoCases)
+		}
+		if check {
+			var $invalid = 0.U64
+			for spec in checked {
+				match SpecRun.check!(".", spec) {
+					Ok({}) => {}
+					Err(problem) => {
+						Stdout.line!(problem)?
+						$invalid = $invalid + 1
+					}
+				}
+			}
+			return if ($invalid == 0) Stdout.line!("All ${checked.len().to_str()} specs parse.") else Err(SpecsInvalid({ invalid: $invalid, total: checked.len() }))
 		}
 		match App.system(System.target!()) {
 			AppleSilicon => {}
 			Other(system) => return Err(NotAppleSilicon({ command: "test", system, bundle: "" }))
 		}
-		found = Cases.names(files!(Cases.dir))
-		if found.is_empty() {
-			return Err(NoCases)
-		}
 		{ program, .. } = App.compile!()?
 		root = Env.cwd!()?.display()
-		Stdout.line!("Running ${found.len().to_str()} recorded cases${if (update) ", recording what they print" else ""}...")?
+		total = checked.len() + found.len()
+		Stdout.line!("Running ${checked.len().to_str()} specs${if (found.is_empty()) "" else " and ${found.len().to_str()} recorded cases"}${if (update) ", rewriting their dumps" else ""}...")?
 		var $failed = []
-		for name in found {
-			result = case!(root, "${root}/${program}", name, update)?
-			match result {
-				Passed => Stdout.line!("PASS ${name}")?
-				Recorded => Stdout.line!("SAVE ${name}")?
-				Failed(why) => {
-					Stdout.line!("FAIL ${name}: ${why}")?
-					$failed = $failed.append(name)
+		for spec in checked {
+			ran = SpecRun.run!({ program: "${root}/${program}", dir: root, spec, update, args: [], env: [] })?
+			match ran {
+				Passed => Stdout.line!("PASS ${spec}")?
+				Updated => Stdout.line!("SAVE ${spec}")?
+				Failed(problems) => {
+					Stdout.line!("FAIL ${spec}")?
+					for problem in problems {
+						Stdout.line!("  ${problem}")?
+					}
+					$failed = $failed.append(spec)
 				}
 			}
 		}
+		for name in found {
+			result = case!(root, "${root}/${program}", name, update)?
+			match result {
+				Passed => Stdout.line!("PASS ${Cases.dir}/${name}")?
+				Recorded => Stdout.line!("SAVE ${Cases.dir}/${name}")?
+				Failed(why) => {
+					Stdout.line!("FAIL ${Cases.dir}/${name}: ${why}")?
+					$failed = $failed.append("${Cases.dir}/${name}")
+				}
+			}
+		}
+		if !found.is_empty() {
+			Stdout.line!("tests/*.script cases run for this release only: write them as specs/*.scm (`roc macos.roc test --help`).")?
+		}
 		if $failed.is_empty() {
-			Stdout.line!(if (update) "Recorded ${found.len().to_str()} cases: review the change to tests/ before you commit it." else "All ${found.len().to_str()} recorded cases passed.")?
+			Stdout.line!(if (update) "Ran ${total.to_str()}, rewriting what they printed: review the change to specs/ before you commit it." else "All ${total.to_str()} passed.")?
 			Ok({})
 		} else {
-			Err(CasesFailed({ failed: $failed, total: found.len() }))
+			Err(CasesFailed({ failed: $failed, total }))
 		}
 	}
 

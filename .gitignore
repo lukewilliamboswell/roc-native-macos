@@ -9,12 +9,14 @@ examples/*/*.app/
 !examples/*/*.roc
 !examples/*/demo.script
 !examples/*/assets/
+!examples/*/specs/
 !examples/*/tests/
 # The bench harnesses' binaries (bench/<name>/<name>), beside their sources
 bench/*/*
 !bench/*/*.roc
 !bench/*/*.adoc
 !bench/*/*.sh
+!bench/*/specs/
 
 # Blueprint's generated environment and links
 .blueprint/

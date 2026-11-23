@@ -377,7 +377,7 @@ extension Host {
             write(next.entry, next.start, next.len, to: dir + "/" + next.name)
             return nextSave()
         }
-        if env["ROC_SCRIPT"] != nil {
+        if driven {
             say("save \(next.name): skipped (scripted run without ROC_SAVE_DIR)")
             return nextSave()
         }

@@ -42,6 +42,8 @@ final class Host: NSObject, NSTextFieldDelegate {
     /// The nodes under the pointer that listen for `hover`, outermost first
     /// (Hover.swift).
     var hovered: [Node] = []
+    /// The spec this run performs (`ROC_SPEC`, Spec.swift); nil otherwise.
+    var specSteps: SpecSteps?
     /// `ROC_BENCH=1` timings (Bench.swift); nil when off.
     let bench: Bench? = Bench.on ? Bench() : nil
     /// Live document key declarations, in the order they were mounted.

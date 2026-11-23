@@ -4,7 +4,7 @@ Repo := [].{
 
 	## The check's stages, in the order a full run takes them.
 	stages : List(Str)
-	stages = ["pins", "engine", "fmt", "scripts", "tool", "glue", "build", "test", "examples", "bench", "bundle"]
+	stages = ["pins", "engine", "fmt", "scripts", "specs", "tool", "glue", "build", "test", "examples", "bench", "bundle"]
 
 	## The stages named on the command line, or every stage when none is.
 	## `--update` is an option of the tool and examples stages, not a stage.
@@ -23,9 +23,15 @@ Repo := [].{
 		}
 	}
 
+	## The tool's modules the scripts use, each copied byte for byte into
+	## `scripts/src/` (a script cannot import a module outside its own
+	## directory): `check`'s tool stage fails when a copy differs.
+	shared_modules : List(Str)
+	shared_modules = ["Recorded.roc", "Spec.roc", "SpecRun.roc"]
+
 	## Every script, whose `expect`s the scripts stage runs.
 	scripts : List(Str)
-	scripts = ["scripts/check_all.roc", "scripts/build.roc", "scripts/link_inputs.roc", "scripts/bundle.roc", "scripts/release.roc", "scripts/record_demos.roc", "scripts/workflow.roc"]
+	scripts = ["scripts/check_all.roc", "scripts/build.roc", "scripts/link_inputs.roc", "scripts/bundle.roc", "scripts/release.roc", "scripts/record_demos.roc", "scripts/workflow.roc", "scripts/convert_cases.roc"]
 
 	## Files that would pin a compiler for the whole repository, which the
 	## model forbids: only the scripts' headers name one.

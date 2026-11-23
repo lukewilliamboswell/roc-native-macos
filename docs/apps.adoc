@@ -60,7 +60,7 @@ Run `macos.roc` from the app's directory, the one holding `main.roc`:
 | `roc macos.roc build` | build `<name>.app`, on any system
 | `roc macos.roc run` | build the app and start it, on an Apple silicon Mac
 | `roc macos.roc dev` | start the app with `roc main.roc`, which reloads it as you save, on an Apple silicon Mac; no `.app`, so `macos.json` and the icon do not apply (xref:apps.adoc#hot-reloading[Hot reloading])
-| `roc macos.roc test` | build the app and run its recorded cases, on an Apple silicon Mac; `--update` records what they print now
+| `roc macos.roc test` | build the app and run its specs, `specs/*.scm`, on an Apple silicon Mac; `--update` rewrites their dumps with what the app shows now, and `--check` parses them on any system
 | `roc macos.roc package` | build the app, sign it and zip it as `dist/<name>-<version>.zip`, on any system; `--sign` and `--notarize` sign it with a Developer ID (see xref:apps.adoc#ship-your-app[Ship your app])
 | `roc macos.roc ci package`, `ci release` | what the release workflow runs: package the app as the secrets allow, and attach the zip to the pushed tag's GitHub release (see xref:apps.adoc#automate[Let GitHub release it])
 |===
@@ -344,68 +344,154 @@ as people will see it.
 single-field record builder (`{ a: Engine.cell(…) }.Engine.Cells`), which
 builds but fails at run time.
 
-`roc macos.roc test` runs the app's recorded cases. A case is two files in
-`tests/`:
+`roc macos.roc test` runs the app's specs: each `specs/<name>.scm` holds one
+behaviour spec, steps a person could take and what the app should then show.
 
-* `<case>.script`: the steps of a run, such as `click:+;click:+;dump;quit`.
-  The platform performs them on the app's real controls, through the same
-  action methods AppKit calls, without taking keyboard focus, opening a panel
-  or showing the crash alert.
-* `<case>.expected`: what that run prints, which is what each `dump` step
-  printed.
+[source,scheme]
+----
+; Each click is one engine turn: three up and one down leave 2.
+(test "increment"
+  (steps
+    (expect-visible (text "0"))
+    (click (button "+"))
+    (click (button "+"))
+    (click (button "+"))
+    (click (button "−"))
+    (expect-visible (text "2"))
+    (expect-absent (text "0"))
+    (expect-dump """
+      --- 360x237
+      ui-vstack [1 views]
+        ui-vstack [4 views]
+          ui-text "Counter" {color=secondary-label text-style=headline}
+          ui-text "2" {design=monospaced-digits font-size=64 weight=light}
+          ui-hstack [3 views]
+            ui-button "−"
+            ui-button "Reset"
+            ui-button "+"
+          ui-text "Each click is one engine turn." {color=tertiary-label text-style=caption1}
+      """)))
+----
 
-A case passes when the app exits normally, within 60 seconds, having printed
-the recorded output. Measurements depend on the system's fonts, so a dump's
-window size and any `NNNpt` value may each differ by up to 4 points. Where the
-output holds the app's directory (a file's URL, say), the directory is
-written `<app>` and the window size `--- <size>`, so a case does not depend
-on where it ran. To add a case, write its `.script`, run
-`roc macos.roc test --update`, and review the `.expected` file it records
-before you commit it.
+The platform performs each step on the app's real controls, through the same
+action methods AppKit calls, without taking keyboard focus, opening a panel
+or showing the crash alert, and prints what each expectation looks at; the
+tool compares, and a failure names the spec's file, line and column:
+
+----
+FAIL specs/increment.scm
+  specs/increment.scm:9:5: expected one (text "3"), saw none; the nearest are "2", "+", "−"
+----
+
+A spec is one `(test "name" …)` form: an optional `(setup …)`, then
+`(steps …)` with at least one step, run in order from a fresh window. `;`
+starts a comment. Strings know the escapes `\n`, `\t`, `\"` and `\\`. A
+`"""` block, used by `expect-dump`, starts its text on the next line and
+ends at a line holding only the closing `"""`; whatever indents that line
+is taken off every line between, which is otherwise kept as written.
+`roc macos.roc test --check` parses every spec without building or running
+the app, on any system, and the spec's mistakes are reported where they are,
+as its failures are.
+
+`roc macos.roc test --update` rewrites each `expect-dump` body with what the
+app shows now, and nothing else: review the change before you commit it. A
+dump's measurements depend on the system's fonts, so its window size and any
+`NNNpt` value may each differ by up to 4 points. Where a dump holds the
+app's directory (a file's URL, say), the directory is written `<app>` and the
+window size `--- <size>`.
+
+For one release, `roc macos.roc test` also runs a 0.0.1 app's recorded
+cases, `tests/<case>.script` with its `tests/<case>.expected`. A checkout's
+`roc-stable scripts/convert_cases.roc -- APP_DIR` converts them to specs.
+
+[#locators]
+=== Locators
+
+A step finds what it acts on as a person would, by what it shows. An action
+must find exactly one thing, and fails otherwise, naming the nearest texts
+of that kind; an expectation reports how many it found.
+
+[cols="1,3",options="header"]
+|===
+| Locator | Finds
+
+| `(button "Save")` | the button with that title
+| `(checkbox "Done")` | the checkbox with that title
+| `(text "Ready")` | the innermost element showing exactly that text: a text, a button's title, a text field's value
+| `(text-field)`, `(text-field "Search")` | every text field, or the one with that placeholder
+| `(text-area)`, `(text-area "Notes")` | likewise for text areas
+| `(list-row "Ada")`, `(list-row 3)` | the list row holding an element whose text is exactly that (built to be searched, if the list has not shown it yet), or the k-th row from 1 of the one list
+| `(hover-target 3)` | the k-th element, from 1 in tree order, that listens for hover
+| `(within OUTER INNER)` | INNER, looked for inside the one thing OUTER finds
+|===
 
 [#steps]
 === Steps
 
-Steps are separated by `;` and run every 100 ms.
+Steps run 100 ms apart.
 
 [cols="1,3",options="header"]
 |===
 | Step | Does
 
-| `click:<title>` | clicks the button with that title
-| `type:<text>` | types into the first text field
-| `write:<text>` | writes into the first text area; `\n` is a line break
-| `enter` | submits the text field's form
-| `toggle:<title>` | toggles the checkbox with that title
-| `choose:<title>` | chooses a dropdown item or a segment
-| `select:<text>`, `select:#<k>` | selects the list row holding that text (in a `table_list`, among the rows drawn), or the k-th row (from 1) of the first list
-| `scroll:<k>` | scrolls the first list so that its row `k` (from 0) is at the top
-| `key:cmd+shift+n` | presses a key, delivered as if nothing had focus; the modifiers are `cmd`, `shift`, `ctrl` and `alt` (or `opt`)
-| `files:<path>,<path>…` | gives files as if picked on the first file button or drop zone, with no panel
-| `drop:<path>,…` | gives files as if dropped on the first drop zone
-| `hover:<text>`, `hover:#<k>` | moves the pointer to the middle of the `Ui.hover` whose text is that, or of the k-th one in the tree
-| `move:<x>,<y>` | moves the pointer to that point of the window's content, in points from its top-left corner
-| `leave` | moves the pointer out of the window
-| `sweep:<x0>,<y0>,<x1>,<y1>,<moves>,<ms>` | moves the pointer along a line in `moves` steps, one every `ms`; the next step follows the last move, and it prints how long the sweep took
-| `stats` | with `ROC_BENCH=1`, prints the timings so far to standard output
-| `phase:<name>` | with `ROC_BENCH=1`, makes `stats` report the operations from here on apart, as `event/<name>`, `timer/<name>` and so on
-| `pool:<n>` | at most `n` worker threads, so a case runs alike on any machine; before the first job
-| `workers` | prints the worker pool's counts: its size, live, running and queued jobs, and the jobs answered, lost, stopped, timed out and dropped so far
-| `wait:<ms>` | waits
-| `dump` | prints the window size (`--- 360x237`), then the view tree; a list shows its visible rows, and a text, box or drop zone the look attributes that differ from the usual (`{color=secondary-label text-style=caption1}`)
-| `window` | prints `window <number>`, for `screencapture -l<number>`
-| `reload` | reloads as Command-R does (xref:apps.adoc#hot-reloading[Hot reloading]): a fresh engine and view tree in the same window; the steps after it drive the fresh one
-| `quit` | quits, through the same teardown as quitting
+| `(click LOC)` | clicks the button (a checkbox toggles); a disabled one fails the step
+| `(fill LOC "text")` | sets a text field's or a text area's text, as typing it would
+| `(submit LOC)` | submits the text field's form, as Return does
+| `(toggle LOC)` | toggles the checkbox
+| `(choose "title")` | chooses the item or segment of the one dropdown or segmented control that offers it
+| `(select LOC)` | selects a list row, as a click does: `(list-row "text")` or `(list-row K)`
+| `(scroll K)` | scrolls the first list so that its row `K` (from 0) is at the top
+| `(press "cmd+shift+n")` | presses a key, delivered as if nothing had focus; the modifiers are `cmd`, `shift`, `ctrl` and `alt` (or `opt`). With `:heard true` (or `false`) it also expects the app to have handled the key, or not
+| `(files "path" …)` | gives files as if picked on the one file button or drop zone, with no panel; paths are relative to the app's directory
+| `(drop "path" …)` | gives files as if dropped on the one drop zone
+| `(hover LOC)` | moves the pointer to the middle of the nearest `Ui.hover` at or around what LOC finds
+| `(move X Y)` | moves the pointer to that point of the window's content, in points from its top-left corner
+| `(leave)` | moves the pointer out of the window
+| `(sweep X0 Y0 X1 Y1 MOVES MS)` | moves the pointer along a line in `MOVES` steps, one every `MS`; the next step follows the last move
+| `(stats)`, `(phase "name")` | with `ROC_BENCH=1`, print the timings so far, and report the operations from here on apart, as `event/<name>` and so on
+| `(window)` | prints `window <number>` on standard error, for `screencapture -l<number>`
+| `(wait MS)` | waits
+| `(reload)` | reloads as Command-R does (xref:apps.adoc#hot-reloading[Hot reloading]): a fresh engine and view tree in the same window; the steps after it drive the fresh one
 |===
 
-The pointer steps drive the same hit test the mouse does, and a scripted run
+The pointer steps drive the same hit test the mouse does, and a driven run
 ignores the real mouse, so where your pointer happens to be never changes a
-run.
+run. A spec ends after its last step, through the same teardown as quitting.
 
-A case reads `files:` and `drop:` paths relative to the app's directory. An
-unknown step, or a `click:`, `toggle:`, `choose:`, `select:` or `scroll:` that finds no
-such control, stops the app with an error naming the step, so the case
-fails.
+[#expectations]
+=== Expectations
+
+[cols="1,3",options="header"]
+|===
+| Expectation | Holds when
+
+| `(expect-text LOC "text")` | the one thing LOC finds shows exactly that text: a button's or checkbox's title, a field's value, a dropdown's chosen item, a progress bar's `3/8`, or a text
+| `(expect-visible LOC)` | LOC finds exactly one thing
+| `(expect-absent LOC)` | LOC finds nothing
+| `(expect-checked LOC true)` | the checkbox is checked (`false`: unchecked)
+| `(expect-disabled LOC true)` | the control is disabled (`false`: enabled)
+| `(expect-workers :answered 8 …)` | the worker pool's counts named are these: `:limit`, `:live`, `:running`, `:queued`, `:started`, `:answered`, `:lost`, `:stopped`, `:timed-out` and `:dropped`
+| `(expect-dump """ … """)` | the window, as a dump prints it: its size (`--- 360x237`), then the view tree; a list shows its visible rows, and a text, box or drop zone the look attributes that differ from the usual (`{color=secondary-label text-style=caption1}`)
+|===
+
+[#setup]
+=== Setup
+
+[cols="1,3",options="header"]
+|===
+| Setup | Does
+
+| `(worker-pool N)` | at most `N` worker threads, so a spec runs alike on any machine
+|===
+
+[#the-spec-protocol]
+=== Under the hood
+
+`ROC_SPEC` holds the steps the tool lowered from a spec, one line each; the
+platform performs them and prints one tagged observation per expectation on
+standard output (`@3 obs`, then `|count 1`, `|text 2`), which the tool
+compares. The app's own output, such as `dbg`, goes to standard error, which
+a failure shows the end of.
 
 [#environment-variables]
 === Environment variables
@@ -417,16 +503,17 @@ as in `ROC_APPEARANCE=dark roc macos.roc run`.
 |===
 | Variable | Effect
 
-| `ROC_SCRIPT` | runs these steps, as a recorded case does: `ROC_SCRIPT="click:+;dump;quit" .macos/counter`
+| `ROC_SPEC` | performs these lowered spec steps, as `roc macos.roc test` does (xref:apps.adoc#the-spec-protocol[Under the hood])
+| `ROC_SCRIPT` | runs these legacy steps, as a 0.0.1 recorded case does: `ROC_SCRIPT="click:+;dump;quit" .macos/counter`
 | `ROC_APPEARANCE=dark` (or `light`) | draws the app in that appearance whatever the system's, to check both looks
 | `ROC_TRACE=1` | logs effect requests, cancellations, minted and released file handles, worker jobs (queued, placed, answered, stopped, timed out, dropped) and worker threads (started, unwound, ended), the teardown (`DROP`), and each turn's engine and host time
 | `ROC_BENCH=1` | times each operation (a mount, an event, a pointer move, a timer, a scripted scroll) in four phases: engine, applying the commands, layout and a forced display, and shows them live in a panel over the window; `stats` prints them with the view count and RSS
 | `ROC_POISON=1` | fills every new allocation with `Z`, to expose reads of uninitialised memory
-| `ROC_SAVE_DIR` | where a scripted save writes; without it a scripted save is skipped
+| `ROC_SAVE_DIR` | where a driven run's save writes; without it a driven run's save is skipped
 | `ROC_MAX_FILE_BYTES` | lowers the file ceiling, to check `TooLarge`
 | `ROC_WORKERS=<n>` | the worker pool's size (one per core but one, at most eight, otherwise)
 | `ROC_MAX_OUTPUT_BYTES` | lowers what one worker job may append to its builders (256 MiB), to check `TooLarge`
-| `ROC_STORAGE_SUITE=<name>` | a `UserDefaults` suite for local storage; otherwise a scripted run's local storage is in memory
+| `ROC_STORAGE_SUITE=<name>` | a `UserDefaults` suite for local storage; otherwise a driven run's local storage is in memory
 | `ROC_ASSETS=<dir>` | the app's assets directory, for a program run away from its `assets/` (see xref:apps.adoc#assets[Assets and the icon])
 |===
 

@@ -87,7 +87,7 @@ var halted = false
 /// from inside a Roc call, so nothing after it calls Roc again.
 func fatal(_ message: String) -> Never {
     fputs("roc-native-macos: \(message)\n", __stderrp)
-    if !halted, ProcessInfo.processInfo.environment["ROC_SCRIPT"] == nil, Thread.isMainThread {
+    if !halted, !driven, Thread.isMainThread {
         halted = true
         let alert = NSAlert()
         alert.alertStyle = .critical

@@ -38,7 +38,7 @@ final class ContentView: NSView {
 }
 
 extension Host {
-    static let scripted = ProcessInfo.processInfo.environment["ROC_SCRIPT"] != nil
+    static let scripted = driven
 
     /// The pointer is at `point`, in window coordinates, moved by an event
     /// at `time` (`systemUptime`; a scripted move is now).

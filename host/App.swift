@@ -23,9 +23,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         let host = Host(window: window)
         self.host = host
+        let spec = specText.map(SpecSteps.init)
+        if let spec { host.specSteps = spec; host.setUp(spec) }
         host.start()
         window.center()
-        if let script = ProcessInfo.processInfo.environment["ROC_SCRIPT"] {
+        if let spec {
+            // As a script does, a spec sets control values directly and
+            // never takes keyboard focus.
+            window.orderFrontRegardless()
+            host.run(spec: spec)
+        } else if let script = ProcessInfo.processInfo.environment["ROC_SCRIPT"] {
             // A scripted run sets control values directly, so it never takes
             // keyboard focus: keystrokes meant for another app stay there.
             window.orderFrontRegardless()

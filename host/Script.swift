@@ -74,21 +74,7 @@ extension Host {
                 box.select(row)
             case "key":
                 // `key:cmd+shift+n`: modifiers cmd, ctrl, alt (opt), shift, then the key.
-                var parts = arg.split(separator: "+").map(String.init)
-                let name = parts.popLast() ?? ""
-                var flags: UInt8 = 0
-                for p in parts {
-                    switch p {
-                    case "ctrl": flags |= 1
-                    case "alt", "opt": flags |= 2
-                    case "shift": flags |= 4
-                    case "cmd": flags |= 8
-                    default: fatal("script: unknown modifier \(p)")
-                    }
-                }
-                let code = Keymap.asciiLetter(name).map { "Key" + String(UnicodeScalar($0 - 0x20)) } ?? Keymap.asciiDigit(name).map { "Digit" + String(UnicodeScalar($0)) } ?? name
-                let prevented = deliverKey(down: true, key: name, code: code, flags: flags, target: nil, inText: false)
-                _ = deliverKey(down: false, key: name, code: code, flags: flags, target: nil, inText: false)
+                guard let prevented = press(arg) else { fatal("script: \(arg) has an unknown modifier") }
                 say("key \(arg)\(prevented ? " (heard)" : "")")
             case "pool":
                 // `pool:N`: at most N worker threads, so a recorded case runs
@@ -122,18 +108,7 @@ extension Host {
                 // would make; the next step follows the last move.
                 let v = arg.split(separator: ",").compactMap { Double(String($0)) }
                 guard v.count == 6, v[4] >= 1 else { fatal("script: sweep needs x0,y0,x1,y1,moves,ms, not \(arg)") }
-                let moves = Int(v[4]), interval = v[5] / 1000, began = Bench.now()
-                func move(_ i: Int) {
-                    let t = moves == 1 ? 1 : Double(i) / Double(moves - 1)
-                    pointer(at: windowPoint(NSPoint(x: v[0] + (v[2] - v[0]) * t, y: v[1] + (v[3] - v[1]) * t)))
-                    if i + 1 < moves {
-                        DispatchQueue.main.asyncAfter(deadline: .now() + interval) { move(i + 1) }
-                    } else {
-                        say("sweep: \(moves) moves in \(Int((Bench.now() - began) * 1000)) ms (planned \(Int(Double(moves - 1) * interval * 1000)) ms)")
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1, execute: next)
-                    }
-                }
-                move(0)
+                sweep(v) { DispatchQueue.main.asyncAfter(deadline: .now() + 0.1, execute: next) }
                 return
             case "phase":
                 // `phase:NAME`: `stats` reports the operations from here on
@@ -179,6 +154,46 @@ extension Host {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.2, execute: next)
     }
 
+    /// `moves` pointer moves along the line from (x0, y0) to (x1, y1), one
+    /// every `ms` milliseconds, as a steady hand would make (`v` is x0, y0,
+    /// x1, y1, moves, ms); `done` runs after the last.
+    func sweep(_ v: [Double], then done: @escaping () -> Void) {
+        let moves = Int(v[4]), interval = v[5] / 1000, began = Bench.now()
+        func move(_ i: Int) {
+            let t = moves == 1 ? 1 : Double(i) / Double(moves - 1)
+            pointer(at: windowPoint(NSPoint(x: v[0] + (v[2] - v[0]) * t, y: v[1] + (v[3] - v[1]) * t)))
+            if i + 1 < moves {
+                DispatchQueue.main.asyncAfter(deadline: .now() + interval) { move(i + 1) }
+            } else {
+                say("sweep: \(moves) moves in \(Int((Bench.now() - began) * 1000)) ms (planned \(Int(Double(moves - 1) * interval * 1000)) ms)")
+                done()
+            }
+        }
+        move(0)
+    }
+
+    /// Press and release `chord` (`cmd+shift+n`: modifiers cmd, ctrl, alt
+    /// (opt), shift, then the key), as typed in the window: whether the app
+    /// heard it, or nil for an unknown modifier.
+    func press(_ chord: String) -> Bool? {
+        var parts = chord.split(separator: "+").map(String.init)
+        let name = parts.popLast() ?? ""
+        var flags: UInt8 = 0
+        for p in parts {
+            switch p {
+            case "ctrl": flags |= 1
+            case "alt", "opt": flags |= 2
+            case "shift": flags |= 4
+            case "cmd": flags |= 8
+            default: return nil
+            }
+        }
+        let code = Keymap.asciiLetter(name).map { "Key" + String(UnicodeScalar($0 - 0x20)) } ?? Keymap.asciiDigit(name).map { "Digit" + String(UnicodeScalar($0)) } ?? name
+        let prevented = deliverKey(down: true, key: name, code: code, flags: flags, target: nil, inText: false)
+        _ = deliverKey(down: false, key: name, code: code, flags: flags, target: nil, inText: false)
+        return prevented
+    }
+
     func say(_ line: String) { fputs(line + "\n", __stderrp) }
 
     /// `x,y` as a point.
@@ -210,61 +225,63 @@ extension Host {
         return found
     }
 
-    func dump(_ n: Node, _ depth: Int) {
+    /// The node tree as the views show it, one line each to `emit` (by
+    /// default standard error, as `dump` prints it).
+    func dump(_ n: Node, _ depth: Int, _ emit: (String) -> Void = { fputs($0 + "\n", __stderrp) }) {
         let pad = String(repeating: "  ", count: depth)
         let name = n.name ?? "text"
         if name == "ui-hover" {
-            say("\(pad)\(name)\(hovered.contains { $0 === n } ? " (pointer inside)" : "")")
-            for c in n.children where c.name != nil { dump(c, depth + 1) }
+            emit("\(pad)\(name)\(hovered.contains { $0 === n } ? " (pointer inside)" : "")")
+            for c in n.children where c.name != nil { dump(c, depth + 1, emit) }
             return
         }
         switch n.view {
         case let s as NSStackView where n.name != nil:
-            say("\(pad)\(name) [\((s as? Stack)?.shownCount ?? s.arrangedSubviews.count) views]")
-            for c in n.children where c.name != nil || !c.text.isEmpty { dump(c, depth + 1) }
+            emit("\(pad)\(name) [\((s as? Stack)?.shownCount ?? s.arrangedSubviews.count) views]")
+            for c in n.children where c.name != nil || !c.text.isEmpty { dump(c, depth + 1, emit) }
         case let box as ScrollBox:
-            say("\(pad)\(name) [\(box.stack.arrangedSubviews.count) views, \(Int(box.frame.height))pt high]")
-            for c in n.children where c.name != nil || !c.text.isEmpty { dump(c, depth + 1) }
+            emit("\(pad)\(name) [\(box.stack.arrangedSubviews.count) views, \(Int(box.frame.height))pt high]")
+            for c in n.children where c.name != nil || !c.text.isEmpty { dump(c, depth + 1, emit) }
         case let box as ListBox:
             let selected = box.table.selectedRow
             let shown = box.table.rows(in: box.table.visibleRect)
             let realized = box.rows.filter { $0.view != nil }.count
-            say("\(pad)\(name) [\(box.table.numberOfRows) rows, \(realized) with views\(selected >= 0 ? ", row \(selected) selected" : ""), \(Int(box.frame.height))pt high]")
-            if shown.length > 0 { say("\(pad)  rows \(shown.location)–\(shown.location + shown.length - 1) visible") }
+            emit("\(pad)\(name) [\(box.table.numberOfRows) rows, \(realized) with views\(selected >= 0 ? ", row \(selected) selected" : ""), \(Int(box.frame.height))pt high]")
+            if shown.length > 0 { emit("\(pad)  rows \(shown.location)–\(shown.location + shown.length - 1) visible") }
             for i in max(shown.location, 0)..<min(max(shown.location, 0) + 3, box.table.numberOfRows) {
-                if let c = box.node(at: i) { dump(c, depth + 1) } else { say("\(pad)  (placeholder)") }
+                if let c = box.node(at: i) { dump(c, depth + 1, emit) } else { emit("\(pad)  (placeholder)") }
             }
-            if box.table.numberOfRows > 3 { say("\(pad)  …") }
+            if box.table.numberOfRows > 3 { emit("\(pad)  …") }
         case let popup as NSPopUpButton:
-            say("\(pad)\(name) \"\(popup.titleOfSelectedItem ?? "")\" of \(popup.itemTitles)")
+            emit("\(pad)\(name) \"\(popup.titleOfSelectedItem ?? "")\" of \(popup.itemTitles)")
         case let control as NSSegmentedControl:
             let titles = (0..<control.segmentCount).map { i in control.selectedSegment == i ? "[\(control.label(forSegment: i) ?? "")]" : control.label(forSegment: i) ?? "" }
-            say("\(pad)\(name) \(titles.joined(separator: " "))")
+            emit("\(pad)\(name) \(titles.joined(separator: " "))")
         case let b as NSButton:
             let extra = n.name == "ui-checkbox" ? " \(b.state == .on ? "[x]" : "[ ]")" : (b.isEnabled ? "" : " (disabled)")
-            say("\(pad)\(name) \"\(b.title)\"\(extra)")
+            emit("\(pad)\(name) \"\(b.title)\"\(extra)")
         case let f as NSTextField where n.name == "ui-text":
             let usual = ["text-style": "body", "font-size": "standard", "weight": "standard", "design": "proportional", "color": "label"]
-            say("\(pad)\(name) \"\(f.stringValue)\"\(look(n, usual))")
+            emit("\(pad)\(name) \"\(f.stringValue)\"\(look(n, usual))")
         case let f as NSTextField:
-            say("\(pad)\(name) \"\(f.stringValue)\"")
+            emit("\(pad)\(name) \"\(f.stringValue)\"")
         case let s as NSSlider:
-            say("\(pad)\(name) \(s.doubleValue)")
+            emit("\(pad)\(name) \(s.doubleValue)")
         case let s as NSScrollView where n.name == "ui-text-area":
             let text = (s.documentView as? NSTextView)?.string ?? ""
-            say("\(pad)\(name) \"\(text.replacingOccurrences(of: "\n", with: "\\n"))\"")
+            emit("\(pad)\(name) \"\(text.replacingOccurrences(of: "\n", with: "\\n"))\"")
         case let image as NSImageView:
-            say("\(pad)\(name) \(n.attrs["symbol"] ?? "")\(image.image == nil ? " (missing)" : "")")
+            emit("\(pad)\(name) \(n.attrs["symbol"] ?? "")\(image.image == nil ? " (missing)" : "")")
         case let picture as Picture:
             let (wide, high) = picture.pixels
-            say("\(pad)\(name) \(picture.name) [\(wide)x\(high), \(Int(picture.frame.width))pt wide, \(Int(picture.frame.height))pt high]\(look(n, ["scaling": "fit", "label": ""]))")
+            emit("\(pad)\(name) \(picture.name) [\(wide)x\(high), \(Int(picture.frame.width))pt wide, \(Int(picture.frame.height))pt high]\(look(n, ["scaling": "fit", "label": ""]))")
         case let bar as NSProgressIndicator:
-            say("\(pad)\(name) " + (bar.isIndeterminate ? (n.attrs["value"] == "1" ? "busy" : "idle") : "\(Int(bar.doubleValue))/\(Int(bar.maxValue))"))
+            emit("\(pad)\(name) " + (bar.isIndeterminate ? (n.attrs["value"] == "1" ? "busy" : "idle") : "\(Int(bar.doubleValue))/\(Int(bar.maxValue))"))
         case is Surface:
-            say("\(pad)\(name)\(look(n, ["fill": "control-background", "border": "none"]))")
-            for c in n.children where c.name != nil { dump(c, depth + 1) }
+            emit("\(pad)\(name)\(look(n, ["fill": "control-background", "border": "none"]))")
+            for c in n.children where c.name != nil { dump(c, depth + 1, emit) }
         default:
-            if n.name != nil { say("\(pad)\(name)") }
+            if n.name != nil { emit("\(pad)\(name)") }
         }
     }
 

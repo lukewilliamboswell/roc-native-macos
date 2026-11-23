@@ -48,7 +48,7 @@ enum LocalStorage {
     private static let environment = ProcessInfo.processInfo.environment
     private static let defaults: UserDefaults? =
         environment["ROC_STORAGE_SUITE"].flatMap { UserDefaults(suiteName: $0) }
-        ?? (environment["ROC_SCRIPT"] == nil ? UserDefaults.standard : nil)
+        ?? (driven ? nil : UserDefaults.standard)
     private static var memory: [String: String] = [:]
 
     static func get(_ key: String) -> String? { defaults.map { $0.string(forKey: key) } ?? memory[key] }

@@ -18,13 +18,13 @@ import Package
 ## roc macos.roc run           # build it and start it
 ## roc macos.roc dev           # start it with hot reloading
 ## roc macos.roc build         # build my-app.app, on any system
-## roc macos.roc test          # run its recorded cases
+## roc macos.roc test          # run its specs
 ## roc macos.roc package       # dist/my-app-<version>.zip, to share
 ## ```
 MacOS :: [].{
 
 	## What the user asked for.
-	Command : [Help, CommandHelp(Str), Init(Str), Build(Meta.Fields), Run(Meta.Fields), Dev, Test({ update : Bool }), Package(Package.Options), CiPackage(Meta.Fields), CiRelease]
+	Command : [Help, CommandHelp(Str), Init(Str), Build(Meta.Fields), Run(Meta.Fields), Dev, Test({ update : Bool, check : Bool }), Package(Package.Options), CiPackage(Meta.Fields), CiRelease]
 
 	## The commands, in the order `help` lists them.
 	commands : List(Str)
@@ -43,7 +43,7 @@ MacOS :: [].{
 			Ok(Build(chosen)) => App.build!(chosen).map_ok(|_| {})
 			Ok(Run(chosen)) => App.run!(chosen)
 			Ok(Dev) => App.dev!()
-			Ok(Test({ update })) => Cases.run!(update)
+			Ok(Test(chosen)) => Cases.run!(chosen)
 			Ok(Package(chosen)) => Package.run!(chosen, Package.environment!()).map_ok(|_| {})
 			Ok(CiPackage(fields)) => Ci.package!(fields)
 			Ok(CiRelease) => Ci.release!()
@@ -74,8 +74,9 @@ MacOS :: [].{
 			["ci", "package", .. as rest] => MacOS.options("ci package", rest, nothing).map_ok(|chosen| CiPackage(chosen.fields))
 			["ci", "release"] => Ok(CiRelease)
 			["dev"] => Ok(Dev)
-			["test"] => Ok(Test({ update: Bool.False }))
-			["test", "--update"] => Ok(Test({ update: Bool.True }))
+			["test"] => Ok(Test({ update: Bool.False, check: Bool.False }))
+			["test", "--update"] => Ok(Test({ update: Bool.True, check: Bool.False }))
+			["test", "--check"] => Ok(Test({ update: Bool.False, check: Bool.True }))
 			[command, .. as extra] if MacOS.commands.contains(command) => Err(UnexpectedArguments({ command, extra }))
 			[command, ..] => Err(UnknownCommand(command))
 		}
@@ -110,7 +111,7 @@ MacOS :: [].{
 		\\  roc macos.roc build            Build the app, <name>.app, on any system.
 		\\  roc macos.roc run              Build it and start it, its output in this terminal.
 		\\  roc macos.roc dev              Start it with roc main.roc, which reloads it as you save.
-		\\  roc macos.roc test [--update]  Build it and run its recorded cases, tests/*.script.
+		\\  roc macos.roc test [--update]  Build it and run its specs, specs/*.scm.
 		\\  roc macos.roc package          Build it, sign it and zip it, as dist/<name>-<version>.zip.
 		\\  roc macos.roc ci package       Package it in CI, signing it as the secrets allow.
 		\\  roc macos.roc ci release       Attach dist/*.zip to the pushed tag's GitHub release.
@@ -235,16 +236,19 @@ MacOS :: [].{
 				\\creates the release when there is none, as a pre-release for a tag with a
 				\\suffix, and replaces zips of the same name.
 			"test" =>
-				\\Build the app and run its recorded cases.
+				\\Build the app and run its specs.
 				\\
-				\\Usage: roc macos.roc test [--update]
+				\\Usage: roc macos.roc test [--update | --check]
 				\\
 				\\Run from the app's directory, containing main.roc, on an Apple silicon Mac.
-				\\Each tests/<case>.script holds steps (click:+;dump;quit), which drive the
-				\\app's real controls without taking focus, and tests/<case>.expected what the
-				\\run prints. A case passes when it exits normally having printed that, with
-				\\window and point sizes allowed to differ by up to 4. --update records what
-				\\each case prints now; review the change before you commit it.
+				\\Each specs/<name>.scm holds one spec, (test "name" (steps ...)): steps such as
+				\\(click (button "+")), which drive the app's real controls without taking
+				\\focus, and expectations such as (expect-text (text "1") "1") or a whole
+				\\(expect-dump """ ... """), whose window and point sizes may differ by up to 4.
+				\\A failure names the spec's file, line and column. --update rewrites each
+				\\expect-dump with what the app shows now, and nothing else; review the change
+				\\before you commit it. --check only parses the specs, on any system. For this
+				\\release, tests/<case>.script cases (and their .expected output) still run.
 			_ => return MacOS.usage
 		}
 		"${description}\n\nThis is roc-native-macos ${Bundle.version}, tested with Roc ${Bundle.roc_version}."
@@ -259,7 +263,7 @@ MacOS :: [].{
 			"build" | "run" => "Use it as `roc macos.roc ${command} [METADATA FLAGS]`; `roc macos.roc ${command} --help` lists the flags."
 			"package" => "Use it as `roc macos.roc package [--sign] [--notarize] [METADATA FLAGS]`; `roc macos.roc package --help` lists the flags."
 			"ci" | "ci package" => "Use it as `roc macos.roc ci package [METADATA FLAGS]` or `roc macos.roc ci release`; ci decides how to sign from the secrets that are set. `roc macos.roc ci --help` describes them."
-			"test" => "Use it as `roc macos.roc test [--update]`."
+			"test" => "Use it as `roc macos.roc test [--update | --check]`."
 			_ => "`roc macos.roc help` describes it."
 		}
 
@@ -327,12 +331,13 @@ MacOS :: [].{
 				if command == "run" {
 					{ code: 1, text: "Built ${bundle}, but this is ${system}, and the app runs only on an Apple silicon Mac: copy ${bundle} to one and open it there." }
 				} else {
-					{ code: 1, text: "The recorded cases run the app, which runs only on an Apple silicon Mac, and this is ${system}, so test cannot run them here. `roc macos.roc build` builds the app on any system." }
+					{ code: 1, text: "The specs run the app, which runs only on an Apple silicon Mac, and this is ${system}, so test cannot run them here; `roc macos.roc test --check` parses them on any system, and `roc macos.roc build` builds the app." }
 				}
 			DevNotAppleSilicon(system) => { code: 1, text: "dev starts the app, which runs only on an Apple silicon Mac, and this is ${system}, so it cannot start it here. `roc macos.roc build` builds the app on any system." }
 			DevFailed({ how, code }) => { code, text: "roc main.roc ${how}: its output is above." }
-			NoCases => { code: 1, text: "There are no recorded cases to run: tests/ holds no .script files. `roc macos.roc init` writes tests/increment.script as an example, and `roc macos.roc test --help` describes them." }
-			CasesFailed({ failed, total }) => { code: 1, text: "${failed.len().to_str()} of ${total.to_str()} recorded cases failed: ${Str.join_with(failed, ", ")}. If the app changed on purpose, record what it prints now with `roc macos.roc test --update`." }
+			NoCases => { code: 1, text: "There is nothing to test: specs/ holds no .scm files. `roc macos.roc init` writes specs/increment.scm as an example, and `roc macos.roc test --help` describes them." }
+			CasesFailed({ failed, total }) => { code: 1, text: "${failed.len().to_str()} of ${total.to_str()} specs failed: ${Str.join_with(failed, ", ")}. If the app changed on purpose, rewrite their dumps with `roc macos.roc test --update`." }
+			SpecsInvalid({ invalid, total }) => { code: 1, text: "${invalid.to_str()} of ${total.to_str()} specs could not be parsed, at the places above; `roc macos.roc test --help` describes the form." }
 			AppFailed(how) => { code: 1, text: "The app ${how}: its output is above." }
 			AssetsNotADirectory => { code: 1, text: "assets is not a directory: the app's images and other files go in a directory named assets beside main.roc." }
 			TwoIcons => { code: 1, text: "assets/ holds both icon.png and icon.icns, and an app has one icon: remove one of them." }
@@ -370,7 +375,7 @@ metadata_help =
 ## Each command line names its command, with the defaults filled in.
 expect {
 	actual = [[], ["help"], ["init"], ["init", "my-app"], ["build"], ["run", "--id", "org.me.app", "--name", "My App"], ["dev"], ["test"], ["test", "--update"]].map(MacOS.parse)
-	expected = [Ok(Help), Ok(Help), Ok(Init(".")), Ok(Init("my-app")), Ok(Build(Meta.none)), Ok(Run({ ..Meta.none, id: "org.me.app", name: "My App" })), Ok(Dev), Ok(Test({ update: Bool.False })), Ok(Test({ update: Bool.True }))]
+	expected = [Ok(Help), Ok(Help), Ok(Init(".")), Ok(Init("my-app")), Ok(Build(Meta.none)), Ok(Run({ ..Meta.none, id: "org.me.app", name: "My App" })), Ok(Dev), Ok(Test({ update: Bool.False, check: Bool.False })), Ok(Test({ update: Bool.True, check: Bool.False }))]
 	actual == expected
 }
 
