@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Build and run the grid stress test (bench/grid/README.adoc).
 #
-#   bench/grid/run.sh               # N = 10 32 100 316 1000
+#   bench/grid/run.sh               # N = 10 32 100 150 200 316
 #   bench/grid/run.sh 100 200       # just these sizes
 #   NO_BUILD=1 bench/grid/run.sh    # reuse bench/grid/grid (BIN=path runs another build)
 #   LIVE=1 bench/grid/run.sh 100    # move the mouse yourself; the HUD shows the timings
@@ -28,7 +28,7 @@ if [[ ${1:-} == --smoke ]]; then
 fi
 sizes=("$@")
 [[ ${#sizes[@]} -eq 0 && -n $smoke ]] && sizes=(4)
-[[ ${#sizes[@]} -eq 0 ]] && sizes=(10 32 100 316 1000)
+[[ ${#sizes[@]} -eq 0 ]] && sizes=(10 32 100 150 200 316)
 
 if [[ -z ${NO_BUILD:-} ]]; then
 	(cd "$here" && "$ROC" build main.roc --output="$here/grid")

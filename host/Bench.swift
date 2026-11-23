@@ -18,14 +18,14 @@ final class Bench: NSObject {
 
     /// What started an operation.
     enum Kind {
-        case mount, event, hover, timer
-        static let all: [Kind] = [.mount, .event, .hover, .timer]
+        case mount, event, hover, timer, scroll
         var name: String {
             switch self {
             case .mount: return "mount"
             case .event: return "event"
             case .hover: return "hover"
             case .timer: return "timer"
+            case .scroll: return "scroll"
             }
         }
     }
@@ -48,7 +48,12 @@ final class Bench: NSObject {
     private var structureChanged = true
     private var views = 0, targets = 0
 
-    private var samples: [Kind: [Sample]] = [:]
+    /// The samples by operation, under `KIND` or, once a script has named
+    /// a phase (`phase:NAME`), `KIND/NAME`, in the order first seen.
+    private var samples: [String: [Sample]] = [:]
+    private var order: [String] = []
+    /// The scripted phase the samples belong to ("" for none).
+    var phase = ""
     private var current = Sample()
     private var kind = Kind.event
     private var mark = 0.0
@@ -88,7 +93,9 @@ final class Bench: NSObject {
         }
         t = Bench.now()
         current.at = t
-        samples[kind, default: []].append(current)
+        let key = phase.isEmpty || kind == .mount ? kind.name : "\(kind.name)/\(phase)"
+        if samples[key] == nil { order.append(key) }
+        samples[key, default: []].append(current)
         recent.append(current)
         if let event = eventTime { latencies.append((t, t - event)) }
         eventTime = nil
@@ -107,18 +114,26 @@ final class Bench: NSObject {
 
     /// A small panel over the window's top-right corner, refreshed twice a
     /// second from a host timer: the engine is never asked, so the HUD does
-    /// not perturb what it shows. It lives in the window's frame view, out
-    /// of the content's layout, so measuring the content never sees it.
+    /// not perturb what it shows. It is a borderless child window ordered
+    /// above the app's, which never becomes key and lets the mouse through,
+    /// so it is outside the content's layout and hit testing, and never
+    /// takes focus. (AppKit does not support views added to a window's
+    /// frame view.)
     func startHUD(_ host: Host) {
-        guard let frame = host.window.contentView?.superview else { return }
         let label = NSTextField(labelWithString: "")
         label.font = .monospacedSystemFont(ofSize: 11, weight: .regular)
         label.textColor = .white
         label.drawsBackground = true
         label.backgroundColor = NSColor(srgbRed: 0, green: 0, blue: 0, alpha: 0.72)
         label.maximumNumberOfLines = 0
-        label.autoresizingMask = [.minXMargin, .minYMargin]
-        frame.addSubview(label)
+        let panel = NSWindow(contentRect: .zero, styleMask: [.borderless], backing: .buffered, defer: false)
+        panel.isReleasedWhenClosed = false
+        panel.isOpaque = false
+        panel.backgroundColor = .clear
+        panel.hasShadow = false
+        panel.ignoresMouseEvents = true
+        panel.contentView = label
+        host.window.addChildWindow(panel, ordered: .above)
         hud = label
         let timer = Timer(timeInterval: 0.5, repeats: true) { [weak self, weak host] _ in
             guard let self, let host else { return }
@@ -129,7 +144,7 @@ final class Bench: NSObject {
     }
 
     private func refreshHUD(_ host: Host) {
-        guard let label = hud, let frame = label.superview else { return }
+        guard let label = hud, let panel = label.window else { return }
         let since = Bench.now() - 1
         recent.removeAll { $0.at < since }
         latencies.removeAll { $0.at < since }
@@ -162,9 +177,10 @@ final class Bench: NSObject {
         label.sizeToFit()
         let size = label.frame.size
         // The content area's top-right corner, below the title bar.
-        let content = host.window.contentLayoutRect
-        let top = content.origin.y + content.size.height
-        label.setFrameOrigin(NSPoint(x: frame.bounds.width - size.width - 8, y: top - size.height - 8))
+        let content = host.window.contentLayoutRect, window = host.window.frame
+        panel.setFrame(NSRect(x: window.origin.x + content.origin.x + content.size.width - size.width - 8,
+                              y: window.origin.y + content.origin.y + content.size.height - size.height - 8,
+                              width: size.width, height: size.height), display: true)
     }
 
     /// One quantile of `seconds`, in milliseconds.
@@ -212,13 +228,13 @@ final class Bench: NSObject {
         let size = host.window.contentView?.frame.size ?? .zero
         print("bench: views \(views) window \(Int(size.width))x\(Int(size.height)) rss-peak-mb \(f1(rss)) timers-peak \(peakTimers) timers-live \(host.timers.count)")
         if let shown = firstShown {
-            let m = samples[.mount]?.first ?? Sample()
+            let m = samples["mount"]?.first ?? Sample()
             print("bench: first-display \(ms(shown)) ms after launch: mount engine \(ms(m.engine)) apply \(ms(m.apply)) layout \(ms(m.layout)) | shown layout \(ms(firstDisplay.layout)) display \(ms(firstDisplay.display))")
         }
-        for kind in Kind.all {
-            guard let list = samples[kind], !list.isEmpty else { continue }
+        for key in order {
+            guard let list = samples[key], !list.isEmpty else { continue }
             let turns = list.reduce(0) { $0 + $1.turns }
-            print("bench: \(kind.name) n \(list.count) turns \(turns)"
+            print("bench: \(key) n \(list.count) turns \(turns)"
                 + " | engine \(spread(list.map { $0.engine }))"
                 + " | apply \(spread(list.map { $0.apply }))"
                 + " | layout \(spread(list.map { $0.layout }))"
