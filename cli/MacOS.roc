@@ -284,7 +284,7 @@ MacOS :: [].{
 			NotaryToolMissing => { code: 1, text: "Notarizing from the keychain uses xcrun notarytool, which is not on PATH: install Xcode's command line tools (xcode-select --install), or sign with MACOS_SIGN_P12 and rcodesign instead." }
 			BadSourceDateEpoch(text) => { code: 1, text: "SOURCE_DATE_EPOCH is \"${text}\", which is not a number of seconds since 1970: set it to one, such as the last commit's time (git log -1 --format=%ct), or unset it." }
 			StepFailed(shown) => { code: 1, text: "Packaging stopped: `${shown}` failed, with its report above." }
-			TooLargeToZip(bundle) => { code: 1, text: "${bundle} is too large for a zip without Zip64, 4 GB or 65,535 files, so package cannot zip it." }
+			CannotZip(why) => { code: 1, text: "package could not zip the app: roc-zip refused it with ${why}." }
 			NoReleaseVersion(ref) => { code: 1, text: "ci package needs a version, and this run has none: it is for ${ref}, not a tag such as v1.0.0. Push a tag, or give one with --version or RELEASE_VERSION." }
 			PartialNotaryKey(missing) => { code: 1, text: "Some of the notary key's secrets are set, but not ${Str.join_with(missing, " or ")}: set all three to notarize, or none to sign without notarizing." }
 			BadP12Base64 => { code: 1, text: "MACOS_SIGN_P12_BASE64 is not base64: set it to the .p12 file's base64, as `base64 -i developer-id.p12` prints it." }
