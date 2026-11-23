@@ -11,6 +11,7 @@ import cli.Path
 import cli.Stderr
 import cli.Stdout
 import src/Build
+import src/Facade
 import src/LinkInputs
 import src/Tar
 
@@ -22,6 +23,8 @@ import src/Tar
 ##     blueprint run build -- --link-inputs DIR    # with a candidate from `link-inputs -- build DIR`
 ##     blueprint run build -- glue                 # regenerate the committed glue in host/
 ##     blueprint run build -- glue --check         # require the committed glue to be what roc generates
+##     blueprint run build -- engine               # regenerate the engine facades in platform/
+##     blueprint run build -- engine --check       # require the committed facades to be what the engine package gives
 ##     blueprint run build -- host --fingerprint   # print the host's fingerprint (CI's cache key)
 ##     blueprint run build -- host --reproduce     # build the host twice and require identical bytes
 ##
@@ -65,6 +68,8 @@ main! = |raw_args| {
 		Examples(names) => examples!(roc, Ok(names))
 		Glue => glue!(roc, Bool.False)
 		GlueCheck => glue!(roc, Bool.True)
+		Engine => engine!(Bool.False)
+		EngineCheck => engine!(Bool.True)
 		Host => host!().map_ok(|_| {})
 		HostFingerprint => print_fingerprint!()
 		HostReproduce => reproduce!()
@@ -366,6 +371,47 @@ glue! = |roc, check| {
 		Ok({})
 	} else {
 		Err("${Str.join_with($stale, " and ")} differ from what glue/SwiftGlue.roc generates with this roc: run `blueprint run build -- glue`, review the diff and change the host to match")
+	}
+}
+
+## Regenerate the engine facades, `platform/{Engine,Layout,Wire,Worker}.roc`,
+## from the engine package `platform/main.roc` names (`scripts/src/Facade.roc`),
+## or check that the committed ones are current. The package is downloaded
+## once into `build/engine-package`; `roc` verifies the same URL's hash
+## whenever it builds the platform.
+engine! : Bool => Try({}, Str)
+engine! = |check| {
+	url = Facade.package_url(read!("platform/main.roc")?) ? |_| "platform/main.roc names no `engine:` package"
+	archive = url.split_on("/").last() ? |_| "${url} names no file"
+	cache = "build/engine-package"
+	source = "${cache}/${archive.drop_suffix(".tar.zst")}"
+	if !(Path.exists!(Path.utf8("${source}/main.roc")) ?? Bool.False) {
+		fresh!(source)?
+		download = "${cache}/${archive}"
+		step!(Cmd.new("curl").args(["-fsSL", "--retry", "3", "-o", download, url].map(OsStr.from_str)), "curl ${url}")?
+		step!(Cmd.new("zstd").args(["-q", "-d", "-f", "-o", "${cache}/package.tar", download].map(OsStr.from_str)), "zstd -d ${download}")?
+		step!(Cmd.new("tar").args(["-x", "-f", "${cache}/package.tar", "-C", source].map(OsStr.from_str)), "tar -x -C ${source}")?
+	}
+	var $stale = []
+	for name in Facade.modules {
+		text = Facade.source_of(name, read!("${source}/${name}.roc")?, url) ? |_| "${source}/${name}.roc has no `${name} := [].{` block"
+		path = "platform/${name}.roc"
+		if check {
+			if (Path.read_utf8!(Path.utf8(path)) ?? "") != text {
+				$stale = $stale.append(path)
+			}
+		} else {
+			write!(path, text)?
+		}
+	}
+	if !check {
+		note!("build: wrote the engine facades in platform/ from ${url}")
+		Ok({})
+	} else if $stale.is_empty() {
+		note!("build: the engine facades are what ${url} gives")
+		Ok({})
+	} else {
+		Err("the engine package gives other facades than ${Str.join_with($stale, " and ")}: run `blueprint run build -- engine` and review the diff")
 	}
 }
 

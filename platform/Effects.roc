@@ -1,9 +1,9 @@
-import Core
+import engine.EngineHost
 import Hosted
 
 ## The platform's hosted effects for a worker job, as the engine takes
-## them (`Core.JobEffects`): the one place outside the platform root that
-## reaches `Hosted.roc`. The platform hands this record to the engine when
+## them (`EngineHost.JobEffects`): the one place outside the platform root
+## that reaches `Hosted.roc`. The platform hands this record to the engine when
 ## it starts a job, a preparation or a question, and to `Files.build!`;
 ## the files and builders made in that call carry it, so their effects are
 ## methods while the engine's modules stay free of hosted functions and can
@@ -15,7 +15,7 @@ Effects := [].{
 
 	## The job effects both hosts serve (design.md, "Workers"); each refuses
 	## outside a job.
-	job : Core.JobEffects
+	job : EngineHost.JobEffects
 	job = {
 		read!: |token, start, len| Hosted.read!(token, start, len),
 		size!: |token| Hosted.size!(token),

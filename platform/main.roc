@@ -1,7 +1,9 @@
 ## A native macOS platform spike over the roc-signals reactive engine.
 ##
-## The engine modules (`Core.roc`, `Engine.roc` and the modules they import)
-## are copied verbatim from roc-signals. The engine emits the roc-signals
+## The engine is roc-signals' engine package (`engine`), driven through its
+## `EngineHost`; `Engine.roc`, `Layout.roc`, `Wire.roc` and `Worker.roc` are
+## generated facades that re-expose its modules as the platform's own
+## (`scripts/src/Facade.roc`). The engine emits the roc-signals
 ## command stream (design.md, Appendix B); instead of a browser runtime, the
 ## Swift host (`../host/Host.swift`) applies those commands to AppKit views and
 ## routes AppKit events back as turns. `Ui.roc` is the small native
@@ -21,7 +23,7 @@ platform ""
 		[Store : st] for main : Engine.Program(st)
 	}
 	exposes [Engine, Files, Layout, Ui, Wire, Worker]
-	packages { cbor: "https://github.com/lukewilliamboswell/roc-cbor/releases/download/0.6.3/J3xX4n61WoMZKK3tdWTnZBdKaVbi8SvXvmtC5i3qDAER.tar.zst", parser: "https://github.com/lukewilliamboswell/roc-parser/releases/download/6.0.0-rc.5/822J9njyNR1vgyX1KG4ck496dBx3AnLfvn2zHXn15Ksw.tar.zst" }
+	packages { engine: "https://github.com/lukewilliamboswell/roc-signals/releases/download/0.8.0-rc2/engine-GKiw1oqhZ1Q3sWgo1mSinHwACzFUCU8cCZPRY7SXYSgh.tar.zst" }
 	provides {
 		"roc_engine_ask": ask_for_host!,
 		"roc_engine_drop": drop_for_host,
@@ -48,7 +50,7 @@ platform ""
 		arm64mac: { inputs: ["libhost.a", app] },
 	}
 
-import Core
+import engine.EngineHost
 import Effects
 import Engine
 import Files
@@ -67,12 +69,12 @@ Step : { cmds : List(U8), state : Handle, work : List(U8) }
 ## containing the store as plain Roc data and the site tree beside it.
 ## The nested boxed Iter is the narrow #12953 workaround for sites containing
 ## functions: https://github.com/roc-lang/roc/issues/12953.
-Handle : Box({ store : Store, sites : Box(Iter(Core.Sites(Store))) })
+Handle : Box({ store : Store, sites : Box(Iter(EngineHost.Sites(Store))) })
 
 ## The handle over the state the host keeps until its next call.
-hold : Core.App(Store) -> Handle
+hold : EngineHost.App(Store) -> Handle
 hold = |engine| {
-	(store, sites) = Core.split(engine)
+	(store, sites) = EngineHost.split(engine)
 	Box.box({
 		store,
 		sites: Box.box(
@@ -90,18 +92,18 @@ hold = |engine| {
 }
 
 ## The state a handle holds; the host passes each handle back once.
-release : Handle -> Core.App(Store)
+release : Handle -> EngineHost.App(Store)
 release = |handle| {
 	{ store, sites } = Box.unbox(handle)
 	match Box.unbox(sites).next() {
-		One({ item, rest: _ }) => Core.join(store, item)
+		One({ item, rest: _ }) => EngineHost.join(store, item)
 		_ => crash "internal: the host passed an engine handle whose state was already taken"
 	}
 }
 
 ## The wire protocol version the engine speaks (design.md, Appendix B).
 version_for_host : () -> U32
-version_for_host = || Core.driver(main).version
+version_for_host = || EngineHost.driver(main).version
 
 ## The program's declaration sections (2, 5, 6, 10, 11 and 14), which tell
 ## the host what to read before mount: storage keys, media queries, the zone
@@ -110,12 +112,12 @@ version_for_host = || Core.driver(main).version
 ## host binds no roles from it and would need the cbor package to build it,
 ## so the declarations cross as the engine writes them.
 keys_for_host : () -> List(U8)
-keys_for_host = || (Core.driver(main).keys)()
+keys_for_host = || (EngineHost.driver(main).keys)()
 
 ## Mount with the boot bytes the host read for those declarations.
 init_for_host : List(U8) -> Step
 init_for_host = |boot| {
-	(state, cmds, work) = (Core.driver(main).init)(boot)
+	(state, cmds, work) = (EngineHost.driver(main).init)(boot)
 	{ cmds, state: hold(state), work }
 }
 
@@ -123,7 +125,7 @@ init_for_host = |boot| {
 ## turn, reusing the previous call's command and work buffers.
 event_for_host : Handle, List(U8), List(U8), U32, U32, List(U8) -> Step
 event_for_host = |boxed, buf, wbuf, node, handler, payload| {
-	(next, cmds, work) = (Core.driver(main).event)(release(boxed), buf, wbuf, node, handler, payload)
+	(next, cmds, work) = (EngineHost.driver(main).event)(release(boxed), buf, wbuf, node, handler, payload)
 	{ cmds, state: hold(next), work }
 }
 
@@ -132,7 +134,7 @@ event_for_host = |boxed, buf, wbuf, node, handler, payload| {
 ## engine with the call.
 files_for_host : Handle, List(U8), List(U8), U32, U32, List(U8), List(Box(U64)) -> Step
 files_for_host = |boxed, buf, wbuf, node, handler, record, blobs| {
-	(next, cmds, work) = (Core.driver(main).files)(release(boxed), buf, wbuf, node, handler, record, blobs)
+	(next, cmds, work) = (EngineHost.driver(main).files)(release(boxed), buf, wbuf, node, handler, record, blobs)
 	{ cmds, state: hold(next), work }
 }
 
@@ -144,27 +146,27 @@ files_for_host = |boxed, buf, wbuf, node, handler, record, blobs| {
 ## effects with the call (`Effects.job`), and the job's files and builders
 ## carry them. A worker instance never mounts.
 work_for_host! : List(U8), List(Box(U64)) => List(U8)
-work_for_host! = |payload, handles| Core.work!(main, Effects.job, payload, handles)
+work_for_host! = |payload, handles| EngineHost.work!(main, Effects.job, payload, handles)
 
 ## Copied from roc-signals `platform/main.roc`: a worker instance's
 ## preparation (design.md, "Prepared state"): run the preparation named in
 ## `prep:str init:rest` with the handles of its files and return the state
 ## the instance keeps, which the host owns until a job runs a task on it or
 ## the instance forgets it.
-prepare_for_host! : List(U8), List(Box(U64)) => Box(Core.Kept)
-prepare_for_host! = |payload, handles| Box.box(Core.work_prepare!(main, Effects.job, payload, handles))
+prepare_for_host! : List(U8), List(Box(U64)) => Box(EngineHost.Kept)
+prepare_for_host! = |payload, handles| Box.box(EngineHost.work_prepare!(main, Effects.job, payload, handles))
 
 ## Copied from roc-signals `platform/main.roc`: a job of a preparation's task
 ## on the held state; the state moves in and back out with the job's answer.
-ask_for_host! : Box(Core.Kept), List(U8), List(Box(U64)) => { held : Box(Core.Kept), out : List(U8) }
+ask_for_host! : Box(EngineHost.Kept), List(U8), List(Box(U64)) => { held : Box(EngineHost.Kept), out : List(U8) }
 ask_for_host! = |boxed, payload, handles| {
 	state = Box.unbox(boxed)
-	out = Core.work_ask!(state, payload, handles)
+	out = EngineHost.work_ask!(state, payload, handles)
 	{ held: Box.box(state), out }
 }
 
 ## Let go of the held state: the instance evicts it or prepares another.
-forget_for_host : Box(Core.Kept) -> {}
+forget_for_host : Box(EngineHost.Kept) -> {}
 forget_for_host = |_boxed| {}
 
 ## Teardown: the state and both buffers are released with the call.

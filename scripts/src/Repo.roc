@@ -23,77 +23,6 @@ Repo := [].{
 		}
 	}
 
-	## The engine modules, copies of roc-signals. They change here only
-	## through the patch series in `Repo.engine_patches`, and are never
-	## reformatted; `tests/engine-modules.sha256` holds their pristine
-	## digests.
-	engine_modules : List(Str)
-	engine_modules = ["Core", "Engine", "Web", "EntryRoutes", "Url", "ReadyIndex", "Spelling", "Layout", "TableCore", "View", "Seq", "MarkupAdvice", "SignalCore", "Worker", "WorkerCodec", "Wire", "Files", "Hosted", "Effects"].map(|name| "platform/${name}.roc")
-
-	## The directory of the engine's patch series, and the README that
-	## lists it in order.
-	engine_patches : Str
-	engine_patches = "patches/roc-signals"
-
-	## The patches a series README lists, in order: the first backquoted
-	## `*.patch` name on each line that starts an ordered-list item (`. `).
-	listed_patches : Str -> List(Str)
-	listed_patches = |readme|
-		readme.split_on("\n").keep_oks(
-			|line|
-				if line.starts_with(". `") {
-					match line.split_on("`") {
-						[_, name, ..] if name.ends_with(".patch") => Ok(name)
-						_ => Err(NotAPatch)
-					}
-				} else {
-					Err(NotAPatch)
-				},
-		)
-
-	## What is wrong with the series: `present` are the `*.patch` files in
-	## the directory, in name order, and `listed` what the README lists.
-	## Each patch is named `NNNN-name.patch`, numbered from 0001 with no
-	## gap, and the README lists exactly those, in that order.
-	series_problems : List(Str), List(Str) -> List(Str)
-	series_problems = |present, listed| {
-		dir = Repo.engine_patches
-		unlisted = present.keep_if(|name| !listed.contains(name)).map(|name| "${dir}/${name} is not in ${dir}/README.adoc's list: add it, with its upstream status")
-		absent = listed.keep_if(|name| !present.contains(name)).map(|name| "${dir}/README.adoc lists ${name}, which is not in ${dir}")
-		misnumbered = present.map_with_index(|name, index| (name, index)).keep_oks(
-			|(name, index)| {
-				expected = Repo.left_pad((index + 1).to_str(), 4).replace_each(" ", "0")
-				if (name.starts_with("${expected}-")) Err(Fine) else Ok("${dir}/${name} is patch ${(index + 1).to_str()} of the series: name it ${expected}-<name>.patch")
-			},
-		)
-		order = if (unlisted.is_empty() and absent.is_empty() and listed != present) ["${dir}/README.adoc lists the patches out of order: list them in name order"] else []
-		unlisted.concat(absent).concat(misnumbered).concat(order)
-	}
-
-	## What differs between the pristine digests `tests/engine-modules.sha256`
-	## records and `computed`, `shasum -a 256` of the modules after the
-	## series was reverse-applied to copies of them under `stage`.
-	digest_problems : Str, Str, Str -> List(Str)
-	digest_problems = |recorded, computed, stage| {
-		digests = |text, prefix|
-			text.split_on("\n").keep_oks(
-				|line|
-					match line.split_on("  ") {
-						[digest, path] if path.starts_with(prefix) => Ok({ digest, path: path.drop_prefix(prefix) })
-						_ => Err(NotADigest)
-					},
-			)
-		after = digests(computed, stage)
-		digests(recorded, "").keep_oks(
-			|{ digest, path }|
-				match after.find_first(|entry| entry.path == path) {
-					Ok(entry) if entry.digest == digest => Err(Same)
-					Ok(_) => Ok("${path} is not roc-signals' file plus ${Repo.engine_patches}: change an engine module only through a recorded patch (${Repo.engine_patches}/README.adoc)")
-					Err(_) => Ok("${path} has no computed digest")
-				},
-		)
-	}
-
 	## Every script, whose `expect`s the scripts stage runs.
 	scripts : List(Str)
 	scripts = ["scripts/check_all.roc", "scripts/build.roc", "scripts/link_inputs.roc", "scripts/bundle.roc", "scripts/release.roc", "scripts/record_demos.roc", "scripts/workflow.roc"]
@@ -166,41 +95,12 @@ expect Repo.selection(["--", "examples", "--update"]) == Ok({ stages: ["examples
 expect Repo.selection(["test", "build"]) == Ok({ stages: ["build", "test"], update: Bool.False })
 expect Repo.selection(["bogus"]) == Err(Unknown("bogus"))
 
-expect Repo.engine_modules.len() == 19
-
-series_readme : Str
-series_readme = "= Engine patches\n\n. `0001-first.patch`: one. Upstream: not yet sent.\n. `0002-second.patch`: two. Upstream: https://example.invalid/1\n\nText naming `0003-other.patch` is no item.\n"
-
-expect Repo.listed_patches(series_readme) == ["0001-first.patch", "0002-second.patch"]
-expect Repo.series_problems(["0001-first.patch", "0002-second.patch"], Repo.listed_patches(series_readme)) == []
-expect Repo.series_problems([], []) == []
-
-## An unlisted patch, a listed one that is missing, a gap in the numbers.
-expect
-	Repo.series_problems(["0001-first.patch", "0003-third.patch"], ["0001-first.patch", "0002-second.patch"])
-		== [
-			"patches/roc-signals/0003-third.patch is not in patches/roc-signals/README.adoc's list: add it, with its upstream status",
-			"patches/roc-signals/README.adoc lists 0002-second.patch, which is not in patches/roc-signals",
-			"patches/roc-signals/0003-third.patch is patch 2 of the series: name it 0002-<name>.patch",
-		]
-
-expect Repo.series_problems(["0001-a.patch", "0002-b.patch"], ["0002-b.patch", "0001-a.patch"]) == ["patches/roc-signals/README.adoc lists the patches out of order: list them in name order"]
-
-digests_recorded : Str
-digests_recorded = "aaa  platform/Core.roc\nbbb  platform/Web.roc\n"
-
-expect Repo.digest_problems(digests_recorded, "aaa  build/x/platform/Core.roc\nbbb  build/x/platform/Web.roc\n", "build/x/") == []
-expect
-	Repo.digest_problems(digests_recorded, "aaa  build/x/platform/Core.roc\nccc  build/x/platform/Web.roc\n", "build/x/")
-		== ["platform/Web.roc is not roc-signals' file plus patches/roc-signals: change an engine module only through a recorded patch (patches/roc-signals/README.adoc)"]
-expect Repo.digest_problems(digests_recorded, "aaa  build/x/platform/Core.roc\n", "build/x/") == ["platform/Web.roc has no computed digest"]
-
 expect Repo.paint("PASS", Bool.False) == "PASS"
 expect Repo.paint("PASS", Bool.True) == "\u(001b)[32mPASS\u(001b)[0m"
 expect Repo.paint("failed", Bool.True) == "\u(001b)[31mfailed\u(001b)[0m"
 expect Repo.paint("SKIP", Bool.True) == "\u(001b)[33mSKIP\u(001b)[0m"
 
-expect Repo.fmt_skip("platform/Core.roc") == Err(Checked)
+expect Repo.fmt_skip("platform/Ui.roc") == Err(Checked)
 expect Repo.fmt_skip("examples/todos/main.roc") == Err(Checked)
 
 expect (Repo.millis(12), Repo.millis(1204), Repo.millis(10000), Repo.millis(1002003)) == ("12ms", "1_204ms", "10_000ms", "1_002_003ms")

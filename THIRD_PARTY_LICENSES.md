@@ -4,32 +4,20 @@ The repository's own code is under the [UPL 1.0](LICENSE). This file lists
 code it copies from elsewhere, the packages it fetches, and what its
 applications link at run time.
 
-## Engine modules from roc-signals
-
-The engine modules in `platform/` (`Core`, `Engine`, `Web`, `EntryRoutes`,
-`Url`, `ReadyIndex`, `Spelling`, `Layout`, `TableCore`, `View`, `Seq`,
-`MarkupAdvice` and `SignalCore`) are unmodified copies from
-[roc-signals](https://github.com/lukewilliamboswell/roc-signals). Copyright ©
-2026 Luke Boswell, the copyright holder of this repository; Universal Permissive
-License (UPL), Version 1.0. `tests/engine-modules.sha256` records their digests.
-
-## URL utility
-
-`platform/Url.roc`, one of those modules, derives from
-[basic-webserver](https://github.com/roc-lang/basic-webserver). Copyright ©
-2023 Richard Feldman and subsequent Roc authors; Universal Permissive License
-(UPL), Version 1.0, in that repository's `LICENSE`. Its parsing tests are a
-curated subset informed by web-platform-tests' `url/resources/urltestdata.json`
-(BSD-3-Clause), and they keep the source note that names the WPT commit.
-
 ## Roc packages the compiler fetches
 
 The compiler fetches these by content-addressed URL. Their source is not copied
 into this repository.
 
+- [roc-signals 0.8.0-rc2](https://github.com/lukewilliamboswell/roc-signals/releases/tag/0.8.0-rc2)'s
+  engine package, which the platform imports and re-exposes as `Engine`,
+  `Layout`, `Wire` and `Worker`. Copyright © 2026 Luke Boswell; UPL Version
+  1.0. Its `Url` module derives from
+  [basic-webserver](https://github.com/roc-lang/basic-webserver) (Copyright ©
+  2023 Richard Feldman and subsequent Roc authors; UPL Version 1.0).
 - [roc-parser 6.0.0-rc.5](https://github.com/lukewilliamboswell/roc-parser/releases/tag/6.0.0-rc.5),
-  which the platform imports. Copyright © 2023 Luke Boswell and subsequent
-  authors; UPL Version 1.0.
+  which the engine package imports. Copyright © 2023 Luke Boswell and
+  subsequent authors; UPL Version 1.0.
 - [basic-cli 0.28.1](https://github.com/roc-lang/basic-cli/releases/tag/0.28.1),
   the scripts' platform. Copyright © 2022 Richard Feldman and subsequent
   basic-cli authors; UPL Version 1.0. The scripts alone use it, and no

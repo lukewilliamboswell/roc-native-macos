@@ -116,7 +116,7 @@ fi
 # write three rows of the table, under the list's table_view and the
 # selection's reader. A write must cost the rows written, so fail if the
 # ticks' engine p50 at 200,000 rows is more than 5 times 2,000's. Before
-# engine patches 0004 and 0005 (patches/roc-signals) it grew with the
+# roc-signals 0.8.0-rc2 (roc-signals#308, #309) it grew with the
 # rows: 0.5 and 18.8 ms, a ratio of 38; with them, 0.3 and 0.3. The
 # smaller is floored at 0.2 ms, twice the host's resolution, so timer
 # noise on a fast machine cannot fail it.
@@ -134,13 +134,13 @@ if [[ -n $smoke && -z ${NO_SCALING:-} ]]; then
 	ratio="$(perl -e 'my ($s, $l) = @ARGV; printf "%.1f", $l / ($s < 0.2 ? 0.2 : $s)' "$small" "$large")"
 	echo "== write scaling: tick engine p50 2,000 rows $small ms, 200,000 rows $large ms: ratio $ratio for 100x the rows (constant 1, linear 100, fails above 5)"
 	if perl -e 'exit($ARGV[0] > 5 ? 0 : 1)' "$ratio"; then
-		echo "bench/rows --smoke: a 3-row table write's engine time grows with the table; see patches/roc-signals/README.adoc (0004, 0005)" >&2
+		echo "bench/rows --smoke: a 3-row table write's engine time grows with the table; see roc-signals#308 and #309" >&2
 		exit 1
 	fi
 fi
 
 # Building a table with `Table.insert` in a loop must cost time linear in
-# the rows (engine patch 0004): the mount's engine time for 18,000 rows
+# the rows (roc-signals#308): the mount's engine time for 18,000 rows
 # inserted one at a time (`-rows-build insert`), against 2,000. Linear is
 # about 9 times (less, with the mount's fixed costs); quadratic is about
 # 81 (it was 50 to 60 before the patch). The faster of two runs each.

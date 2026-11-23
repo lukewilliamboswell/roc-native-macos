@@ -7,7 +7,7 @@ rest need a reviewer.
 ## Before you open a pull request
 
 Run `blueprint run check` with a current Roc nightly installed as `roc`. It is
-the same gate CI runs on `macos-15`: compiler pins, engine digests,
+the same gate CI runs on `macos-15`: compiler pins, the engine facades,
 formatting, the scripts' tests, the `macos.roc` tool's package (`cli/`),
 the committed glue, `scripts/build.roc`, `roc test`, every example's recorded scripted runs
 (`examples/<example>/tests/`), and the platform bundle with a counter created, built
@@ -16,32 +16,25 @@ least one recorded case: add `examples/<example>/tests/<case>.script` and run
 `blueprint run examples -- --update`. Review the `.expected` diff before you
 commit it.
 
-## The engine is roc-signals plus a recorded patch series
+## The engine is roc-signals' engine package
 
-`platform/{Core,Engine,Web,EntryRoutes,Url,ReadyIndex,Spelling,Layout,TableCore,View,Seq,MarkupAdvice,SignalCore}.roc`
-are copies of roc-signals' `platform/` at the revision `docs/architecture.adoc`
-names ("Engine"), plus the patches in `patches/roc-signals/`, applied in the
-order its `README.adoc` lists them. `tests/engine-modules.sha256` records the
-pristine roc-signals digests, and the `engine` stage reverse-applies the series
-to copies of the modules and requires those digests back, so an edit outside a
-patch fails the gate. The worker layer,
-`platform/{Worker,WorkerCodec,Wire,Files,Hosted,Effects}.roc`, is copied from
-the same revision under the same rules.
+`platform/main.roc` names roc-signals' standalone engine package as
+`engine`, and reaches its host contract through `engine.EngineHost`. A
+platform cannot expose a package's module, so
+`platform/{Engine,Layout,Wire,Worker}.roc` are generated facades that
+re-expose the package's modules of the same names, and apps keep writing
+`import pf.Engine`. The `engine` stage of the check fails when they are not
+what the package gives.
 
-- Change an engine module only through a patch: make the change in the
-  engine's own style, keep it minimal and behaviour-preserving, then add
-  `patches/roc-signals/NNNN-name.patch` (a `git diff` against the files after
-  the earlier patches, under a header saying what, why, the measurements
-  before and after, and `Upstream: not yet sent` or the pull request's link)
-  and its line in the README's list. Patch here only what this platform needs
-  before roc-signals takes it; anything else is made in roc-signals first.
-- Never reformat these modules or run `roc fmt` on them (only
-  `roc fmt --check`).
-- To take a newer engine, copy all of these modules from one roc-signals
-  commit, drop the patches that landed upstream, re-make the others against
-  the new files, regenerate `tests/engine-modules.sha256` with
-  `shasum -a 256 <the modules>` from the pristine copies, and update the
-  revision in `docs/architecture.adoc`, all in the same commit.
+- Never edit the facades: regenerate them with
+  `blueprint run build -- engine` (`scripts/src/Facade.roc`) and review the
+  diff.
+- To take a newer engine, change the `engine` URL in `platform/main.roc`,
+  regenerate the facades, and update the version in
+  `docs/architecture.adoc` ("Engine"), `THIRD_PARTY_LICENSES.md` and
+  `sbom/composition.json`, all in the same commit.
+- Nothing in the engine is patched here. A change this platform needs is
+  made in roc-signals first, and taken with its release.
 - A cost that is the compiler's goes in `patches/roc-compiler/` as a
   standalone reproducer and its write-up; never patch the compiler here.
 

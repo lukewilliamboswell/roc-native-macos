@@ -21,8 +21,9 @@ import src/Repo
 ##
 ## - `pins`: only the scripts pin a compiler, and they pin `roc-stable`
 ##   (`roc-policy check`, from Blueprint.roc's `repository_policy`).
-## - `engine`: the engine modules are roc-signals' (their recorded digests)
-##   plus the patch series in `patches/roc-signals`, and nothing else.
+## - `engine`: the engine facades in platform/ are what the roc-signals
+##   engine package `platform/main.roc` names gives
+##   (`scripts/build.roc -- engine --check`).
 ## - `fmt`: `roc fmt --check` over the platform, glue, examples and the
 ##   `macos.roc` tool (`cli/`), and `roc-stable fmt --check` over the scripts.
 ## - `scripts`: the scripts' `expect` tests.
@@ -103,7 +104,7 @@ run_stage! : Str, Bool, Bool => Try(List(Str), _)
 run_stage! = |stage, update, colour|
 	match stage {
 		"pins" => pins!()
-		"engine" => engine!()
+		"engine" => run!("roc-stable", ["scripts/build.roc", "--", "engine", "--check"])
 		"fmt" => fmt!(colour)
 		"tool" => tool!(update)
 		"scripts" => scripts!()
@@ -136,40 +137,6 @@ pins! = || {
 		}
 	}
 	Ok($problems)
-}
-
-## The engine modules are the roc-signals copies plus the patch series in
-## `patches/roc-signals`, and nothing else: reverse-applying the series,
-## last patch first, to copies of them under `build/engine-check` gives
-## back the pristine digests `tests/engine-modules.sha256` records.
-engine! : () => Try(List(Str), _)
-engine! = || {
-	recorded = Path.read_utf8!(Path.utf8("tests/engine-modules.sha256"))?
-	missing = Repo.engine_modules.keep_if(|path| !recorded.contains("  ${path}\n")).map(|path| "tests/engine-modules.sha256 records no digest for ${path}")
-	dir = Repo.engine_patches
-	present = Path.list!(Path.utf8(dir))?.keep_oks(|path| Path.filename(path).map_ok(Path.display)).keep_if(|name| name.ends_with(".patch")).sort_with(compare_str)
-	series = Repo.series_problems(present, Repo.listed_patches(Path.read_utf8!(Path.utf8("${dir}/README.adoc"))?))
-	if !(missing.is_empty() and series.is_empty()) {
-		return Ok(missing.concat(series))
-	}
-	stage = "build/engine-check"
-	if Path.exists!(Path.utf8(stage))? {
-		Path.delete_all!(Path.utf8(stage))?
-	}
-	Path.create_all!(Path.utf8("${stage}/platform"))?
-	for path in Repo.engine_modules {
-		Path.copy!(Path.utf8(path), Path.utf8("${stage}/${path}"))?
-	}
-	for name in present.sort_with_reversed(compare_str) {
-		# `-d` first: `patch` reads the file relative to the stage.
-		reversed = run!("patch", ["-s", "-t", "-R", "-p1", "-d", stage, "-i", "../../${dir}/${name}"])?
-		if !reversed.is_empty() {
-			return Ok(["${dir}/${name} does not reverse-apply to the engine modules: they differ from roc-signals' files plus the series (${dir}/README.adoc)"])
-		}
-	}
-	computed = Cmd.new("shasum").args(["-a", "256"].concat(Repo.engine_modules.map(|path| "${stage}/${path}")).map(OsStr.from_str)).capture!()?
-	note!("${present.len().to_str()} engine patches reverse-apply to roc-signals' files")
-	Ok(Repo.digest_problems(recorded, computed, "${stage}/"))
 }
 
 fmt! : Bool => Try(List(Str), _)

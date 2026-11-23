@@ -27,9 +27,9 @@ than 27 times the smaller (9 times the cells, so 3 times the linear
 expectation; the smaller time is floored at 2 ms; a quadratic mount gives
 about 87), or if the hover turns' engine p50 at N=60 is more than 4 times
 N=20's (a turn should not grow with the cells; the smaller is floored at
-0.1 ms, the host's resolution; before engine patch 0003 the ratio was
-about 7 to 9, 0.1 against 0.7 to 0.9 ms, and it is now 1). Engine patches
-0001 and 0002 (`patches/roc-signals`) made mount linear and 0003 made
+0.1 ms, the host's resolution; before roc-signals#307 the ratio was
+about 7 to 9, 0.1 against 0.7 to 0.9 ms, and it is now 1). roc-signals
+0.8.0-rc2 (roc-signals#305 to #307) made mount linear and
 turns independent of the grid, all by working around compiler behaviour,
 and this keeps them from regressing silently. `NO_SCALING=1` skips both.
 
@@ -168,14 +168,14 @@ at 10,000 cells). A batch that sets only `fill`, `border`, `radius` or
 
 The engine's mount was quadratic (fixed):: Mounting copied the whole
 command buffer on every append that grew it (6.4 s of engine time at 10,000
-cells). Engine patches 0001 and 0002 (`patches/roc-signals`) made it
+cells). roc-signals 0.8.0-rc2 (roc-signals#305, #306) made it
 linear: about 8 µs a cell now (79 ms at 10,000, 0.88 s at 100,000, 1.9 s
 at 250,000). The `--smoke` mount-scaling check guards it.
 
 The engine's turn was linear in the grid (fixed):: Each turn copied the
 root site's child list (a 2.4 MB `memcpy` at 10,000 cells, 2.5 ms a hover),
-because an erased call borrowed the site's captures. Engine patch 0003
-(`patches/roc-signals`, `patches/roc-compiler` "erased-captures") fixed it:
+because an erased call borrowed the site's captures. roc-signals#307
+(`patches/roc-compiler` "erased-captures") fixed it:
 a hover's engine time is 0.1 ms (p50) at every size measured, up to
 250,000 cells, and the `--smoke` turn-scaling check guards it.
 

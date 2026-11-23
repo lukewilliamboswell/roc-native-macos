@@ -1,6 +1,6 @@
-import Core
-import Engine
+import engine.EngineHost
 import Effects
+import Engine
 
 ## Building a file in a worker task's job (design.md, "Workers"). A job
 ## reads the files it was sent, and writes to a builder, with methods
@@ -18,7 +18,7 @@ Files := [].{
 	## (`Auto`: the type of the file it starts from, or none), and what it
 	## starts with: nothing (`Empty`), or the bytes of a file the job holds
 	## (`From(file)`), by reference, without copying them.
-	BuildProps : Core.BuildProps
+	BuildProps : EngineHost.BuildProps
 
 	## In a task's job: a new builder for a file the job writes. Append to
 	## it with `append!` and `append_file!`, then `finish!` it into an
@@ -34,5 +34,5 @@ Files := [].{
 	## that is the previous one followed by what this job appends, and the
 	## previous file is unchanged whatever happens to this job.
 	build! : BuildProps => Engine.Builder
-	build! = |props| Core.open_builder!(Effects.job, props)
+	build! = |props| EngineHost.open_builder!(Effects.job, props)
 }

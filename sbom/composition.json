@@ -17,27 +17,13 @@
     },
     {
       "id": "roc-signals-engine",
-      "name": "roc-signals engine modules",
-      "version": "a13ff70e",
+      "name": "roc-signals engine package",
+      "version": "0.8.0-rc2",
       "producer": "Person: Luke Boswell",
       "license": "UPL-1.0",
       "license_url": "",
-      "identity": "https://github.com/lukewilliamboswell/roc-signals/tree/a13ff70e/platform",
-      "download": "https://github.com/lukewilliamboswell/roc-signals",
-      "sha256": "",
-      "modified": "",
-      "target": "",
-      "origin": "reviewed"
-    },
-    {
-      "id": "basic-webserver-url",
-      "name": "basic-webserver URL utility",
-      "version": "NOASSERTION",
-      "producer": "Organization: Roc contributors",
-      "license": "UPL-1.0",
-      "license_url": "",
-      "identity": "https://github.com/roc-lang/basic-webserver",
-      "download": "https://github.com/roc-lang/basic-webserver",
+      "identity": "https://github.com/lukewilliamboswell/roc-signals/releases/tag/0.8.0-rc2",
+      "download": "https://github.com/lukewilliamboswell/roc-signals/releases/download/0.8.0-rc2/engine-GKiw1oqhZ1Q3sWgo1mSinHwACzFUCU8cCZPRY7SXYSgh.tar.zst",
       "sha256": "",
       "modified": "",
       "target": "",
@@ -97,23 +83,16 @@
     {
       "from": "Subject",
       "to": "roc-signals-engine",
-      "relation": "contains",
+      "relation": "dependsOn",
       "scope": "",
-      "basis": "The 13 engine modules in platform/ are byte-identical copies, checked against tests/engine-modules.sha256"
-    },
-    {
-      "from": "Subject",
-      "to": "basic-webserver-url",
-      "relation": "contains",
-      "scope": "",
-      "basis": "platform/Url.roc derives from basic-webserver's URL module (THIRD_PARTY_LICENSES.md)"
+      "basis": "platform/main.roc's packages section names this content-addressed bundle; the compiler fetches it when an app builds, and platform/{Engine,Layout,Wire,Worker}.roc re-expose its modules"
     },
     {
       "from": "Subject",
       "to": "roc-parser",
       "relation": "dependsOn",
       "scope": "",
-      "basis": "platform/main.roc's packages section names this content-addressed bundle; the compiler fetches it when an app builds, and it is not in the archive"
+      "basis": "The roc-signals engine package's packages section names this content-addressed bundle; the compiler fetches it when an app builds, and it is not in the archive"
     },
     {
       "from": "Subject",
