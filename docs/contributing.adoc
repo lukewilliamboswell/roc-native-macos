@@ -539,6 +539,13 @@ most of a 2.5 ms hover turn. Engine patch 0003 avoids both
 `Spare` variant (`patches/roc-compiler`, "Erased closures borrow their
 captures"). Mount was quadratic, also the compiler's doing, until engine
 patches 0001 and 0002 (xref:contributing.adoc#engine-patches[Engine patches]).
+`Dict.update` can copy the dictionary:: In some programs a dictionary
+grown with `Dict.update` is shared when it grows, so each update copies
+it; `contains` and `insert` do not. Building a table with `Table.insert`
+in a loop was quadratic for this reason (the table's change record) until
+engine patch 0006; keep `Dict.update` off the engine's write paths
+(`patches/roc-compiler`, "Dict.update copies a dictionary the loop
+owns").
 A bundle is fetched only over https, or http to localhost:: Roc rejects a
 local `.tar.zst` path as a platform and an absolute platform path, and
 accepts plain `http` only for `localhost`, `127.0.0.1` and `[::1]`. It

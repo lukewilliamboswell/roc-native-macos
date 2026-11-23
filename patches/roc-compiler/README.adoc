@@ -20,8 +20,14 @@ header (xref:../roc-signals/README.adoc[patches/roc-signals]).
   so appends copy. Reproduced with the engine only, not yet reduced.
   Worked around by engine patches 0001 and 0002 (see <<mount-sharing>>).
   Upstream: not yet reported.
+. `dict-update-sharing/`: a dictionary grown with `Dict.update` in a
+  method of a nominal record, called in a `var` loop, is shared when it
+  grows, so each update copies it. Standalone reproducer. Engine impact:
+  building a table with `Table.insert` in a loop was quadratic; worked
+  around by engine patch 0006 (see <<dict-update-sharing>>). Upstream:
+  not yet reported (draft below).
 
-Both reproduce with Roc 0.1.0 RC1 (`roc`) and nightly-2026-11-14-a87808d
+The first two reproduce with Roc 0.1.0 RC1 (`roc`) and nightly-2026-11-14-a87808d
 (`roc-stable`), with `roc build` (LLVM, `--opt=speed`); `erased-captures`
 also with nightly-2026-11-22-3350b1c.
 
@@ -169,3 +175,84 @@ under `ROC_BENCH=1`, as in
 | `sites`, 2,500 | 381 | 21
 | `sites`, 4,900 | 2,858 | 44
 |===
+
+[#dict-update-sharing]
+== Dict.update copies a dictionary the loop owns
+
+Not yet reported. Draft, from "Title" to the end of "Suspected
+mechanism", with `dict-update-sharing/main.roc` as the program:
+
+Title:: `Dict.update` copies the dictionary on every call when a nominal
+record holding it is built in a `var` loop
+
+Summary:: A loop that owns a value and replaces it with an updated copy
+on each step normally updates in place. With a nominal record of two
+dictionaries, where a method grows one of them with `Dict.update` and the
+other with `Dict.insert`, built in a `var` loop of a function that is
+called from two places, the dictionary grown with `Dict.update` is
+shared when it grows: each call copies it, with an incref of every entry,
+so building n entries is quadratic. Each of these changes alone makes it
+linear: `contains` and `insert` instead of `Dict.update`; a structural
+record instead of a nominal one; one dictionary instead of two; one
+caller of the building function instead of two; a recursive function
+instead of the `var` loop.
+
+Reproduction:: `dict-update-sharing/main.roc` (basic-cli 0.28.1) builds
+a `Bag :: { rows : Dict(U64, Str), seen : Dict(U64, Bool) }` of n keys
+twice per size (`generated(n)` and `generated(n + 1)`, the two callers).
++
+[source,sh]
+----
+roc build main.roc --output=/tmp/dict-update && /tmp/dict-update
+----
+
+Expected:: Constant time per `add`.
+
+Actual:: Time per `add` grows linearly with n. Apple M-series, `roc
+build` (LLVM, `--opt=speed`), ns per `add` (the first of the two
+callers; the second is the same within noise), with each change from the
+summary applied alone:
++
+|===
+| n | as written | `contains` + `insert` | structural record | one dictionary | one caller | recursion
+
+7+| Roc 0.1.0 RC1
+| 2,000 | 1,127 | 165 | 156 | 125 | 159 | 192
+| 8,000 | 3,886 | 141 | 128 | 86 | 156 | 148
+| 32,000 | 16,405 | 157 | 135 | 87 | 152 | 162
+| 64,000 | 51,060 | 213 | 136 | 106 | 154 | 189
+7+| nightly-2026-11-22-3350b1c
+| 2,000 | 1,159 | 172 | 154 | 88 | 139 | 153
+| 8,000 | 3,876 | 145 | 119 | 74 | 119 | 121
+| 32,000 | 19,529 | 147 | 135 | 79 | 132 | 134
+| 64,000 | 66,123 | 150 | 138 | 92 | 135 | 147
+|===
++
+`sample` of the `--debug` build shows the time in `RocList.reallocate`
+-> `memcpy` (from `listReserveForAppend`, the append of the new entry)
+and in `roc_builtins_list_set` -> `memcpy`, with increfs of the copied
+entries: the dictionary's entry and bucket lists are copied, which
+happens only when they are shared.
+
+Suspected mechanism (not confirmed; compiler at 3ff191391f):: In
+`Dict.update` (`src/build/roc/Builtin.roc`), the `Missing` branch
+returns `dict` itself when `alter` answers `Err(Missing)`, and
+otherwise passes the `data` it matched out of `dict` to
+`dict_insert_absent_data`. If `dict` is kept alive across `alter`'s call
+for the first arm, `data`'s lists are shared when the second arm appends
+to them. That would explain why it depends on whether `Dict.update` and
+the closure are specialized and inlined together (which the nominal
+record, the second dictionary, the two callers and the loop all change),
+but a direct loop of `Dict.update` over a plain dictionary stays linear.
+Writing the `Err(Missing)` arm as `HashMap(data)` may avoid it in the
+builtin.
+
+Engine impact. Every table write records the key's state before its
+first write in the table's change record, with `record.update(key, ...)`
+keeping the first state. Outside a turn the record grows with the table,
+so an app building a table with `Table.insert` in a loop
+(`examples/contacts`) copied the record on every insert: in bench/rows
+built that way, 0.3 s of mount engine time at 10,000 rows and 53 s at
+100,000. Engine patch 0006 records with `contains` and `insert`: 19 ms
+and 0.15 s. bench/rows' `--smoke` guards it (2,000 against 18,000 rows
+inserted one at a time).

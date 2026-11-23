@@ -233,14 +233,7 @@ write = |table, key, before, after| {
 	{ rows, record, whole, version: now, start, id, phase } = table
 	next_record = match whole {
 		Rewritten => record
-		Keyed =>
-			record.update(
-				key,
-				|found| match found {
-					Ok(first) => Ok(first)
-					Err(Missing) => Ok(before)
-				},
-			)
+		Keyed => if (record.contains(key)) record else record.insert(key, before)
 	}
 	next_rows = match after {
 		Ok(row) => rows.insert(key, row)

@@ -13,7 +13,13 @@ import pf.Ui
 ## a command-line default (`-rows-n 100000`), so the mount itself builds the
 ## table and time to first display is honest.
 main : Engine.Program(_)
-main = Engine.program_store({ storage_keys: ["rows-n"] }, |boot| store.with_initial(cells.rows, generated(count_of(Engine.boot_storage(boot, "rows-n") ?? "10000"))), |_boot| view())
+main = Engine.program_store({ storage_keys: ["rows-n", "rows-build"] }, |boot| store.with_initial(cells.rows, built(Engine.boot_storage(boot, "rows-build"), count_of(Engine.boot_storage(boot, "rows-n") ?? "10000"))), |_boot| view())
+
+## The rows, built as `rows-build` says: `insert` inserts them one at a
+## time (`inserted`), as `examples/contacts` does; anything else keys a
+## list once (`generated`).
+built : Try(Str, [Missing]), U64 -> Table(U64, Item)
+built = |how, count| if (how == Ok("insert")) inserted(count) else generated(count)
 
 ## How many rows the ticker changes on each tick: the first few, so they
 ## are on screen.
@@ -126,9 +132,7 @@ words : List(Str)
 words = ["alpha", "bravo", "charlie", "delta", "echo", "foxtrot", "golf", "hotel", "india", "juliett", "kilo", "lima", "mike", "november", "oscar", "papa", "quebec", "romeo", "sierra", "tango", "uniform", "victor", "whiskey", "xray", "yankee", "zulu"]
 
 ## `count` rows, a pure function of their keys, built as a list and keyed
-## once (`Table.from_list`), as rows loaded from a file would be. (Inserting
-## them one at a time with `Table.insert` costs time quadratic in the rows
-## today: see README.adoc.)
+## once (`Table.from_list`), as rows loaded from a file would be.
 generated : U64 -> Table(U64, Item)
 generated = |count| {
 	var $entries = List.with_capacity(count)
@@ -136,6 +140,17 @@ generated = |count| {
 		$entries = $entries.append({ key: id, row: item_of(id) })
 	}
 	Table.from_list($entries) ?? Table.empty({})
+}
+
+## The same rows inserted one at a time. `run.sh --smoke` checks that this
+## costs time linear in the rows (it was quadratic before engine patch 0006).
+inserted : U64 -> Table(U64, Item)
+inserted = |count| {
+	var $table = Table.empty({})
+	for id in 0..<count {
+		$table = $table.insert(id, item_of(id))
+	}
+	$table
 }
 
 item_of : U64 -> Item
@@ -148,3 +163,4 @@ item_of = |id| {
 expect item_of(27).name == "bravo bravo 27"
 expect describe(picked(generated(30), Picked(2))) == "Selected charlie alpha 2, value 2"
 expect bump(generated(5)).get(1) == Ok({ name: "bravo alpha 1", value: 2, search: "bravo alpha 1" })
+expect built(Ok("insert"), 30).len() == 30 and inserted(30).get(29) == generated(30).get(29)

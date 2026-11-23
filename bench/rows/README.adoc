@@ -22,7 +22,10 @@ keeps (`Engine.every_row`), the rows a filter lets in or out. See
 It is a harness, not an example. The gate's `bench` stage builds it and runs
 `run.sh --smoke`: 200 rows through every phase below, which fails unless
 each phase ran and the list holds all 200 rows again once the filter is
-cleared.
+cleared. It then builds 2,000 and 18,000 rows with `Table.insert` in a
+loop (`-rows-build insert`, the faster of two runs each) and fails if the
+larger mount's engine time is 25 times the smaller's or more: linear is
+about 9, and before engine patch 0006 it was about 96.
 
 == Running it
 
@@ -36,7 +39,8 @@ bench/rows/run.sh --smoke        # what the gate runs
 
 Each N is a fresh process. N reaches the app as the local storage key
 `rows-n` (`-rows-n 1000000`, as `bench/grid` passes `grid-n`), so the mount
-itself builds the table. `ROC_BENCH=1` turns on the host's timings, and a
+itself builds the table (keyed once from a list; `-rows-build insert`
+inserts the rows one at a time instead). `ROC_BENCH=1` turns on the host's timings, and a
 script runs one phase after another, each named with `phase:NAME` so
 `stats` reports its operations apart (`event/select`, `scroll/scroll`, …):
 
@@ -104,12 +108,15 @@ Proportional to N, in the engine (reported for roc-signals)::
   write (not uniquely referenced when `TableCore.update` → `write` runs),
   and that the `table_view` site and the reader each touch the whole table
   per write.
-* *Building a table by inserting rows one at a time.* `generated`
-  originally inserted the rows in a `var` loop with `Table.insert`, as
-  `examples/contacts` does: the mount's engine time was 0.42 s at 10,000
-  rows, 13.7 s at 30,000 and 55 s at 100,000 (quadratic: each insert copies
-  the table). Building the list of rows and keying it once with
-  `Table.from_list` takes 0.11 s at 100,000, so the harness does that.
+* *Building a table by inserting rows one at a time* (fixed). Inserting
+  the rows in a `var` loop with `Table.insert`, as `examples/contacts`
+  does, was quadratic: the mount's engine time was 0.3 s at 10,000 rows,
+  4.6–5.4 s at 30,000 and 53 s at 100,000, because every insert copied the
+  table's change record (`Dict.update`, a compiler issue:
+  `patches/roc-compiler`, dict-update-sharing). With engine patch 0006 it
+  is 19 ms, 48 ms, 0.15 s and 1.8 s at a million (`-rows-build insert`),
+  against 13 ms, 0.11 s and 1.45 s for `Table.from_list`, which the
+  harness still uses by default.
 * *A filter keystroke*: a new query rebuilds the view in the size of the
   table, as the engine documents (`table_view`): 1.1 ms at 10,000, 11 ms at
   100,000, 143 ms (p95 0.7 s) at a million.
@@ -160,8 +167,6 @@ each row's index by a scan of the list's rows, up to 64 scans of N.
   at a million rows for three rows. Find what copies the dictionary per
   write, and what the `table_view` site and plain readers do per write that
   is linear.
-. *Make `Table.insert` in a loop linear* (roc-signals or the compiler):
-  apps build tables that way, and it is quadratic.
 . *A `Ui.grid` over `NSCollectionView`* (not built; evaluated here). The
   native virtualised grid: `NSCollectionView` with a flow or grid layout
   makes item views only for the visible items and reuses them as they

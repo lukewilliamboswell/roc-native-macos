@@ -4,7 +4,8 @@
 #   bench/rows/run.sh                 # N = 10000 100000 1000000
 #   bench/rows/run.sh 50000           # just these sizes
 #   NO_BUILD=1 bench/rows/run.sh      # reuse bench/rows/rows (BIN=path runs another build)
-#   bench/rows/run.sh --smoke         # the gate's check: 200 rows, every phase, exit 0
+#   bench/rows/run.sh --smoke         # the gate's check: 200 rows, every phase, exit 0,
+#                                     # then insert_scaling_guard (below)
 #
 # Each N is a fresh process with ROC_BENCH=1 and a scripted session, one
 # phase each (`phase:NAME`, reported as `event/NAME` and so on): select
@@ -66,3 +67,36 @@ for n in "${sizes[@]}"; do
 	fi
 	rm -f "$log"
 done
+
+# Building a table with `Table.insert` in a loop must cost time linear in
+# the rows (engine patch 0006): the mount's engine time for 18,000 rows
+# inserted one at a time (`-rows-build insert`), against 2,000. Linear is
+# about 9 times (less, with the mount's fixed costs); quadratic is about
+# 81 (it was 50 to 60 before the patch). The faster of two runs each.
+insert_scaling_guard() {
+	local small large
+	small=$(insert_mount_ms 2000)
+	large=$(insert_mount_ms 18000)
+	echo "== insert loop: mount engine ${small} ms at 2000 rows, ${large} ms at 18000"
+	if ! awk -v s="$small" -v l="$large" 'BEGIN { exit !(s > 0 && l > 0 && l < 25 * (s > 1 ? s : 1)) }'; then
+		echo "bench/rows --smoke: building 18000 rows with Table.insert took ${large} ms, more than 25 times the ${small} ms for 2000 (quadratic?)" >&2
+		exit 1
+	fi
+}
+
+# The faster mount engine time (ms) of two runs inserting `$1` rows.
+insert_mount_ms() {
+	local best="" ms
+	for _ in 1 2; do
+		ms=$(ROC_BENCH=1 ROC_STORAGE_SUITE=dev.roc.bench.rows ROC_SCRIPT='stats;quit' \
+			perl -e 'alarm shift; exec @ARGV' "$timeout" "${BIN:-$here/rows}" -rows-n "$1" -rows-build insert 2>&1 |
+			sed -n 's/.*first-display.*mount engine \([0-9.]*\).*/\1/p' | head -n 1)
+		if [[ -z $best ]] || awk -v a="$ms" -v b="$best" 'BEGIN { exit !(a != "" && a + 0 < b + 0) }'; then
+			best="$ms"
+		fi
+	done
+	echo "${best:-0}"
+}
+
+[[ -n $smoke ]] && insert_scaling_guard
+exit 0

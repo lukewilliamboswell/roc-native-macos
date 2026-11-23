@@ -1,0 +1,67 @@
+From: roc-native-macos engine patch series
+Subject: [PATCH 0006] Record a table write without Dict.update
+Upstream: not yet sent
+Applies to: roc-signals a13ff70e + 0001 + 0002 + 0003, platform/TableCore.roc
+
+What
+  `write` notes a key's state before its first write with
+  `if (record.contains(key)) record else record.insert(key, before)`
+  instead of `record.update(key, ...)` with a closure that keeps the
+  first state. Same result: a key already in the change record keeps
+  its first state, an absent one gets `before`.
+
+Why
+  A table built with `Table.insert` in a `var` loop, as apps write it
+  (`examples/contacts`, and bench/rows before it switched to
+  `Table.from_list`), took time quadratic in its rows. Each insert of
+  a new key records it (`Absent`) in the change record, which outside
+  a turn grows with the table, and in an app the change record was
+  shared when `Dict.update` added the key, so every insert copied it:
+  `sample` of a 40,000-row mount shows the time in
+  `listReserveForAppend` -> `RocList.reallocate` -> `memcpy` with an
+  incref of every copied entry, called from the app's loop. The rows
+  dictionary itself, grown with `Dict.insert`, was not copied.
+
+  This is the compiler's (patches/roc-compiler, dict-update-sharing): a
+  standalone program with a nominal record of two dictionaries, one
+  grown with `Dict.update`, built in a `var` loop of a function that is
+  called from two places, is quadratic with Roc 0.1.0 RC1 and
+  nightly-2026-11-22; with `contains` and `insert` instead of
+  `Dict.update` it is linear, and so is it with a structural record,
+  one dictionary, one caller, or a recursive function instead of the
+  loop. Which apps hit it depends on inlining, so the engine avoids
+  `Dict.update` on a table's path altogether. The other writes (`put`,
+  `replace`, `update`, `remove`) share `write` and gain the same.
+
+Measured (bench/rows built with `Table.insert` in a `var` loop, mount
+engine ms, two runs each; before = 0001 + 0002 + 0003)
+                 10,000     30,000      100,000     1,000,000
+  before        295-314  4,595-5,436    52,978     not run (hours)
+  after           19-22      45-51     148-159     1,775-1,778
+  For comparison, `Table.from_list` of the same rows: 13 ms at 10,000,
+  114 ms at 100,000, 1.45 s at a million (bench/rows/README). The
+  gate's guard (`bench/rows/run.sh --smoke`) builds 2,000 and 18,000
+  rows with the loop: 14.5 and 1,396 ms before (96 times), 3.4 and
+  29.4 ms after (8.6 times); it fails above 25 times.
+
+---
+diff --git a/platform/TableCore.roc b/platform/TableCore.roc
+index e429e88..0165d4b 100644
+--- a/platform/TableCore.roc
++++ b/platform/TableCore.roc
+@@ -233,14 +233,7 @@ write = |table, key, before, after| {
+ 	{ rows, record, whole, version: now, start, id, phase } = table
+ 	next_record = match whole {
+ 		Rewritten => record
+-		Keyed =>
+-			record.update(
+-				key,
+-				|found| match found {
+-					Ok(first) => Ok(first)
+-					Err(Missing) => Ok(before)
+-				},
+-			)
++		Keyed => if (record.contains(key)) record else record.insert(key, before)
+ 	}
+ 	next_rows = match after {
+ 		Ok(row) => rows.insert(key, row)
