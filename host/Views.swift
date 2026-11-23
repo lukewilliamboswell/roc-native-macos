@@ -331,6 +331,18 @@ extension Host {
             configure(stack, n)
         case (let box as ScrollBox, "spacing"), (let box as ScrollBox, "padding"):
             configure(box.stack, n)
+        case (let box as ListBox, "window-start"):
+            // A windowed list (`Ui.table_list`) and where its window starts.
+            let text = value ?? ""
+            guard let at = UInt32(text) else { fatal("list window-start \(text) is not a row number") }
+            box.windowStart(Int(at), owner: n)
+            markChildren(n)
+        case (let box as ListBox, "view-rows"):
+            // How many rows the windowed list's view keeps.
+            let text = value ?? ""
+            guard let count = UInt32(text) else { fatal("list view-rows \(text) is not a row count") }
+            box.viewRows(Int(count))
+            markChildren(n)
         case (let box as Box, "opening-height"):
             setSize(box, "opening", value.map { Host.points($0, name) }, priority: .init(box.settled ? 49 : 300))
         // Surfaces

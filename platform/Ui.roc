@@ -32,7 +32,7 @@ import Core
 ## | `vstack`, `hstack`, `form` | `ui-vstack`, `ui-hstack`, `ui-form` | `NSStackView` |
 ## | `box` | `ui-box` | a view drawing a fill, border and corners around one child |
 ## | `scroll` | `ui-scroll` | `NSScrollView` around a vertical `NSStackView` |
-## | `list`, `row` | `ui-list`, `ui-row` | view-based `NSTableView`; each `ui-row` is a table row |
+## | `list`, `table_list`, `row` | `ui-list`, `ui-row` | view-based `NSTableView`; each `ui-row` is a table row |
 ## | `text`, `text_s` | `ui-text` | `NSTextField` label |
 ## | `button`, `submit_button` | `ui-button` | `NSButton` |
 ## | `text_field` | `ui-text-field` | editable `NSTextField` |
@@ -310,17 +310,53 @@ Ui := [].{
 		width : Length ?? FillAtLeast(240),
 	}
 
-	## A scrolling table whose rows are the elements of `rows`, for long
-	## lists: an `Engine.table_view` (or `each`) of `row`s. AppKit draws only
-	## the rows on screen, each row the engine inserts, removes or moves is
-	## one incremental change to the table, and a row's views are made when
-	## it is first scrolled into sight.
+	## A scrolling table whose rows are the elements of `rows`: an
+	## `Engine.table_view` (or `each`) of `row`s. AppKit draws only the rows
+	## on screen, each row the engine inserts, removes or moves is one
+	## incremental change to the table, and a row's views are made when it
+	## is first scrolled into sight; but the engine draws every row in the
+	## view's window. For the rows of a table, `table_list` draws only
+	## those near the visible ones.
 	list : ListProps, Elem(ctx) -> Elem(ctx)
 	list = |props, rows|
 		Engine.element(
 			"ui-list",
 			[Engine.attr("opening-height", props.opening_height.to_str())].concat(frame_attrs(Engine.const({ width: props.width, height: props.height, squeeze: Standard }))),
 			[rows],
+		)
+
+	## What a `table_list` shows of its table: an `Engine.table_view`'s
+	## `query` and `plan`, without the window, which the list keeps.
+	ListView(ctx, q, k, v, s) : { query : Signal(ctx, q), plan : (q -> Engine.QueryPlan(k, v, s)) }
+
+	## A `list` of the rows of a table, as `list` of an `Engine.table_view`,
+	## that draws only the rows around those in sight: the list keeps the
+	## view's window itself and moves it as the user scrolls, and the table
+	## is sized for every row the query keeps. Mounting it, holding it and a
+	## filter that lets many rows in or out cost the rows drawn (a screenful
+	## or two), not the table; a row scrolled into sight is drawn then. The
+	## template's context is the list's (`Engine.In(ctx, Engine.Window)`);
+	## cells read and write there as anywhere, and a signal of the enclosing
+	## context enters with `lift`.
+	##
+	## ```roc
+	## Ui.table_list({}, cells.contacts, { query: cells.search.signal(), plan }, |key, contact| row(key, contact))
+	## ```
+	table_list : ListProps, Engine.Cell(st, Engine.Table(k, v)), ListView(Engine.In(ctx, Engine.Window), q, k, v, s), (Signal(Engine.Row(Engine.In(ctx, Engine.Window), k), k), Engine.State(Engine.Row(Engine.In(ctx, Engine.Window), k), v) -> Elem(Engine.Row(Engine.In(ctx, Engine.Window), k))) -> Elem(ctx)
+		where [ctx.store : () -> Engine.Reach(ctx, st), k.is_eq : k, k -> Bool, k.to_hash : k, Hasher -> Hasher, q.is_eq : q, q -> Bool]
+	table_list = |props, table, view, template|
+		Engine.state(
+			first_window,
+			|window|
+				Engine.element(
+					"ui-list",
+					[
+						Engine.attr("opening-height", props.opening_height.to_str()),
+						Engine.attr_s("window-start", window.signal().map(|w| w.start.to_str())),
+						Engine.on("window", window.set_value(|_, asked| window_of(asked) ?? crash "Ui.table_list: the host asked for the window \"${asked}\", not \"start count\"")),
+					].concat(frame_attrs(Engine.const({ width: props.width, height: props.height, squeeze: Standard }))),
+					[Engine.table_view_counted(table, { query: view.query, plan: view.plan, window: window.signal() }, "view-rows", template)],
+				),
 		)
 
 	## One row of a `list`; `on_select` runs when the user selects it.
@@ -800,6 +836,27 @@ frame_attrs = |frame|
 		look("height", frame, |f| length_word(f.height)),
 		look("squeeze", frame, |f| squeeze_word(f.squeeze)),
 	]
+
+## A `table_list`'s window until the host first asks for one: more rows
+## than a list opening at any height shows, so a list that fits them never
+## moves its window.
+first_window : Engine.Window
+first_window = { start: 0, count: 100 }
+
+## The window a list's host asks for, as `start count` (`window` event).
+window_of : Str -> Try(Engine.Window, [BadWindow])
+window_of = |asked|
+	match Str.split_on(asked, " ") {
+		[start, count] =>
+			match (U64.from_str(start), U64.from_str(count)) {
+				(Ok(s), Ok(c)) => Ok({ start: s, count: c })
+				_ => Err(BadWindow)
+			}
+		_ => Err(BadWindow)
+	}
+
+expect window_of("40 120") == Ok({ start: 40, count: 120 })
+expect window_of("40") == Err(BadWindow)
 
 horizontal_attrs : Signal(ctx, Ui.HStackProps) -> List(Engine.Attr(ctx))
 horizontal_attrs = |props|

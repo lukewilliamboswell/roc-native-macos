@@ -501,6 +501,15 @@ Engine := [].{
 		where [ctx.store : () -> Reach(ctx, st), k.is_eq : k, k -> Bool, k.to_hash : k, Hasher -> Hasher, q.is_eq : q, q -> Bool]
 	table_view = |{ c }, { query, plan, window }, template| Core.table_view(inner_cell(c), { query: core_signal(query), plan, window: core_signal(window) }, |key, row| template(SignalCore.varying(key), { s: row }))
 
+	## `table_view_counted(table, props, name, template)` is a `table_view`
+	## that also sets the attribute `name` of its parent element to the
+	## number of rows its query keeps, in decimal: at mount, and in each
+	## turn that changes that number. It is for a host that draws a long
+	## list through a small `window` and sizes its scroller for every row.
+	table_view_counted : Cell(st, Table(k, v)), TableViewProps(ctx, q, k, v, s), Str, (Signal(Row(ctx, k), k), State(Row(ctx, k), v) -> Elem(Row(ctx, k))) -> Elem(ctx)
+		where [ctx.store : () -> Reach(ctx, st), k.is_eq : k, k -> Bool, k.to_hash : k, Hasher -> Hasher, q.is_eq : q, q -> Bool]
+	table_view_counted = |{ c }, { query, plan, window }, name, template| Core.table_view_counted(inner_cell(c), { query: core_signal(query), plan, window: core_signal(window) }, name, |key, row| template(SignalCore.varying(key), { s: row }))
+
 	## An app's store: the cells it holds, their starting values, and the
 	## cells it gives to readers. Build it once with `store`, as a top-level value a
 	## module that composes the app can import, and hand it to

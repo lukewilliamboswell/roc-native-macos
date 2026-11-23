@@ -4,8 +4,9 @@
 #   bench/rows/run.sh                 # N = 10000 100000 1000000
 #   bench/rows/run.sh 50000           # just these sizes
 #   NO_BUILD=1 bench/rows/run.sh      # reuse bench/rows/rows (BIN=path runs another build)
-#   bench/rows/run.sh --smoke         # the gate's check: 200 rows, every phase, exit 0,
-#                                     # then the write-scaling and insert-loop checks (end of this file)
+#   bench/rows/run.sh --smoke         # the gate's check: 200 rows, every phase, exit 0, then the
+#                                     # window, write-scaling and insert-loop guards (end of this file)
+#   LIST=every bench/rows/run.sh      # a Ui.list drawing every row instead of the windowed Ui.table_list
 #
 # Each N is a fresh process with ROC_BENCH=1 and a scripted session, one
 # phase each (`phase:NAME`, reported as `event/NAME` and so on): select
@@ -32,6 +33,42 @@ if [[ -z ${NO_BUILD:-} ]]; then
 	(cd "$here" && "$ROC" build main.roc --output="$here/rows")
 fi
 
+# The windowing guard (part of --smoke): the windowed list mounted over
+# 2,000 rows and over 200,000 draws the same rows, and the host applies the
+# mount in about the same time (at most 3 times the small mount's, plus
+# 15 ms); a list that drew every row would apply 100 times the rows. The
+# engine's time is not compared: building the table and the view of it is
+# linear in the rows, windowed or not.
+window_guard() {
+	local n log drawn apply
+	local -a drawns=() applies=()
+	for n in 2000 200000; do
+		log="$(mktemp)"
+		ROC_BENCH=1 ROC_STORAGE_SUITE=dev.roc.bench.rows ROC_SCRIPT="wait:300;stats;quit" \
+			perl -e 'alarm shift; exec @ARGV' "$timeout" "${BIN:-$here/rows}" -rows-n "$n" -rows-list window >"$log" 2>&1 || true
+		drawn=$(sed -n 's/^bench: list rows [0-9]* drawn \([0-9]*\) .*/\1/p' "$log")
+		apply=$(sed -n 's/^bench: first-display .* apply \([0-9.]*\) layout .*/\1/p' "$log")
+		if ! grep -q "^bench: list rows $n drawn" "$log" || [[ -z $drawn || -z $apply ]]; then
+			echo "bench/rows --smoke: the windowed list over $n rows did not report its rows and mount:" >&2
+			cat "$log" >&2
+			rm -f "$log"
+			return 1
+		fi
+		rm -f "$log"
+		echo "== window guard: N=$n draws $drawn rows, mount apply $apply ms"
+		drawns+=("$drawn")
+		applies+=("$apply")
+	done
+	if [[ ${drawns[0]} != "${drawns[1]}" ]] || ((drawns[1] > 300)); then
+		echo "bench/rows --smoke: the windowed list draws ${drawns[0]} rows of 2,000 and ${drawns[1]} of 200,000; it should draw the same window, at most 300" >&2
+		return 1
+	fi
+	if ! awk -v a="${applies[0]}" -v b="${applies[1]}" 'BEGIN { exit !(b <= 3 * a + 15) }'; then
+		echo "bench/rows --smoke: the mount's apply took ${applies[0]} ms at 2,000 rows and ${applies[1]} ms at 200,000; windowed, it should not grow with the rows" >&2
+		return 1
+	fi
+}
+
 for n in "${sizes[@]}"; do
 	# Scroll a screenful at a time from the top, then jump to the middle
 	# and near the end.
@@ -47,7 +84,7 @@ for n in "${sizes[@]}"; do
 	status=0
 	log="$(mktemp)"
 	ROC_BENCH=1 ROC_STORAGE_SUITE=dev.roc.bench.rows ROC_SCRIPT="$script" \
-		perl -e 'alarm shift; exec @ARGV' "$timeout" "${BIN:-$here/rows}" -rows-n "$n" 2>&1 | tee "$log" || status=${PIPESTATUS[0]}
+		perl -e 'alarm shift; exec @ARGV' "$timeout" "${BIN:-$here/rows}" -rows-n "$n" -rows-list "${LIST:-window}" 2>&1 | tee "$log" || status=${PIPESTATUS[0]}
 	echo "== N=$n: exit $status after $(($(date +%s) - start)) s"
 	if [[ -n $smoke ]]; then
 		# Every phase must have run: rows selected, scrolled, ticked,
@@ -67,6 +104,12 @@ for n in "${sizes[@]}"; do
 	fi
 	rm -f "$log"
 done
+
+# The --smoke guards: the window guard (defined above), then the write-scaling
+# and insert-loop guards below.
+if [[ -n $smoke ]]; then
+	window_guard
+fi
 
 # The write-scaling check, part of --smoke. It mounts 2,000 and 200,000
 # rows (100 times as many) and ticks for a second: ten turns that each

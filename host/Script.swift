@@ -62,8 +62,8 @@ extension Host {
                 }
             case "select" where arg.hasPrefix("#"):
                 // `select:#k`: the k-th row (from 1) of the first list.
-                guard let box = firstList(), let k = Int(arg.dropFirst()), k >= 1, k <= box.rows.count else { fatal("script: no list row \(arg)") }
-                box.select(box.rows[k - 1])
+                guard let box = firstList(), let k = Int(arg.dropFirst()), k >= 1, k <= box.table.numberOfRows else { fatal("script: no list row \(arg)") }
+                box.select(row: k - 1)
             case "select":
                 // The list row holding a text exactly `arg` (built, if
                 // the list has not shown it yet, to be searched).
@@ -231,8 +231,10 @@ extension Host {
             let realized = box.rows.filter { $0.view != nil }.count
             say("\(pad)\(name) [\(box.table.numberOfRows) rows, \(realized) with views\(selected >= 0 ? ", row \(selected) selected" : ""), \(Int(box.frame.height))pt high]")
             if shown.length > 0 { say("\(pad)  rows \(shown.location)–\(shown.location + shown.length - 1) visible") }
-            for c in box.rows.dropFirst(max(shown.location, 0)).prefix(3) { dump(c, depth + 1) }
-            if box.rows.count > 3 { say("\(pad)  …") }
+            for i in max(shown.location, 0)..<min(max(shown.location, 0) + 3, box.table.numberOfRows) {
+                if let c = box.node(at: i) { dump(c, depth + 1) } else { say("\(pad)  (placeholder)") }
+            }
+            if box.table.numberOfRows > 3 { say("\(pad)  …") }
         case let popup as NSPopUpButton:
             say("\(pad)\(name) \"\(popup.titleOfSelectedItem ?? "")\" of \(popup.itemTitles)")
         case let control as NSSegmentedControl:

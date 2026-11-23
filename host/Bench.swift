@@ -227,6 +227,11 @@ final class Bench: NSObject {
         let rss = Double(usage.ru_maxrss) / 1_048_576  // bytes on macOS
         let size = host.window.contentView?.frame.size ?? .zero
         print("bench: views \(views) window \(Int(size.width))x\(Int(size.height)) rss-peak-mb \(f1(rss)) timers-peak \(peakTimers) timers-live \(host.timers.count)")
+        if let list = host.firstList() {
+            // The first list: the table's rows, the rows the host holds
+            // nodes for (a windowed list's window) and those with views.
+            print("bench: list rows \(list.table.numberOfRows) drawn \(list.rows.count) with-views \(list.rows.filter { $0.view != nil }.count)")
+        }
         if let shown = firstShown {
             let m = samples["mount"]?.first ?? Sample()
             print("bench: first-display \(ms(shown)) ms after launch: mount engine \(ms(m.engine)) apply \(ms(m.apply)) layout \(ms(m.layout)) | shown layout \(ms(firstDisplay.layout)) display \(ms(firstDisplay.display))")

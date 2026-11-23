@@ -6,7 +6,7 @@ ui-vstack [1 views]
       ui-text-field "ada"
       ui-text "371 of 10000" {color=secondary-label design=monospaced-digits text-style=caption1}
     ui-hstack [2 views]
-      ui-list [371 rows, 17 with views, row 2 selected, 400pt high]
+      ui-list [371 rows, 11 with views, row 2 selected, 400pt high]
         rows 0–10 visible
         ui-row [2 views]
           ui-image person.crop.circle.fill

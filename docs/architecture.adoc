@@ -26,7 +26,9 @@ patches in order with their upstream status
 `Core.roc`'s mount functions so the compiler keeps the turn and the block
 unshared, which makes mounting linear, and a third changes how a site is
 called so it owns its storage, which makes a turn's cost independent of
-the number of sites beside the ones it touches. `tests/engine-modules.sha256` records
+the number of sites beside the ones it touches. 0007 adds
+`table_view_counted`, a `table_view` that reports how many rows its query
+keeps, for the windowed list. `tests/engine-modules.sha256` records
 the pristine digests, and `check` reverse-applies the series and compares.
 
 Platform root:: `platform/main.roc` is a trimmed copy of roc-signals' root.
@@ -63,7 +65,7 @@ vocabulary produces:
 +
 It keeps a node tree mirroring what the engine built and gives each `ui-*`
 element one AppKit view (`ui-hover` lends its place to its child's). It routes AppKit actions back as turns: `click`,
-`input`, `change`, `submit`, a list row's `select`, key events, `hover` (text `enter` or `leave`), and the
+`input`, `change`, `submit`, a list row's `select`, a windowed list's `window` (text `start count`), key events, `hover` (text `enter` or `leave`), and the
 files-kind `change` and `drop`. Any other command or effect is a clear fatal
 error, not a silent skip.
 
@@ -77,7 +79,7 @@ error, not a silent skip.
 | `form` | `ui-form` | vertical `NSStackView`; Return submits
 | `box`, `box_s` | `ui-box` | `Surface`: an `NSView` drawing a rounded fill and border around one child
 | `scroll` | `ui-scroll` | `NSScrollView` around a vertical `NSStackView`
-| `list`, `row` | `ui-list`, `ui-row` | view-based `NSTableView`; each `ui-row` is a table row
+| `list`, `table_list`, `row` | `ui-list`, `ui-row` | view-based `NSTableView`; each `ui-row` is a table row
 | `text`, `text_s` | `ui-text` | `Label`, an `NSTextField` label
 | `button`, `submit_button` | `ui-button` | `NSButton`
 | `text_field`, `text_area` | `ui-text-field`, `ui-text-area` | `NSTextField`; `NSTextView` in an `NSScrollView`
@@ -194,6 +196,12 @@ text. AppKit: `setAccessibilityLabel`; empty leaves the view out of the accessib
 `opening-height` (scroll, list)::
 `N`. AppKit: a height preference (priority 300) until the window has been sized for it, then 49.
 
+`window-start` (list)::
+`N`, set by `Ui.table_list` from its window: the list is windowed, and its element children are the table's rows from row `N`. AppKit: the table row of the first child; see xref:architecture.adoc#lists[Lists].
+
+`view-rows` (list)::
+`N`, set by the engine's `table_view_counted` (patch 0007) on its parent: how many rows the view keeps. AppKit: the table's `numberOfRows` for a windowed list.
+
 A surface (`Surface`, for `ui-box` and `ui-drop-zone`) draws its fill and
 border in `draw(_:)` with `NSColor`s, where AppKit has set the view's
 appearance, so a semantic or adaptive colour follows light and dark mode
@@ -294,14 +302,33 @@ the row's nodes and views are made when it is first shown. A node's
 children take inserts and removals in one pass when next read, so a
 filter that lets a million rows back in is linear.
 
-`bench/rows` measures a list of 10,000 to 1,000,000 rows: selecting,
-scrolling and repainting a written row cost the same at every size, and a
-million rows open in 2.5 s. The engine still draws every row that passes
-the query (`Engine.every_row`), so a mount or a filter that lets many rows
-in or out costs those rows in the engine and the host. Windowing the
-`table_view` to the rows in sight, with a `window` signal fed by the
-table's scroll position and the table told the full count, is the next
-cost to cut.
+A windowed list (`Ui.table_list`) holds only the engine's window. The
+list's own `Engine.state` holds the window, which it gives the
+`table_view` and sends the host as `window-start`; the engine tells the
+host how many rows the view keeps as `view-rows` on the list
+(`table_view_counted`, engine patch 0007). The table has that many rows:
+table row `i` is the window's row `i - start`, and a row outside the window
+is a placeholder cell as high as the first row drawn (which also sets the
+table's `rowHeight`, its estimate for rows not yet measured). Each row
+change of the batch only marks the list; at the end of the batch it takes
+its rows from the node tree, reloads the table if the row count changed,
+and otherwise reloads only the rows the table holds views for whose row is
+no longer the one shown (`enumerateAvailableRowViews`). When the visible
+rows come within half the overscan of the window's edge (the overscan is
+the visible rows, at least 20, beyond them on each side), the list sends
+a `window` event, `start count`, asking for the visible rows with the
+overscan around them: at most one per pass of the run loop, after a scroll
+(`reflectScrolledClipView`) or a batch, and never the same window twice in
+a row. A selection made on a placeholder row (arrow keys past the window)
+is sent as the row's `select` once the window holds it. The first window,
+100 rows from the top, covers a list opening at any height, so a list
+that is not scrolled never asks.
+
+`bench/rows` measures a list of 10,000 to 1,000,000 rows, windowed and not:
+selecting, scrolling and repainting a written row cost the same at every
+size. Windowed, mounting the list and clearing a filter cost the window in
+the host and the engine's build of the view (the query over the table),
+not a node per row; see `bench/rows/README.adoc`.
 
 [#keys]
 == Keys

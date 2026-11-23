@@ -53,7 +53,7 @@ Ui.text_s(total, over.map(|o| if (o) { color: Red, weight: Bold } else {}))
 
 `text_s`, `vstack_s`, `hstack_s`, `box_s`, `image_s` and `asset_image_s` exist; a control's
 props already hold signals and handlers, so controls have no `_s` form, and
-neither do `scroll` and `list`, whose sizes the window takes over once open.
+neither do `scroll`, `list` and `table_list`, whose sizes the window takes over once open.
 
 Handlers are fields too: `Ui.button("Save", { on_press: h })`.
 
@@ -69,6 +69,7 @@ Handlers are fields too: `Ui.button("Save", { on_press: h })`.
 | `box`, `box_s` | `BoxProps, Elem(ctx) -> Elem(ctx)` | a surface: a rounded fill and border around one child
 | `scroll` | `ScrollProps, Elem(ctx) -> Elem(ctx)` | `NSScrollView` around a vertical `NSStackView`
 | `list` | `ListProps, Elem(ctx) -> Elem(ctx)` | view-based `NSTableView`
+| `table_list` | `ListProps, Engine.Cell(st, Table(k, v)), ListView(Engine.In(ctx, Engine.Window), q, k, v, s), (key, row -> Elem(...)) -> Elem(ctx)` | a `list` of a table's rows that draws only those near the visible ones
 | `row` | `RowProps(ctx), List(Elem(ctx)) -> Elem(ctx)` | one table row of a `list`, its children leading to trailing
 | `text`, `text_s` | `Signal(ctx, Str), TextProps -> Elem(ctx)` | `NSTextField` label
 | `button` | `Signal(ctx, Str), ButtonProps(ctx) -> Elem(ctx)` | `NSButton`
@@ -260,13 +261,43 @@ slack, within its `height`.
 
 == Lists
 
-`Ui.list({}, Engine.table_view(...))` puts the rows of a table view (or an
-`each`) of `Ui.row`s in an `NSTableView`. AppKit draws only the rows on
-screen, and a row's views are made when it is first scrolled into sight, so
-10,000 rows cost views for the visible ones. Each row the engine inserts,
-removes or moves is one incremental change to the table. The engine still
-builds every row that passes the query; see
-xref:architecture.adoc#lists[Lists] for the costs.
+`Ui.table_list(props, table, { query, plan }, template)` lists the rows of
+a table in an `NSTableView`: the rows of an `Engine.table_view` of `table`
+with that `query` and `plan`, each drawn by `template` as a `Ui.row`. The
+list keeps the view's window itself: the engine draws only the rows around
+those on screen (a screenful or more on each side), the table is sized for
+every row the query keeps, and as the user scrolls the list moves the window
+and the engine draws the rows that come into it. A row outside the window
+shows as an empty row of the same height until it is drawn, which is rarely
+long enough to see. So mounting the list, holding it and a filter that lets
+many rows in or out cost the rows drawn, not the table: a million rows open
+in about the time the engine takes to build its view of them. The template
+runs in the list's context, `Engine.In(ctx, Engine.Window)`: cells read and
+write there as anywhere, and a signal of the enclosing context enters with
+`lift`.
+
+[source,roc]
+----
+Ui.table_list(
+    { width: Fixed(300) },
+    cells.contacts,
+    { query: cells.search.signal(), plan },
+    |key, contact| row(key, contact),
+)
+----
+
+Selecting a row, moving the selection with the arrow keys (into rows not
+drawn yet: the selection reaches the engine once they are) and a `select:`
+script step work as in any list; `select:<text>` finds a row among those
+drawn.
+
+`Ui.list({}, rows)` puts any rows, an `Engine.table_view` (with a `window`
+of the app's own, or `Engine.every_row`) or an `each` of `Ui.row`s, in an
+`NSTableView`. AppKit draws only the rows on screen, and a row's views are
+made when it is first scrolled into sight, but the engine draws every row
+its `window` holds: 10,000 rows cost the engine and the host a small node
+each. Each row the engine inserts, removes or moves is one incremental
+change to the table. See xref:architecture.adoc#lists[Lists] for the costs.
 
 `Ui.scroll` suits short lists and mixed content: it is a stack, and every
 element in it gets its views.
