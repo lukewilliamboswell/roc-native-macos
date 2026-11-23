@@ -34,6 +34,15 @@ final class EngineInstance {
         work = .empty
     }
 
+    /// Reload's retirement: the engine takes no more turns, and its state
+    /// is left unreleased (`Host.retire`).
+    func abandon() {
+        state = nil
+        dropped = true
+        cmds = .empty
+        work = .empty
+    }
+
     /// One turn; returns its command batch. The state and both buffers move
     /// into Roc and come back in the result.
     func event(node: UInt32, handler: UInt32, payload: [UInt8]) -> [UInt8] {
