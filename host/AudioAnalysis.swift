@@ -34,6 +34,10 @@ struct AudioSnapshot {
     /// The window's mono signal at half its rate: `waveformPoints` values,
     /// each the mean of two samples, oldest first.
     let waveform: [Float]
+    /// The first and second channels alone, as `waveform` is made (a mono
+    /// source's are both its one channel).
+    var left: [Float] = []
+    var right: [Float] = []
 
     /// The window centre's place on the source timeline, in milliseconds.
     var atMs: Double { Double(centreFrame) * 1000 / sampleRate }
@@ -420,10 +424,24 @@ final class AudioAnalysis {
             for i in (p * step)..<((p + 1) * step) { sum += mono[i] }
             wave[p] = sum * scale / Float(step)
         }
+        // Each of the first two channels alone, at the same rate.
+        var sides: [[Float]] = []
+        for c in 0..<min(channels, 2) {
+            let x = fifo + c * fifoCapacity + offset
+            var side = [Float](repeating: 0, count: AudioAnalysis.waveformPoints)
+            for p in 0..<AudioAnalysis.waveformPoints {
+                var sum: Float = 0
+                for i in (p * step)..<((p + 1) * step) { sum += x[i] }
+                side[p] = sum / Float(step)
+            }
+            sides.append(side)
+        }
         let centre = fifoStart + Int64(offset + n / 2)
         os_unfair_lock_lock(historyLock)
         seq += 1
-        let snap = AudioSnapshot(generation: fifoGeneration, seq: seq, centreFrame: centre, sampleRate: rate, rmsDb: AudioAnalysis.db(meanSquare, power: true), peakDb: AudioAnalysis.db(peak, power: false), bandsDb: bands, envelopeMin: lows, envelopeMax: highs, waveform: wave)
+        var snap = AudioSnapshot(generation: fifoGeneration, seq: seq, centreFrame: centre, sampleRate: rate, rmsDb: AudioAnalysis.db(meanSquare, power: true), peakDb: AudioAnalysis.db(peak, power: false), bandsDb: bands, envelopeMin: lows, envelopeMax: highs, waveform: wave)
+        snap.left = sides.first ?? wave
+        snap.right = sides.count > 1 ? sides[1] : snap.left
         if history.count >= AudioAnalysis.historyBound { history.removeFirst() }
         history.append(snap)
         os_unfair_lock_unlock(historyLock)

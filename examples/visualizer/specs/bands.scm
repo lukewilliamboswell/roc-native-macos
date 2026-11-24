@@ -10,7 +10,7 @@
     (expect-dump (window :width 600 :height 300
                    (vstack :views 1
                      (vstack :views 2
-                       (segmented :items ("Scope" "Echo" "Bands") :selected "Bands")
+                       (segmented :items ("Scope" "Echo" "Bands" "Shaders" "Gallery") :selected "Bands")
                        (hstack :views 2
                          (vstack :views 3
                            (button "Hide plot")
@@ -37,7 +37,7 @@
     (expect-dump (window :width 600 :height 300
                    (vstack :views 1
                      (vstack :views 2
-                       (segmented :items ("Scope" "Echo" "Bands") :selected "Bands")
+                       (segmented :items ("Scope" "Echo" "Bands" "Shaders" "Gallery") :selected "Bands")
                        (hstack :views 2
                          (vstack :views 3
                            (button "Hide plot")

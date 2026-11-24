@@ -319,6 +319,7 @@ SHAPE: rect X Y W H | oval X Y W H
      | wave SOURCE X Y W H LOW HIGH
      | ring SOURCE X Y RADIUS DEPTH LOW HIGH
      | bars SOURCE X Y W H LOW HIGH GAP
+     | lissajous SOURCE SOURCE X Y W H LOW HIGH
 ----
 
 The other attributes:
@@ -329,6 +330,13 @@ The other attributes:
   positive half-life and zoom.
 * `reset` is any word; a new one clears the trail.
 * `background` is a colour.
+* `shader-warp` and `shader-composite` are a stage's Metal source, or empty
+  for none; `shader-params` is one `NAME N` a line, `N` a number as a
+  scene's (xref:architecture.adoc#surface-shaders[Surface shaders]).
+
+A surface that listens for `shader` (`on_shader`) hears its shaders' status
+as a text payload: `none`, `running`, `fallback`, or `failed` and then one
+`STAGE LINE COLUMN MESSAGE` a line, `STAGE` `warp` or `composite`.
 
 The host parses a scene once, when it arrives. A word outside the grammar,
 a number that is not finite or is beyond ±1,000,000, a count above the
@@ -471,6 +479,109 @@ Deferred:
 * GPU-side transforms of a series that changes every frame.
 * Suspending on window occlusion; a surface suspends only when it is
   hidden or removed.
+
+[#surface-shaders]
+=== Surface shaders
+
+`host/SurfaceShaders.swift` runs an app's own stages
+(xref:ui.adoc#shaders[Shaders]) in a Metal surface's frame:
+
+. With a warp, its program draws a full-surface quad first in the frame's
+  multisampled pass, reading the previous frame's texture, in place of the
+  trail's quad; before the first frame that texture is cleared to the
+  background. Without one, the background and trail are drawn as before.
+. The scene's figures are drawn over it, and the pass resolves into the
+  frame's texture, which is the next frame's history.
+. With a composite, a second pass draws its program over a third texture
+  (`screen`, made the first time) at one sample a pixel, reading the
+  frame's texture. The drawable, a probe and a snapshot then read `screen`;
+  the history never does.
+
+*Programs.* A stage's program is the header (`ShaderSource.header`: the
+`Frame` struct, the samplers and the helpers), a `Params` struct with one
+`float` a param in the app's order, `#line 1 "warp"` (or `"composite"`),
+the app's text, `#line 1 "roc-entry"`, and `roc_stage`, a fragment function
+that fills a `Frame`, calls the app's function and holds its result to a
+premultiplied colour. It is compiled with
+`makeLibrary(source:options:completionHandler:)`, so off the main thread,
+and linked into a pipeline with the renderer's `roc_full_vertex` (a
+four-vertex strip, compiled with the other shaders) on Metal's queue; the
+outcome is handed to the main thread. A spec compiles at once, on the main
+thread, so its frames do not depend on timing. Programs are cached in the
+renderer by stage, params and source while it lives, failures included. A
+compile error's `FILE:LINE:COL: error: MESSAGE` lines name the app's line
+when `FILE` is the stage and its line is within the app's text; anything
+else is line 0. A stage that fails keeps its last good program; a param
+problem (more than 16, a bad or repeated name) and a source over 64 KiB
+fail the stage without compiling.
+
+*Inputs.* Each frame binds, to the fragment stage:
+
+* buffer 0, `RocUniforms`: the size in pixels, a pixel in uv units, the
+  aspect, the time since the shaders started (the frame clock's, so a
+  spec's is exact), the time since the last frame, the frame number, and
+  `audio.bass`, `audio.mids`, `audio.treble` and `audio.level`;
+* buffer 1, the params' values, each read like a scene number;
+* buffer 2, the audio block: `audio.waveform`, `audio.left` and
+  `audio.right` at 256 points each (the mean of each run of values), then
+  the 24 values of `audio.bands`, 800 floats in all, 3,200 bytes;
+* texture 0, the image.
+
+All are `setFragmentBytes` (Metal copies them into the command buffer), so
+there is no buffer to share between frames in flight. Every source is read
+on the main thread, at the frame's time, as a scene's are, and no frame
+calls the engine.
+
+*Status.* After the attributes change (once per turn, or at the next frame)
+and whenever the renderer changes, the surface works out its status:
+`fallback` without Metal, `running` when every stage asked for has a
+program, `failed` with the errors otherwise, and nothing new while a
+compile is pending or a display-paced surface is off the clock. A change is
+sent as the `shader` event on the next pass of the main run loop
+(`DispatchQueue.main.async`), never from inside a turn or a frame.
+
+*Limits.* `MetalSurface` counts frames committed and not yet completed;
+with two in flight a frame is skipped (outside a spec), so a slow stage
+never blocks the main thread in `nextDrawable`. A command buffer that ends
+in error while a stage ran (macOS's GPU watchdog stops one that runs for
+seconds) drops both programs, clears the history and reports `failed` at
+line 0 with the GPU's message, until the app sends new sources.
+
+*Measuring.* `ROC_SURFACE_TIMING=1` prints, every two seconds, each Metal
+surface's GPU time a frame (`gpuEndTime - gpuStartTime`, mean and most);
+`ROC_SURFACE_SHOTS=DIR` writes its shown frame as `DIR/LABEL-N.png` every two
+seconds of frame time. A spec's `(bench-surfaces N)` also draws each surface
+running shaders `N` times offscreen at three sizes, each frame waited for,
+and prints its GPU time. The twelve presets of `examples/visualizer`
+(`src/Presets.roc`), playing music, on an Apple M2 (both stages, the scene
+and the resolve; mean GPU milliseconds a frame):
+
+[cols="2,1,1,1",options="header"]
+|===
+| Preset | 1600 × 1000 | 2560 × 1664 | 2880 × 1800
+
+| Liquid Drift | 1.23 | 3.31 | 4.03
+| Blur Corridor | 0.74 | 2.01 | 2.43
+| Superscope Bloom | 0.98 | 2.58 | 3.08
+| Flux Streaks | 1.08 | 3.16 | 3.83
+| Phase Scope | 1.10 | 3.17 | 3.64
+| Peak Meter | 0.69 | 2.01 | 2.48
+| Plasma Weave | 0.84 | 2.36 | 2.87
+| Hyperspace | 0.66 | 1.85 | 2.31
+| Mirror Shard | 1.08 | 3.24 | 3.97
+| Spectrum Fire | 0.59 | 1.89 | 1.89
+| Ripple Pool | 1.06 | 2.91 | 3.73
+| Orb Garden | 1.65 | 4.45 | 5.56
+|===
+
+Drawn live at the display's pace at 2038 × 1000 pixels, each took 1.1 to
+2.5 ms a frame (`ROC_SURFACE_TIMING`), and none above 4 ms.
+
+Deferred:
+
+* Shaders with Core Graphics: an on-demand surface draws its marks and trail.
+* Stages beyond two, textures of the app's own, and a history in more
+  than 8 bits a channel.
 
 [#surface-sources]
 === Surface sources
@@ -855,7 +966,7 @@ window, and every 512 samples measures it with Accelerate (`vDSP_measqv`,
 every FFT bin its range overlaps, so the bands narrower than a bin below
 about 160 Hz still read the energy there) and the waveform. A snapshot
 (generation, window-centre frame, levels, bands, a 32-point envelope and a
-1024-point waveform) goes into a history of 32 under its own lock, which
+1024-point waveform, mixed and of each of the first two channels) goes into a history of 32 under its own lock, which
 readers copy. A new generation clears the ring and the history. The last
 consumer's going removes the tap and stops the worker.
 Publication:: The status and the snapshot nearest the playhead are emitted

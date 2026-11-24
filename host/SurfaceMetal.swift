@@ -87,6 +87,11 @@ final class MetalRenderer {
     let winding: MTLDepthStencilState
     let union: MTLDepthStencilState
     let paint: MTLDepthStencilState
+    /// The full-surface quad a shader stage draws (SurfaceShaders.swift).
+    let fullVertex: MTLFunction
+    /// Each shader stage's program by its whole source, while the renderer
+    /// lives (SurfaceShaders.swift).
+    var programs: [String: ShaderOutcome] = [:]
 
     /// The renderer in use, or a new one.
     static func acquire() -> MetalRenderer? {
@@ -131,6 +136,7 @@ final class MetalRenderer {
             }
             return made
         }
+        fullVertex = function("roc_full_vertex")
         image = pipeline("image_vertex", "image_fragment", writes: true)
         mark = pipeline("shape_vertex", "solid_fragment", writes: false)
         cover = pipeline("shape_vertex", "solid_fragment", writes: true)
@@ -183,7 +189,13 @@ final class MetalRenderer {
         constexpr sampler linear(filter::linear, address::clamp_to_zero);
         return image.sample(linear, in.uv) * alpha;
     }
-    """
+
+    struct RocTextured {
+        float4 position [[position]];
+        float2 uv;
+    };
+
+    """ + ShaderSource.vertexSource
 }
 
 // MARK: - Tessellation
@@ -384,16 +396,7 @@ final class MetalTarget {
         self.scale = scale
         let device = renderer.device
         func texture(_ format: MTLPixelFormat, samples: Int, usage: MTLTextureUsage) -> MTLTexture {
-            let d = MTLTextureDescriptor()
-            d.pixelFormat = format
-            d.width = width
-            d.height = height
-            d.textureType = samples > 1 ? .type2DMultisample : .type2D
-            d.sampleCount = samples
-            d.usage = usage
-            d.storageMode = .private
-            guard let t = device.makeTexture(descriptor: d) else { fatal("could not make a \(width)x\(height) Metal texture for a drawing surface") }
-            return t
+            MetalTarget.texture(device, width, height, format, samples: samples, usage: usage)
         }
         frames = [texture(MetalRenderer.colorFormat, samples: 1, usage: [.renderTarget, .shaderRead]),
                   texture(MetalRenderer.colorFormat, samples: 1, usage: [.renderTarget, .shaderRead])]
@@ -401,22 +404,54 @@ final class MetalTarget {
         stencil = texture(.stencil8, samples: MetalRenderer.samples, usage: [.renderTarget])
     }
 
-    /// The latest frame's texture.
-    var texture: MTLTexture { frames[latest] }
+    /// A private texture of this size.
+    static func texture(_ device: MTLDevice, _ width: Int, _ height: Int, _ format: MTLPixelFormat, samples: Int, usage: MTLTextureUsage) -> MTLTexture {
+        let d = MTLTextureDescriptor()
+        d.pixelFormat = format
+        d.width = width
+        d.height = height
+        d.textureType = samples > 1 ? .type2DMultisample : .type2D
+        d.sampleCount = samples
+        d.usage = usage
+        d.storageMode = .private
+        guard let t = device.makeTexture(descriptor: d) else { fatal("could not make a \(width)x\(height) Metal texture for a drawing surface") }
+        return t
+    }
+
+    /// The texture a composite shader draws the screen into (made when one
+    /// first runs), and whether the latest frame is shown from it.
+    private var screen: MTLTexture?
+    private var showsScreen = false
+
+    /// What the latest frame shows: the composite's output, or the frame.
+    var texture: MTLTexture { showsScreen ? (screen ?? frames[latest]) : frames[latest] }
 
     /// Render one frame into the texture the latest is not in: the
-    /// background, the latest moved by `trail` (if it is history) at
-    /// `fade`, then `scene`. Returns the command buffer, uncommitted.
-    func render(_ scene: Tessellation, background: [Float], trail: Affine?, fade: Double) -> MTLCommandBuffer? {
+    /// background, then either the latest through the warp shader (if
+    /// `shaders` has one) or the latest moved by `trail` (if it is history)
+    /// at `fade`, then `scene`; then, with a composite shader, that frame
+    /// through it into the screen texture. Returns the command buffer,
+    /// uncommitted.
+    func render(_ scene: Tessellation, background: [Float], trail: Affine?, fade: Double, shaders: ShaderFrame? = nil) -> MTLCommandBuffer? {
         guard let commands = renderer.queue.makeCommandBuffer() else { return nil }
         let target = 1 - latest
+        let clear = MTLClearColor(red: Double(background[0]), green: Double(background[1]), blue: Double(background[2]), alpha: Double(background[3]))
+        if shaders?.warp != nil, !hasHistory {
+            // The warp's first frame reads the background.
+            let first = MTLRenderPassDescriptor()
+            first.colorAttachments[0].texture = frames[latest]
+            first.colorAttachments[0].loadAction = .clear
+            first.colorAttachments[0].storeAction = .store
+            first.colorAttachments[0].clearColor = clear
+            commands.makeRenderCommandEncoder(descriptor: first)?.endEncoding()
+        }
         let pass = MTLRenderPassDescriptor()
         let color = pass.colorAttachments[0]!
         color.texture = multisample
         color.resolveTexture = frames[target]
         color.loadAction = .clear
         color.storeAction = .multisampleResolve
-        color.clearColor = MTLClearColor(red: Double(background[0]), green: Double(background[1]), blue: Double(background[2]), alpha: Double(background[3]))
+        color.clearColor = clear
         let s = pass.stencilAttachment!
         s.texture = stencil
         s.loadAction = .clear
@@ -424,7 +459,12 @@ final class MetalTarget {
         s.clearStencil = 0
         guard let encoder = commands.makeRenderCommandEncoder(descriptor: pass) else { return nil }
         let pointsWide = Double(width) / scale, pointsHigh = Double(height) / scale
-        if let trail, hasHistory {
+        if let shaders, let warp = shaders.warp {
+            encoder.setRenderPipelineState(warp.pipeline)
+            encoder.setDepthStencilState(renderer.always)
+            MetalTarget.bind(encoder, shaders, params: shaders.warpParams, image: frames[latest])
+            encoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
+        } else if let trail, hasHistory {
             // The previous frame's corners in clip space, with their texture coordinates.
             var quad: [Float] = []
             for (u, v) in [(0.0, 0.0), (1.0, 0.0), (0.0, 1.0), (1.0, 1.0)] {
@@ -461,9 +501,35 @@ final class MetalTarget {
             }
         }
         encoder.endEncoding()
+        showsScreen = false
+        if let shaders, let composite = shaders.composite {
+            // The frame through the composite, into the screen texture; it
+            // never feeds back.
+            if screen == nil { screen = MetalTarget.texture(renderer.device, width, height, MetalRenderer.colorFormat, samples: 1, usage: [.renderTarget, .shaderRead]) }
+            let out = MTLRenderPassDescriptor()
+            out.colorAttachments[0].texture = screen
+            out.colorAttachments[0].loadAction = .dontCare
+            out.colorAttachments[0].storeAction = .store
+            if let e = commands.makeRenderCommandEncoder(descriptor: out) {
+                e.setRenderPipelineState(composite.pipeline)
+                MetalTarget.bind(e, shaders, params: shaders.compositeParams, image: frames[target])
+                e.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
+                e.endEncoding()
+                showsScreen = true
+            }
+        }
         latest = target
         hasHistory = true
         return commands
+    }
+
+    /// A stage's uniforms, params, audio block and image.
+    private static func bind(_ e: MTLRenderCommandEncoder, _ shaders: ShaderFrame, params: [Float], image: MTLTexture) {
+        shaders.uniforms.withUnsafeBytes { e.setFragmentBytes($0.baseAddress!, length: $0.count, index: 0) }
+        let values = params.isEmpty ? [Float(0)] : params
+        values.withUnsafeBytes { e.setFragmentBytes($0.baseAddress!, length: $0.count, index: 1) }
+        shaders.audio.withUnsafeBytes { e.setFragmentBytes($0.baseAddress!, length: $0.count, index: 2) }
+        e.setFragmentTexture(image, index: 0)
     }
 
     /// Copy the latest frame into `drawable`'s texture (same size and format).
@@ -541,14 +607,61 @@ final class MetalSurface {
     /// Forget the trail.
     func clear() { target?.hasHistory = false }
 
-    /// Render a frame and present it.
-    func frame(_ scene: Tessellation, background: [Float], trail: Affine?, fade: Double) {
-        guard let target, let commands = target.render(scene, background: background, trail: trail, fade: fade) else { return }
+    /// Frames committed and not yet finished on the GPU (main thread).
+    private(set) var inFlight = 0
+    /// The most frames in flight: a frame due while this many are still on
+    /// the GPU is skipped, so a slow shader slows the picture, never the
+    /// main thread.
+    static let maxInFlight = 2
+    /// Called on the main thread when the GPU fails a frame that ran a
+    /// shader (the system's GPU watchdog stops one that runs too long).
+    var onShaderFault: ((String) -> Void)?
+    /// GPU time of the frames since the last report (`ROC_SURFACE_TIMING`).
+    private var gpuTimes: [Double] = []
+    private var reportedAt: Double?
+
+    /// Render a frame and present it; false when it was skipped because
+    /// the GPU is behind.
+    @discardableResult
+    func frame(_ scene: Tessellation, background: [Float], trail: Affine?, fade: Double, shaders: ShaderFrame? = nil, label: String = "") -> Bool {
+        guard inFlight < MetalSurface.maxInFlight || Host.scripted else { return false }
+        guard let target, let commands = target.render(scene, background: background, trail: trail, fade: fade, shaders: shaders) else { return false }
         if let drawable = layer.nextDrawable() {
             target.copy(into: commands, drawable)
             commands.present(drawable)
         }
+        let shaded = shaders.map { $0.warp != nil || $0.composite != nil } ?? false
+        let timing = SurfaceDiagnostics.timing
+        inFlight += 1
+        commands.addCompletedHandler { [weak self] done in
+            let failed = done.status == .error ? (done.error.map { AudioService.describe($0) } ?? "the GPU failed the frame") : nil
+            let gpu = (done.gpuEndTime - done.gpuStartTime) * 1000
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.inFlight -= 1
+                if let failed, shaded { self.onShaderFault?(failed) }
+                if timing { self.timed(gpu, label: label, size: (target.width, target.height)) }
+            }
+        }
         commands.commit()
+        return true
+    }
+
+    /// Note one frame's GPU time, and print the mean and the most every
+    /// two seconds.
+    private func timed(_ ms: Double, label: String, size: (Int, Int)) {
+        gpuTimes.append(ms)
+        let now = Bench.now()
+        guard let since = reportedAt else { reportedAt = now; return }
+        guard now - since >= SurfaceDiagnostics.every, !gpuTimes.isEmpty else { return }
+        var sum = 0.0, most = 0.0
+        for t in gpuTimes {
+            sum += t
+            most = max(most, t)
+        }
+        fputs("surface \"\(label)\" \(size.0)x\(size.1) px: gpu \(Host.decimal(sum / Double(gpuTimes.count), 2)) ms mean, \(Host.decimal(most, 2)) ms most, \(gpuTimes.count) frames\n", __stderrp)
+        gpuTimes = []
+        reportedAt = now
     }
 
     /// Off the view: the layer, the textures and (with the last surface) the pipelines go.

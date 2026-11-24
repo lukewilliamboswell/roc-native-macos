@@ -87,6 +87,7 @@ Spec := [].{
 		Repaint,
 		WindowSize(I64, I64),
 		Renderer(Str),
+		RequireMetal,
 		BenchSurfaces(I64),
 		ExpectProbe(Loc, I64, I64, List(Field)),
 		ExpectSurfaces(List(Field)),
@@ -189,15 +190,18 @@ Spec := [].{
 
 	## What the host printed, read back: the observation of each step that
 	## made one, the step that failed and why, and whether it finished.
-	Run : { observed : List({ step : U64, lines : List(Str) }), failed : Try({ step : U64, message : Str, lines : List(Str) }, [None]), done : Bool }
+	Run : { observed : List({ step : U64, lines : List(Str) }), failed : Try({ step : U64, message : Str, lines : List(Str) }, [None]), skipped : Try(U64, [None]), done : Bool }
 
 	## Read the host's standard output: `@k obs` or `@k fail MESSAGE`
-	## starts a record, each `|LINE` adds a line to it, and `@done` says
-	## every step ran. Anything else is the app's own output, and ignored.
+	## starts a record, each `|LINE` adds a line to it, `@k skip WHY` says the
+	## run ended at step `k` without judging the rest (`require-metal` on a
+	## Mac without a Metal device), and `@done` says every step ran. Anything
+	## else is the app's own output, and ignored.
 	read_run : Str -> Run
 	read_run = |printed| {
 		var $observed = []
 		var $failed = Err(None)
+		var $skipped = Err(None)
 		var $done = Bool.False
 		var $current = Err(None)
 		for line in printed.split_on("\n") {
@@ -212,6 +216,13 @@ Spec := [].{
 						match U64.from_str(k) {
 							Ok(step) => {
 								$current = Ok({ step, lines: [] })
+							}
+							Err(_) => {}
+						}
+					[k, "skip", ..] =>
+						match U64.from_str(k) {
+							Ok(step) => {
+								$skipped = Ok(step)
 							}
 							Err(_) => {}
 						}
@@ -242,7 +253,7 @@ Spec := [].{
 				}
 			}
 		}
-		{ observed: close($observed, $current), failed: $failed, done: $done }
+		{ observed: close($observed, $current), failed: $failed, skipped: $skipped, done: $done }
 	}
 
 	## Every way the run differs from the spec, at the step it concerns.
@@ -255,6 +266,11 @@ Spec := [].{
 			$k = $k + 1
 			match run.failed {
 				Ok(f) if f.step == $k => return $problems.append({ pos: step.pos, message: failure_message(f.message, f.lines) })
+				_ => {}
+			}
+			match run.skipped {
+				# The rest is not judged: this Mac cannot run it.
+				Ok(at) if at == $k => return $problems
 				_ => {}
 			}
 			seen = observation(run, $k)
@@ -383,7 +399,7 @@ Spec := [].{
 
 	## The step names, for an unknown step's message.
 	step_names : List(Str)
-	step_names = ["click", "fill", "submit", "toggle", "select", "hover", "choose", "press", "files", "drop", "move", "leave", "sweep", "scroll", "phase", "stats", "window", "wait", "reload", "expect-dump", "expect-tree", "expect-visible", "expect-absent", "expect-text", "expect-checked", "expect-disabled", "expect-workers", "stub-http", "fail-http", "run-effect", "tick-interval", "fire-timer", "advance-time", "await-work", "expect-pending-effects", "expect-interval", "expect-request", "expect-cancelled", "mark-metrics", "expect-metric-delta", "expect-metric-delta-at-most", "expect-allocations-at-most", "expect-allocated-bytes-at-most", "expect-no-new-live-allocations", "frame", "frame-clock", "step-source", "repaint", "window-size", "renderer", "bench-surfaces", "expect-probe", "expect-surfaces", "render", "slide", "stall-analysis", "expect-audio-status", "expect-tone", "expect-eq", "expect-snapshot", "expect-history", "expect-sources"]
+	step_names = ["click", "fill", "submit", "toggle", "select", "hover", "choose", "press", "files", "drop", "move", "leave", "sweep", "scroll", "phase", "stats", "window", "wait", "reload", "expect-dump", "expect-tree", "expect-visible", "expect-absent", "expect-text", "expect-checked", "expect-disabled", "expect-workers", "stub-http", "fail-http", "run-effect", "tick-interval", "fire-timer", "advance-time", "await-work", "expect-pending-effects", "expect-interval", "expect-request", "expect-cancelled", "mark-metrics", "expect-metric-delta", "expect-metric-delta-at-most", "expect-allocations-at-most", "expect-allocated-bytes-at-most", "expect-no-new-live-allocations", "frame", "frame-clock", "step-source", "repaint", "window-size", "renderer", "require-metal", "bench-surfaces", "expect-probe", "expect-surfaces", "render", "slide", "stall-analysis", "expect-audio-status", "expect-tone", "expect-eq", "expect-snapshot", "expect-history", "expect-sources"]
 
 	## The fields each report expectation may name: a drawing surface's
 	## colour at a point, in percent; the surfaces shown and on the frame
@@ -398,7 +414,7 @@ Spec := [].{
 		{ step: "expect-eq", fields: ["bypass", "preamp", "bands", "volume"] },
 		{ step: "expect-snapshot", fields: ["present", "at", "rate", "rms", "peak", "finite", "loudest"] },
 		{ step: "expect-history", fields: ["count", "bound", "first", "last", "current", "ordered", "waiting", "slots", "skipped"] },
-		{ step: "expect-sources", fields: ["waveform", "bands", "level", "bass", "mids", "treble"] },
+		{ step: "expect-sources", fields: ["waveform", "left", "right", "bands", "level", "bass", "mids", "treble"] },
 	]
 
 	## The page heap's metrics, which the host counts while a spec runs:
@@ -791,6 +807,8 @@ step_form = |form| {
 		("window-size", _) => return usage("(window-size W H), the window's content size in points")
 		("renderer", [Sym(r, _)]) if r == "metal" or r == "cg" or r == "auto" => Renderer(r)
 		("renderer", _) => return usage("(renderer metal), (renderer cg) or (renderer auto)")
+		("require-metal", []) => RequireMetal
+		("require-metal", _) => return usage("(require-metal), which ends the spec, passing, on a Mac without a Metal device")
 		("bench-surfaces", [Int(n, _)]) if n >= 1 => BenchSurfaces(n)
 		("bench-surfaces", _) => return usage("(bench-surfaces N), N frames a size with each renderer, reported and never judged")
 		("expect-probe", [l, Int(x, _), Int(y, _), .. as rest]) if x >= 0 and y >= 0 => ExpectProbe(loc(l)?, x, y, report_pairs(head, rest)?)
@@ -1045,6 +1063,7 @@ lowered = |op|
 		Repaint => ["repaint"]
 		WindowSize(w, h) => ["window-size", w.to_str(), h.to_str()]
 		Renderer(r) => ["renderer", r]
+		RequireMetal => ["require-metal"]
 		BenchSurfaces(n) => ["bench-surfaces", n.to_str()]
 		ExpectProbe(l, x, y, _) => ["probe"].concat(loc_fields(l)).concat([x.to_str(), y.to_str()])
 		ExpectSurfaces(_) => ["surfaces"]
@@ -1842,3 +1861,11 @@ expect {
 expect Spec.parse("(test \"x\" (steps (expect-eq :loudness 3)))").is_err() and Spec.parse("(test \"x\" (steps (click (button \"Remove\" 0))))").is_err()
 
 expect Spec.show_loc([{ kind: "button", text: "Remove" }, { kind: "nth#", text: "2" }]) == "(button \"Remove\" 2)"
+
+## A run that skipped at a step (`require-metal` without a device) judges
+## nothing from there on, and still finished.
+expect {
+	text = "(test \"t\" (steps (require-metal) (expect-visible (text \"x\"))))"
+	run = Spec.read_run("@1 skip no Metal device\n@done\n")
+	Spec.parse(text).map_ok(|p| (Spec.judge(p, run).len(), Spec.lower(p))) == Ok((0, "roc-spec 1\n0\ttime\t0\n1\trequire-metal\n2\tfind\t1\ttext\tx\n"))
+}

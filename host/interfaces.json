@@ -1904,6 +1904,10 @@
           "evidence": "the Objective-C class NSBezierPath (https://developer.apple.com/documentation/appkit/nsbezierpath)"
         },
         {
+          "name": "_OBJC_CLASS_$_NSBitmapImageRep",
+          "evidence": "the Objective-C class NSBitmapImageRep (https://developer.apple.com/documentation/appkit/nsbitmapimagerep), which encodes a drawing surface's frame as PNG for ROC_SURFACE_SHOTS (representation(using:properties:), https://developer.apple.com/documentation/appkit/nsbitmapimagerep/representation(using:properties:))"
+        },
+        {
           "name": "_OBJC_CLASS_$_NSBox",
           "evidence": "the Objective-C class NSBox (https://developer.apple.com/documentation/appkit/nsbox)"
         },

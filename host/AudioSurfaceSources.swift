@@ -1,5 +1,5 @@
 // The playback session's measurements as drawing-surface sources
-// (SurfaceSource.swift): `audio.waveform`, `audio.bands`, `audio.level`,
+// (SurfaceSource.swift): `audio.waveform`, `audio.left`, `audio.right`, `audio.bands`, `audio.level`,
 // `audio.bass`, `audio.mids` and `audio.treble`. A surface samples them on
 // the main thread each frame; the analysis worker publishes into the
 // history under its own lock (AudioAnalysis.swift), so a sample only copies
@@ -9,7 +9,7 @@
 import AppKit
 
 final class AudioSurfaceSource: SurfaceSource {
-    enum Kind { case waveform, bands, level, bass, mids, treble }
+    enum Kind { case waveform, left, right, bands, level, bass, mids, treble }
     let name: String
     private let kind: Kind
     private weak var audio: AudioService?
@@ -32,6 +32,8 @@ final class AudioSurfaceSource: SurfaceSource {
         self.audio = audio
         switch kind {
         case .waveform: name = "audio.waveform"
+        case .left: name = "audio.left"
+        case .right: name = "audio.right"
         case .bands: name = "audio.bands"
         case .level: name = "audio.level"
         case .bass: name = "audio.bass"
@@ -41,7 +43,9 @@ final class AudioSurfaceSource: SurfaceSource {
     }
 
     /// `audio.waveform`: the window's mono signal (channels averaged), 1024
-    /// values in -1…1, oldest first. `audio.bands`: the 24 band energies in
+    /// values in -1…1, oldest first; `audio.left` and `audio.right`: the first
+    /// and second channels alone, the same way (a mono source's are both its
+    /// one channel). `audio.bands`: the 24 band energies in
     /// 0…1. `audio.level`: the RMS level; `audio.bass`, `audio.mids` and
     /// `audio.treble`: the energy of their bands, each in 0…1. A value is
     /// -60…0 dB mapped to 0…1, rising at once and falling slowly. Each is the
@@ -60,6 +64,10 @@ final class AudioSurfaceSource: SurfaceSource {
         switch kind {
         case .waveform:
             return .series(snap.waveform)
+        case .left:
+            return .series(snap.left.isEmpty ? snap.waveform : snap.left)
+        case .right:
+            return .series(snap.right.isEmpty ? snap.waveform : snap.right)
         case .bands:
             return .series(smoothed(snap.bandsDb, snap.generation, frameTime))
         case .level:
@@ -86,11 +94,11 @@ final class AudioSurfaceSource: SurfaceSource {
 }
 
 enum AudioSurfaceSources {
-    static let names = ["audio.waveform", "audio.bands", "audio.level", "audio.bass", "audio.mids", "audio.treble"]
+    static let names = ["audio.waveform", "audio.left", "audio.right", "audio.bands", "audio.level", "audio.bass", "audio.mids", "audio.treble"]
 
     /// Register the sources for `audio` (when the host starts).
     static func register(_ audio: AudioService, in registry: SurfaceSources = .shared) {
-        for kind in [AudioSurfaceSource.Kind.waveform, .bands, .level, .bass, .mids, .treble] {
+        for kind in [AudioSurfaceSource.Kind.waveform, .left, .right, .bands, .level, .bass, .mids, .treble] {
             registry.register(AudioSurfaceSource(kind, audio: audio))
         }
     }
