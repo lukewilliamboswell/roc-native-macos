@@ -13,7 +13,7 @@
 # bounds at both sizes), which `blueprint run check -- bench` runs.
 #   LIST=every bench/rows/run.sh      # a Ui.list drawing every row instead of the windowed Ui.table_list
 #
-# Each N is a fresh process with ROC_BENCH=1 and a scripted session, one
+# Each N is a fresh process with ROC_BENCH=1 and a session of spec steps, one
 # phase each (`phase:NAME`, reported as `event/NAME` and so on): select
 # rows, scroll the list in steps and then far, tick (an interval changing
 # three rows' values every 100 ms), type a filter a letter at a time, and
@@ -23,6 +23,10 @@ set -euo pipefail
 
 ROC="${ROC:-roc}"
 here="$(cd "$(dirname "$0")" && pwd)"
+root="$(cd "$here/../.." && pwd)"
+# A timed session is a spec with real effects and time (`live-effects`),
+# lowered to the steps the host performs (scripts/lower_spec.roc).
+session() { roc-stable "$root/scripts/lower_spec.roc" -- "(test \"session\" (setup (live-effects)) (steps $1))"; }
 timeout="${TIMEOUT:-300}"
 smoke=""
 if [[ ${1:-} == --smoke ]]; then
@@ -49,7 +53,7 @@ window_guard() {
 	local -a drawns=() applies=()
 	for n in 2000 200000; do
 		log="$(mktemp)"
-		ROC_BENCH=1 ROC_STORAGE_SUITE=dev.roc.bench.rows ROC_SCRIPT="wait:300;stats;quit" \
+		ROC_BENCH=1 ROC_STORAGE_SUITE=dev.roc.bench.rows ROC_SPEC="$(session '(wait 300) (stats)')" \
 			perl -e 'alarm shift; exec @ARGV' "$timeout" "${BIN:-$here/rows}" -rows-n "$n" -rows-list window >"$log" 2>&1 || true
 		drawn=$(sed -n 's/^bench: list rows [0-9]* drawn \([0-9]*\) .*/\1/p' "$log")
 		apply=$(sed -n 's/^bench: first-display .* apply \([0-9.]*\) layout .*/\1/p' "$log")
@@ -77,18 +81,20 @@ window_guard() {
 for n in "${sizes[@]}"; do
 	# Scroll a screenful at a time from the top, then jump to the middle
 	# and near the end.
-	scrolls="phase:scroll"
-	for k in 20 40 60 80 100 120 140 160; do scrolls="$scrolls;scroll:$k"; done
-	scrolls="$scrolls;scroll:$((n / 2));scroll:$((n - 40));scroll:0"
-	script="wait:${SETTLE:-300};phase:select;select:#1;select:#2;select:#3;select:#10;select:#4;$scrolls"
-	script="$script;phase:tick;toggle:Tick;wait:1000;toggle:Tick;wait:200"
-	script="$script;phase:filter;type:e;type:ec;type:ech;type:echo;type:echo ;type:echo e;phase:clear;type:;wait:200;dump;stats;quit"
-	script="${SCRIPT:-$script}"
-	echo "== N=$n: $script"
+	scrolls='(phase "scroll")'
+	for k in 20 40 60 80 100 120 140 160; do scrolls="$scrolls (scroll $k)"; done
+	scrolls="$scrolls (scroll $((n / 2))) (scroll $((n - 40))) (scroll 0)"
+	steps="(wait ${SETTLE:-300}) (phase \"select\") (select (list-row 1)) (select (list-row 2)) (select (list-row 3)) (select (list-row 10)) (select (list-row 4)) $scrolls"
+	steps="$steps (phase \"tick\") (toggle (checkbox \"Tick\")) (wait 1000) (toggle (checkbox \"Tick\")) (wait 200)"
+	steps="$steps (phase \"filter\")"
+	for typed in e ec ech echo "echo " "echo e"; do steps="$steps (fill (text-field) \"$typed\")"; done
+	steps="$steps (phase \"clear\") (fill (text-field) \"\") (wait 200) (expect-dump _) (stats)"
+	steps="${STEPS:-$steps}"
+	echo "== N=$n: $steps"
 	start=$(date +%s)
 	status=0
 	log="$(mktemp)"
-	ROC_BENCH=1 ROC_STORAGE_SUITE=dev.roc.bench.rows ROC_SCRIPT="$script" \
+	ROC_BENCH=1 ROC_STORAGE_SUITE=dev.roc.bench.rows ROC_SPEC="$(session "$steps")" \
 		perl -e 'alarm shift; exec @ARGV' "$timeout" "${BIN:-$here/rows}" -rows-n "$n" -rows-list "${LIST:-window}" 2>&1 | tee "$log" || status=${PIPESTATUS[0]}
 	echo "== N=$n: exit $status after $(($(date +%s) - start)) s"
 	if [[ -n $smoke ]]; then
@@ -101,7 +107,7 @@ for n in "${sizes[@]}"; do
 				exit 1
 			fi
 		done
-		if [[ $status -ne 0 ]] || ! grep -q "ui-list \[$n rows" "$log"; then
+		if [[ $status -ne 0 ]] || ! grep -q "(list :rows $n " "$log"; then
 			echo "bench/rows --smoke: failed (exit $status, or the list does not hold $n rows after the filter is cleared)" >&2
 			rm -f "$log"
 			exit 1
@@ -126,7 +132,7 @@ fi
 # smaller is floored at 0.2 ms, twice the host's resolution, so timer
 # noise on a fast machine cannot fail it.
 tick_p50() {
-	ROC_BENCH=1 ROC_STORAGE_SUITE=dev.roc.bench.rows ROC_SCRIPT="wait:300;phase:tick;toggle:Tick;wait:1000;toggle:Tick;wait:200;stats;quit" \
+	ROC_BENCH=1 ROC_STORAGE_SUITE=dev.roc.bench.rows ROC_SPEC="$(session '(wait 300) (phase "tick") (toggle (checkbox "Tick")) (wait 1000) (toggle (checkbox "Tick")) (wait 200) (stats)')" \
 		perl -e 'alarm shift; exec @ARGV' "$timeout" "${BIN:-$here/rows}" -rows-n "$1" 2>&1 | sed -n 's/^bench: timer\/tick .*| engine \([0-9.]*\)\/.*/\1/p' | head -1
 }
 if [[ -n $smoke && -z ${NO_SCALING:-} ]]; then
@@ -164,7 +170,7 @@ insert_scaling_guard() {
 insert_mount_ms() {
 	local best="" ms
 	for _ in 1 2; do
-		ms=$(ROC_BENCH=1 ROC_STORAGE_SUITE=dev.roc.bench.rows ROC_SCRIPT='stats;quit' \
+		ms=$(ROC_BENCH=1 ROC_STORAGE_SUITE=dev.roc.bench.rows ROC_SPEC="$(session '(stats)')" \
 			perl -e 'alarm shift; exec @ARGV' "$timeout" "${BIN:-$here/rows}" -rows-n "$1" -rows-build insert 2>&1 |
 			sed -n 's/.*first-display.*mount engine \([0-9.]*\).*/\1/p' | head -n 1)
 		if [[ -z $best ]] || awk -v a="$ms" -v b="$best" 'BEGIN { exit !(a != "" && a + 0 < b + 0) }'; then

@@ -656,6 +656,7 @@ it); when you move to another compiler, measure again and set them anew.
 | `(worker-pool N)` | at most `N` worker threads, so a spec runs alike on any machine
 | `(initial-time MS)` | the virtual clock at mount, in milliseconds since 1970 (0 by default); the boot facts and every tick read it
 | `(local-storage "key" "value")` | a pair in local storage at mount, which starts empty
+| `(live-effects)` | performs HTTP requests, timers and intervals for real, on the real clock, instead of holding them for the steps: for a demo, never a spec meant to pass the same way every time
 |===
 
 [#the-spec-protocol]
@@ -678,7 +679,6 @@ as in `ROC_APPEARANCE=dark roc macos.roc run`.
 | Variable | Effect
 
 | `ROC_SPEC` | performs these lowered spec steps, as `roc macos.roc test` does (xref:apps.adoc#the-spec-protocol[Under the hood])
-| `ROC_SCRIPT` | runs these legacy steps, as a 0.0.1 recorded case does: `ROC_SCRIPT="click:+;dump;quit" .macos/counter`
 | `ROC_APPEARANCE=dark` (or `light`) | draws the app in that appearance whatever the system's, to check both looks
 | `ROC_TRACE=1` | logs effect requests, cancellations, minted and released file handles, worker jobs (queued, placed, answered, stopped, timed out, dropped) and worker threads (started, unwound, ended), the teardown (`DROP`), and each turn's engine and host time
 | `ROC_BENCH=1` | times each operation (a mount, an event, a pointer move, a timer, a scripted scroll) in four phases: engine, applying the commands, layout and a forced display, and shows them live in a panel over the window; `stats` prints them with the view count and RSS

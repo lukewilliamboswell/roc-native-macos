@@ -184,7 +184,7 @@ MacOS :: [].{
 				\\The app finds its images in assets/ here. macos.json and the icon belong to
 				\\the .app, which dev does not make, so they do not apply here and dev takes
 				\\no metadata flags; run builds and starts the app as people will see it.
-				\\Variables such as ROC_SCRIPT and ROC_APPEARANCE reach the app as under run.
+				\\Variables such as ROC_APPEARANCE and ROC_TRACE reach the app as under run.
 			"package" =>
 				\\Build the app, sign it, and zip it as dist/<name>-<version>.zip, to share.
 				\\
@@ -245,15 +245,14 @@ MacOS :: [].{
 				\\Each specs/<name>.scm holds one spec, (test "name" (steps ...)): steps such as
 				\\(click (button "+")), which drive the app's real controls without taking
 				\\focus, and expectations such as (expect-text (text "1") "1") or a whole
-				\\(expect-dump """ ... """), whose window and point sizes may differ by up to 4.
+				\\(expect-dump (window ...)), the window's view tree, compared node by node.
 				\\A failure names the spec's file, line and column. --update rewrites each
-				\\expect-dump with what the app shows now, and nothing else; review the change
-				\\before you commit it, and lowers each allocation bound, such as
+				\\expect-dump with what the app shows now, and lowers each allocation bound, such as
 				\\(expect-allocations-at-most N), to what the app allocated when that was less;
-				\\it never raises one. --metrics runs every spec and prints what it measured
+				\\it never raises one, and changes nothing else: review the change before you
+				\\commit it. --metrics runs every spec and prints what it measured
 				\\(allocations, bytes, the engine's work) without judging it, to set first
-				\\bounds from. --check only parses the specs, on any system. For this
-				\\release, tests/<case>.script cases (and their .expected output) still run.
+				\\bounds from. --check only parses the specs, on any system.
 			_ => return MacOS.usage
 		}
 		"${description}\n\nThis is roc-native-macos ${Bundle.version}, tested with Roc ${Bundle.roc_version}."

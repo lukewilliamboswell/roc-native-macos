@@ -40,9 +40,9 @@ struct Declarations {
 
 // MARK: - Local and session storage
 
-/// Local storage persists in `UserDefaults`. A scripted run (`ROC_SCRIPT`)
+/// Local storage persists in `UserDefaults`. A spec run (`ROC_SPEC`)
 /// keeps it in memory instead, so a recorded case never sees what an
-/// earlier run saved; `ROC_STORAGE_SUITE=<name>` gives a scripted run a
+/// earlier run saved; `ROC_STORAGE_SUITE=<name>` gives a spec run a
 /// named `UserDefaults` suite, to check persistence across runs.
 enum LocalStorage {
     private static let environment = ProcessInfo.processInfo.environment

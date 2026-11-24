@@ -13,7 +13,7 @@
 # the specs beside this file (specs/grid-20.scm and specs/grid-60.scm, the
 # same bounds at both sizes), which `blueprint run check -- bench` runs.
 #
-# Each N is a fresh process with ROC_BENCH=1 and a scripted sweep: the
+# Each N is a fresh process with ROC_BENCH=1 and a sweep (a spec's steps): the
 # pointer crosses the grid's diagonal in 2N moves (at least 200, at most
 # 2000), one every 10 ms, then waits for the trail to cool and prints the
 # stats. A run that has not finished after TIMEOUT seconds (120) is killed.
@@ -22,6 +22,10 @@ set -euo pipefail
 
 ROC="${ROC:-roc}"
 here="$(cd "$(dirname "$0")" && pwd)"
+root="$(cd "$here/../.." && pwd)"
+# A timed session is a spec with real effects and time (`live-effects`),
+# lowered to the steps the host performs (scripts/lower_spec.roc).
+session() { roc-stable "$root/scripts/lower_spec.roc" -- "(test \"session\" (setup (live-effects)) (steps $1))"; }
 timeout="${TIMEOUT:-120}"
 smoke=""
 if [[ ${1:-} == --smoke ]]; then
@@ -53,19 +57,19 @@ for n in "${sizes[@]}"; do
 	[[ -n $smoke ]] && moves=12
 	x0="$((first / 2)).$((first % 2 * 5))"
 	x1="$((last / 2)).$((last % 2 * 5))"
-	script="${SCRIPT:-wait:500;sweep:$x0,$x0,$x1,$x1,$moves,10;stats;wait:800;stats;quit}"
-	[[ -n $smoke ]] && script="${SCRIPT:-wait:100;sweep:$x0,$x0,$x1,$x1,$moves,5;wait:700;stats;quit}"
+	steps="${STEPS:-(wait 500) (sweep ${x0%.*} ${x0%.*} ${x1%.*} ${x1%.*} $moves 10) (stats) (wait 800) (stats)}"
+	[[ -n $smoke ]] && steps="${STEPS:-(wait 100) (sweep ${x0%.*} ${x0%.*} ${x1%.*} ${x1%.*} $moves 5) (wait 700) (stats)}"
 	if [[ -n ${LIVE:-} ]]; then
-		# A person drives it: no script, no timeout, the HUD shows the timings.
+		# A person drives it: no steps, no timeout, the HUD shows the timings.
 		echo "== N=$n ($((n * n)) cells, ${side} pt): live; quit with Command-Q"
 		ROC_BENCH=1 ROC_STORAGE_SUITE=dev.roc.bench.grid "${BIN:-$here/grid}" -grid-n "$n" || true
 		continue
 	fi
-	echo "== N=$n ($((n * n)) cells, ${side} pt): $script"
+	echo "== N=$n ($((n * n)) cells, ${side} pt): $steps"
 	start=$(date +%s)
 	status=0
 	log="$(mktemp)"
-	ROC_BENCH=1 ROC_STORAGE_SUITE=dev.roc.bench.grid ROC_SCRIPT="$script" \
+	ROC_BENCH=1 ROC_STORAGE_SUITE=dev.roc.bench.grid ROC_SPEC="$(session "$steps")" \
 		perl -e 'alarm shift; exec @ARGV' "$timeout" "${BIN:-$here/grid}" -grid-n "$n" 2>&1 | tee "$log" || status=${PIPESTATUS[0]}
 	echo "== N=$n: exit $status after $(($(date +%s) - start)) s"
 	if [[ -n $smoke ]]; then
@@ -99,7 +103,7 @@ scaling_run() {
 	((side > 24)) && side=24
 	a=$(((40 + side) / 2))
 	b=$(((40 + side * (2 * n - 1)) / 2))
-	ROC_BENCH=1 ROC_STORAGE_SUITE=dev.roc.bench.grid ROC_SCRIPT="sweep:$a,$a,$b,$b,40,5;stats;quit" \
+	ROC_BENCH=1 ROC_STORAGE_SUITE=dev.roc.bench.grid ROC_SPEC="$(session "(sweep $a $a $b $b 40 5) (stats)")" \
 		perl -e 'alarm shift; exec @ARGV' "$timeout" "${BIN:-$here/grid}" -grid-n "$n" 2>&1
 }
 mount_ms() { sed -n 's/.*mount engine \([0-9.]*\).*/\1/p' | head -1; }

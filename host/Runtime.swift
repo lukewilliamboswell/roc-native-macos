@@ -111,7 +111,7 @@ private func text(_ bytes: UnsafePointer<UInt8>?, _ len: Int) -> String {
 /// alert's modal loop cannot re-enter Roc from a timer or queued event.
 var halted = false
 
-/// Stop on an error: print it, show it in an alert (not in a scripted run,
+/// Stop on an error: print it, show it in an alert (not in a spec run,
 /// which must never block), then exit non-zero. A Roc crash arrives here
 /// from inside a Roc call, so nothing after it calls Roc again.
 func fatal(_ message: String) -> Never {

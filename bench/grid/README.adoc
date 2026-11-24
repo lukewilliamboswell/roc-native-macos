@@ -53,7 +53,7 @@ Each N is a fresh process. N reaches the app as the local storage key
 `grid-n`, passed as a launch argument (`-grid-n 316`, Cocoa's argument
 domain, read through `ROC_STORAGE_SUITE`), so the mount itself builds the
 grid and time to first display is honest. `ROC_BENCH=1` turns on the host's
-timings and a scripted sweep (`ROC_SCRIPT`) drives the pointer: it crosses
+timings and a sweep, a spec's steps (`ROC_SPEC`), drives the pointer: it crosses
 the grid's diagonal in 2N moves (at least 200, at most 2000), one every
 10 ms, through the same hit test the mouse uses, then waits for the trail
 to cool and prints `stats`. A run still going after `TIMEOUT` seconds (120)
@@ -135,7 +135,7 @@ in ms (engine and display are each 0.1 ms or less).
 | 1000 | 1,000,000 | | – | – | not run: projected several minutes and about 9 GB (below) | | |
 |===
 
-The sweep column is how much longer the scripted sweep took than planned
+The sweep column is how much longer the driven sweep took than planned
 (10 ms a move): the main thread's other work between moves, mostly Core
 Animation committing the frame. Before the box drew through its layer, the
 N=316 sweep took twice its plan (13.6 s for 6.3 s), with the main thread in

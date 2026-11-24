@@ -373,7 +373,7 @@ the next launch (`Engine.boot_storage`, `Engine.watch_changes`).
 Quitting, or closing the window, cancels every effect in flight and calls
 `roc_engine_drop` once; no turn runs after it. A Roc crash or a host fatal
 error prints the message, shows it in an alert, then exits with status 1.
-Under `ROC_SPEC` or `ROC_SCRIPT` it never shows the alert. The modal loop runs no turns, so
+Under `ROC_SPEC` it never shows the alert. The modal loop runs no turns, so
 a timer cannot re-enter Roc after a crash. `dbg` still prints to stderr.
 
 [#effects-and-threads]

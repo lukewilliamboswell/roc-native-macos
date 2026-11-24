@@ -1,6 +1,0 @@
-wait:900
-drop:/usr/share/dict/README;wait:800
-drop:/usr/share/dict/web2;wait:1000
-click:Inspect;wait:2800
-click:Clear;wait:1200
-quit

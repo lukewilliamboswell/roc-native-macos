@@ -88,8 +88,10 @@ Spec := [].{
 
 	## What a spec sets before the app mounts: the worker pool's size (0 for
 	## the host's own), the virtual clock's time at mount, in milliseconds
-	## since 1970, and local storage's pairs.
-	Setup : { pool : U64, time : I64, storage : List((Str, Str)) }
+	## since 1970, local storage's pairs, and whether effects are performed
+	## for real rather than held for the steps to answer (a demo's
+	## `(live-effects)`).
+	Setup : { pool : U64, time : I64, storage : List((Str, Str)), live : Bool }
 
 	## A parsed spec.
 	Parsed : { name : Str, setup : Setup, steps : List(Step) }
@@ -104,7 +106,7 @@ Spec := [].{
 		}
 		match items {
 			[Sym("test", _), Text(name, _), .. as sections] => {
-				var $setup = { pool: 0, time: 0, storage: [] }
+				var $setup = { pool: 0, time: 0, storage: [], live: Bool.False }
 				var $steps = []
 				var $saw_setup = Bool.False
 				var $saw_steps = Bool.False
@@ -152,6 +154,7 @@ Spec := [].{
 		head = ["roc-spec 1", "0\ttime\t${setup.time.to_str()}"]
 			.concat(if (setup.pool > 0) ["0\tpool\t${setup.pool.to_str()}"] else [])
 			.concat(setup.storage.map(|(key, value)| "0\tlocal-storage\t${escape(key)}\t${escape(value)}"))
+			.concat(if (setup.live) ["0\tlive"] else [])
 		var $lines = head
 		var $k = 0.U64
 		for step in steps {
@@ -623,7 +626,9 @@ setup_form = |setup, form|
 		List([Sym("initial-time", p), ..], _) => Err({ pos: p, message: "(initial-time MS) takes milliseconds since 1970" })
 		List([Sym("local-storage", _), Text(key, _), Text(value, _)], _) => Ok({ ..setup, storage: setup.storage.append((key, value)) })
 		List([Sym("local-storage", p), ..], _) => Err({ pos: p, message: "(local-storage \"key\" \"value\") seeds one pair" })
-		List([head, ..], _) => Err({ pos: pos_of(head), message: "unknown setup form ${show(head)}; the setup forms are worker-pool, initial-time and local-storage" })
+		List([Sym("live-effects", _)], _) => Ok({ ..setup, live: Bool.True })
+		List([Sym("live-effects", p), ..], _) => Err({ pos: p, message: "(live-effects) takes nothing" })
+		List([head, ..], _) => Err({ pos: pos_of(head), message: "unknown setup form ${show(head)}; the setup forms are worker-pool, initial-time, local-storage and live-effects" })
 		other => Err({ pos: pos_of(other), message: "a setup form is a list, such as (worker-pool 1)" })
 	}
 

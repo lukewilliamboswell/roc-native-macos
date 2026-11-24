@@ -1,6 +1,9 @@
-## The pure parts of `scripts/record_demos.roc`: an example's demo script as
-## `ROC_SCRIPT` steps, the window number a run prints, the frames' sizes and
-## timings, and the ffmpeg filters that turn the frames into a tile.
+import Spec
+
+## The pure parts of `scripts/record_demos.roc`: an example's demo, a spec
+## (`demo.scm`), as the `ROC_SPEC` steps the host performs, the window
+## number a run prints, the frames' sizes and timings, and the ffmpeg
+## filters that turn the frames into a tile.
 Demo := [].{
 
 	## The width of every tile, in pixels.
@@ -11,22 +14,21 @@ Demo := [].{
 	frame_ms : U64
 	frame_ms = 100
 
-	## A demo script's steps as one `ROC_SCRIPT`: one or more steps a line,
-	## blank lines skipped, with a `window` step first so the recorder learns
-	## the window's number. The last step must be `quit`, which ends the
-	## recording.
-	steps : Str -> Try(Str, [NoSteps, NoQuit])
-	steps = |text| {
-		lines = text.split_on("\n").map(|line| line.trim()).keep_if(|line| !line.is_empty())
-		joined = Str.join_with(lines, ";")
-		if joined.is_empty() {
-			Err(NoSteps)
-		} else if !(joined.split_on(";").last() == Ok("quit")) {
-			Err(NoQuit)
-		} else {
-			Ok("window;${joined}")
+	## A demo's steps as `ROC_SPEC`: a spec whose first step is `(window)`,
+	## so the recorder learns the window's number, and which ends, as every
+	## spec does, after its last step. A demo is a spec in the same grammar
+	## as `specs/`, usually with `(live-effects)`, so its timers tick and its
+	## requests go out in real time while it is recorded.
+	steps : Str -> Try(Str, [Unparsed(Str), NoWindowFirst])
+	steps = |text|
+		match Spec.parse(text) {
+			Ok(parsed) =>
+				match parsed.steps.first() {
+					Ok({ op: Window, .. }) => Ok(Spec.lower(parsed))
+					_ => Err(NoWindowFirst)
+				}
+			Err({ pos, message }) => Err(Unparsed("${pos.line.to_str()}:${pos.column.to_str()}: ${message}"))
 		}
-	}
 
 	## The window number in what the app printed: its `window <number>` line.
 	window_number : Str -> Try(U64, [NoWindow])
@@ -140,9 +142,9 @@ Demo := [].{
 	gif_filter = "[0:v]split[a][b];[a]palettegen=max_colors=128:stats_mode=full[p];[b][p]paletteuse=dither=bayer:bayer_scale=4:diff_mode=rectangle"
 }
 
-expect Demo.steps("wait:500\nclick:+;wait:400\n\nquit\n") == Ok("window;wait:500;click:+;wait:400;quit")
-expect Demo.steps("click:+\n") == Err(NoQuit)
-expect Demo.steps("\n \n") == Err(NoSteps)
+expect Demo.steps("(test \"d\" (setup (live-effects)) (steps (window) (wait 500) (click (button \"+\"))))") == Ok("roc-spec 1\n0\ttime\t0\n0\tlive\n1\twindow\n2\twait\t500\n3\tclick\t1\tbutton\t+\n")
+expect Demo.steps("(test \"d\" (steps (click (button \"+\"))))") == Err(NoWindowFirst)
+expect Demo.steps("click:+;quit").is_err()
 
 expect Demo.window_number("2026-11-23 app[1:2] note\nwindow 4711\n") == Ok(4711)
 expect Demo.window_number("key cmd+n\n") == Err(NoWindow)

@@ -1,6 +1,0 @@
-wait:900
-type:http://127.0.0.1:9/;wait:500
-click:Fetch;wait:1600
-type:http://127.0.0.1:8737/examples/counter/main.roc;wait:600
-click:Fetch;wait:2500
-quit

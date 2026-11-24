@@ -1,8 +1,0 @@
-wait:1000
-type:a;wait:150;type:ad;wait:150;type:ada;wait:700
-select:Ada A. Lovelace;wait:900
-select:Ada A. Turing;wait:900
-select:Ada A. Liskov;wait:1000
-type:ada l;wait:150;type:ada li;wait:150;type:ada lis;wait:1200
-type:;wait:1200
-quit

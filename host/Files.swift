@@ -367,7 +367,7 @@ extension Host {
         DispatchQueue.main.async { self.nextSave() }
     }
 
-    /// Show the save panel for the next waiting save. A scripted run never
+    /// Show the save panel for the next waiting save. A spec run never
     /// opens one: with `ROC_SAVE_DIR` it writes there, otherwise it skips.
     func nextSave() {
         guard !files.saving, !files.saves.isEmpty else { return }
@@ -378,7 +378,7 @@ extension Host {
             return nextSave()
         }
         if driven {
-            say("save \(next.name): skipped (scripted run without ROC_SAVE_DIR)")
+            say("save \(next.name): skipped (spec run without ROC_SAVE_DIR)")
             return nextSave()
         }
         files.saving = true

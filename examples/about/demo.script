@@ -1,5 +1,0 @@
-wait:1200
-choose:Vector;wait:1600
-choose:Bitmap;wait:1600
-choose:Vector;wait:1600
-quit

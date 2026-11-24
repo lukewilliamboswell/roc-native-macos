@@ -12,7 +12,6 @@ import cli.OsStr
 import cli.Path
 import cli.Stderr
 import cli.Stdout
-import src/Recorded
 import src/SpecRun
 import src/Release
 import src/Repo
@@ -31,9 +30,8 @@ import src/Repo
 ## - `specs`: every spec under `examples/` and `bench/` parses
 ##   (`Spec.parse`), on any system.
 ## - `tool`: `cli/Bundle.roc` is what `scripts/src/Release.roc` generates for
-##   a checkout (`tool --update` writes it), `scripts/src/Recorded.roc`,
-##   `Spec.roc` and `SpecRun.roc` are copies of the tool's, and `roc test` on
-##   the tool.
+##   a checkout (`tool --update` writes it), `scripts/src/Spec.roc` and
+##   `SpecRun.roc` are copies of the tool's, and `roc test` on the tool.
 ## - `glue`: the committed glue in host/ is what `glue/SwiftGlue.roc`
 ##   generates with the `roc` on PATH (`scripts/build.roc -- glue --check`).
 ## - `build`: `scripts/build.roc`, with the latest nightly as `roc`: the host
@@ -42,9 +40,8 @@ import src/Repo
 ## - `test`: `roc test` on the platform root and on every example.
 ## - `examples`: every example's specs (`examples/<name>/specs/*.scm`, or
 ##   only the examples `EXAMPLES="counter todos"` names; `METRICS=1` prints
-##   what each measured instead of judging it), and
-##   any legacy recorded scripted runs; `examples --update` rewrites the
-##   specs' dumps (and records the cases) with what they print now. Then the
+##   what each measured instead of judging it); `examples --update`
+##   rewrites their dumps and lowers their allocation bounds. Then the
 ##   counter's first spec once more through Roc's run mode, `roc main.roc`,
 ##   which links the host with the compiler's own run shim against the
 ##   stubs, and must pass the same.
@@ -267,9 +264,8 @@ examples_present! = || {
 	Ok(roots.keep_oks(|path| path.drop_prefix("examples/").split_on("/").first()))
 }
 
-## Every spec of every example, and any legacy recorded case: the built
-## app, run from its directory, must pass the spec, or exit 0 having printed
-## exactly the recorded output.
+## Every spec of every example: the built app, run from its directory, must
+## pass it.
 examples! : Bool, Bool => Try(List(Str), _)
 examples! = |update, colour| {
 	var $cases = []
@@ -277,24 +273,21 @@ examples! = |update, colour| {
 	# `EXAMPLES="counter todos"` runs only those examples' specs.
 	only = (Env.var_str!(OsStr.from_str("EXAMPLES")) ?? "").split_on(" ").keep_if(|name| !name.is_empty())
 	for example in examples_present!()?.keep_if(|name| only.is_empty() or only.contains(name)) {
-		specs = SpecRun.names(names_in!("examples/${example}/specs")).map(|name| Spec({ example, name: "specs/${name}" }))
-		legacy = names_in!("examples/${example}/tests").keep_oks(Recorded.case_name).sort_with(compare_str).map(|name| Legacy({ example, name, base: "examples/${example}/tests/${name}" }))
-		if specs.is_empty() and legacy.is_empty() {
+		specs = SpecRun.names(names_in!("examples/${example}/specs")).map(|name| { example, name: "specs/${name}" })
+		if specs.is_empty() {
 			$problems = $problems.append("examples/${example} has no spec: add examples/${example}/specs/<name>.scm, then run `blueprint run examples -- --update`")
 		}
-		$cases = $cases.concat(specs).concat(legacy)
+		$cases = $cases.concat(specs)
 	}
-	note!("Running ${$cases.len().to_str()} specs and cases${if (update) ", recording their output" else ""}")
+	note!("Running ${$cases.len().to_str()} specs${if (update) ", rewriting their dumps and allocation bounds" else ""}")
 	start = Monotonic.now!()
 	var $index = 0
 	var $passed = 0
 	for case in $cases {
 		$index = $index + 1
 		case_start = Monotonic.now!()
-		(shown, outcome) = match case {
-			Spec(spec) => ("${spec.example}/${spec.name}", run_spec!(spec, if (update) Update else Built)?)
-			Legacy(legacy) => ("${legacy.example}/tests/${legacy.name}", run_case!(legacy, if (update) Update else Built)?)
-		}
+		shown = "${case.example}/${case.name}"
+		outcome = run_spec!(case, if (update) Update else Built)?
 		ms = Monotonic.elapsed!(case_start).to_millis()
 		label = match outcome {
 			Ok(Passed) => "PASS"
@@ -315,14 +308,7 @@ examples! = |update, colour| {
 	# Roc's run mode, which `roc build` never exercises: a run shim import
 	# the stubs lack fails this link.
 	if !update {
-		first = $cases.keep_oks(
-			|case|
-				match case {
-					Spec(spec) if spec.example == "counter" => Ok(spec)
-					_ => Err(NotCounter)
-				},
-		)
-		match first.first() {
+		match $cases.find_first(|case| case.example == "counter") {
 			Ok(spec) => {
 				run_start = Monotonic.now!()
 				outcome = run_spec!(spec, RunMode)?
@@ -380,52 +366,6 @@ run_spec! = |{ example, name }, how| {
 			Failed(problems) => Err(Str.join_with(problems, "\n  "))
 		},
 	)
-}
-
-## One legacy recorded case: the built app (`Built`), recording its output
-## when `Update`.
-run_case! : { example : Str, name : Str, base : Str }, [Built, Update] => Try(Try([Passed, Recorded], Str), _)
-run_case! = |{ example, base, .. }, how| {
-	exe = "examples/${example}/${example}"
-	update = how == Update
-	if !(Path.exists!(Path.utf8(exe))?) {
-		return Ok(Err("${exe} is not built: run `blueprint run build` first"))
-	}
-	steps = Path.read_utf8!(Path.utf8("${base}.script"))?.trim()
-	# A case runs from its example's directory, as `macos.roc test` runs an
-	# app's, so its steps name files relative to the app and its output
-	# writes the app's directory `<app>`.
-	root = Env.cwd!().map_ok(|cwd| cwd.display()) ?? "."
-	app_dir = "${root}/examples/${example}"
-	result = Cmd.new(OsStr.from_str("${app_dir}/${example}"))
-		.cwd(Path.utf8(app_dir))
-		.env("ROC_SCRIPT", OsStr.from_str(steps))
-		.stdin(Null)
-		.stderr(MergeWithStdout)
-		.timeout(Duration.seconds(60))
-		.run!()
-	output = match result {
-		Ok(done) => done
-		Err(CmdErr(error)) => return Ok(Err("${exe} did not finish: ${Str.inspect(error)}"))
-		Err(Interrupted) => return Ok(Err("interrupted"))
-	}
-	printed = Recorded.portable(Str.from_utf8_lossy(output.stdout_bytes), app_dir, "<app>")
-	expected_path = Path.utf8("${base}.expected")
-	match output.status {
-		Exited(0) => {}
-		Exited(code) => return Ok(Err("exited with ${code.to_str()}, not 0; it printed:\n${printed}"))
-		Signaled(signal) => return Ok(Err("ended by signal ${signal.to_str()}; it printed:\n${printed}"))
-	}
-	if update {
-		Path.write_utf8!(expected_path, printed)?
-		return Ok(Ok(Recorded))
-	}
-	expected = if (Path.exists!(expected_path)?) Path.read_utf8!(expected_path)? else ""
-	if Recorded.matches(expected, printed) {
-		Ok(Ok(Passed))
-	} else {
-		Ok(Err("printed something other than ${base}.expected (run `blueprint run examples -- --update` to record an intended change):\n--- expected\n${expected}--- printed\n${printed}"))
-	}
 }
 
 ## Run a program with the terminal inherited; a non-zero exit is a problem.

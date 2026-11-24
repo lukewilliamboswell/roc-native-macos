@@ -32,11 +32,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // never takes keyboard focus.
             window.orderFrontRegardless()
             host.run(spec: spec)
-        } else if let script = ProcessInfo.processInfo.environment["ROC_SCRIPT"] {
-            // A scripted run sets control values directly, so it never takes
-            // keyboard focus: keystrokes meant for another app stay there.
-            window.orderFrontRegardless()
-            host.run(script: script)
         } else {
             window.makeKeyAndOrderFront(nil)
             NSApp.activate(ignoringOtherApps: true)
@@ -49,7 +44,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Closing the window or quitting tears the engine down once.
     func applicationWillTerminate(_ note: Notification) { host?.stop() }
 
-    /// Reload (Cmd-R, or the scripted `reload` step): retire the engine and
+    /// Reload (Cmd-R, or a spec's `(reload)` step): retire the engine and
     /// mount a fresh one in the same window, as a browser reloads a page.
     /// Local and session storage carry over; everything else starts again.
     /// Under `roc main.roc` the mount is a Roc entry point, so it runs the

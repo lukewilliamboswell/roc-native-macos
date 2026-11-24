@@ -3,11 +3,11 @@
 
 import AppKit
 
-/// Whether this run is driven by steps rather than a person: `ROC_SPEC`
-/// or the legacy `ROC_SCRIPT`. A driven run never shows an alert, takes
-/// focus or reads the person's saved storage.
+/// Whether this run is driven by a spec's steps (`ROC_SPEC`) rather than a
+/// person. A driven run never shows an alert, takes focus or reads the
+/// person's saved storage.
 let specText = ProcessInfo.processInfo.environment["ROC_SPEC"]
-let driven = specText != nil || ProcessInfo.processInfo.environment["ROC_SCRIPT"] != nil
+let driven = specText != nil
 
 /// A spec's lowered steps and how far the run has got. The tool writes
 /// them (`Spec.lower`): a `roc-spec 1` line, then `k<TAB>verb<TAB>field…`
@@ -80,7 +80,8 @@ extension Host {
     /// is applied, before mount.
     func drive(_ steps: SpecSteps) {
         specSteps = steps
-        held = HeldEffects()
+        // A demo's `(live-effects)` performs effects for real.
+        held = steps.lines.contains { $0.k == 0 && $0.verb == "live" } ? nil : HeldEffects()
         setUp(steps)
     }
 
@@ -90,6 +91,8 @@ extension Host {
             switch line.verb {
             case "time":
                 steps.clock = Int64(line.fields.first ?? "") ?? 0
+            case "live":
+                break
             case "local-storage":
                 guard line.fields.count == 2 else { fatal("ROC_SPEC: local-storage needs a key and a value") }
                 LocalStorage.seed(line.fields[0], line.fields[1])

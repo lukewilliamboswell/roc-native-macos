@@ -179,7 +179,7 @@ roc-native-android's `android.roc` and roc-signals' `signals.roc`):
 | `cli/MacOS.roc` | the command line: parsing, `help` and `COMMAND --help`, and every failure put into one sentence (`explain`; exit code 2 for misuse)
 | `cli/Init.roc` | `init`: the counter scaffold, never overwriting a file
 | `cli/App.roc` | `build` and `run`: `roc build --target=arm64mac` into `.macos/<name>`, then `<name>.app` with its `Info.plist`
-| `cli/Cases.roc` | `test`: each `specs/<name>.scm` run against `.macos/<name>`, then any legacy `tests/<case>.script` with `ROC_SCRIPT`
+| `cli/Cases.roc` | `test`: each `specs/<name>.scm` run against `.macos/<name>`
 | `cli/Spec.roc` | the spec language: parsing, lowering to the host's `ROC_SPEC` steps, judging what the host observed, and `--update`'s rewrite of the dumps; pure, shared with the scripts
 | `cli/SpecRun.roc` | one spec run against a built program, shared with the scripts
 | `cli/Recorded.roc` | the dump rules (`matches`, `portable`), shared with the scripts
@@ -224,22 +224,24 @@ roc macos.roc init counter && cd counter && roc macos.roc run
 [#driving-an-app]
 == Driving an app
 
-A spec (`ROC_SPEC`) or a legacy script (`ROC_SCRIPT`) drives the real
-controls through the same action methods AppKit calls. The steps and the
-other `ROC_*` variables are app-author material, listed in
-xref:apps.adoc#steps[Steps] and
+A spec drives the real controls through the same action methods AppKit
+calls. Its steps and the `ROC_*` variables are app-author material, listed
+in xref:apps.adoc#steps[Steps] and
 xref:apps.adoc#environment-variables[Environment variables]; when the host's
-steps or variables change, update that chapter. The legacy `ROC_SCRIPT`
-steps stay for driving an example by hand and recording demos, against the
-examples built in a checkout:
+steps or variables change, update that chapter. To drive an example built in
+a checkout by hand, lower a spec's text with `scripts/lower_spec.roc` into
+`ROC_SPEC`; `(live-effects)` lets its requests and timers run for real:
 
 [source,sh]
 ----
-ROC_SCRIPT="type:Buy milk;enter;toggle:Buy milk;choose:Done;dump;quit" ./examples/todos/todos
-ROC_TRACE=1 ROC_SCRIPT="type:https://example.com;enter;wait:3000;dump;quit" ./examples/http-fetch/http-fetch
-ROC_SAVE_DIR=/tmp ROC_SCRIPT="files:$PWD/README.md;click:Inspect;wait:300;dump;click:Save Copy…;wait:200;quit" \
-  ./examples/file-inspector/file-inspector
+ROC_SPEC="$(roc-stable scripts/lower_spec.roc -- '(test "t" (steps (fill (text-field) "Buy milk") (submit (text-field)) (expect-dump _)))')" \
+  ./examples/todos/todos
+ROC_TRACE=1 ROC_SPEC="$(roc-stable scripts/lower_spec.roc -- '(test "t" (setup (live-effects)) (steps (fill (text-field) "https://example.com") (submit (text-field)) (wait 3000) (expect-dump _)))')" \
+  ./examples/http-fetch/http-fetch
 ----
+
+The run prints each expectation's observation on standard output (`@3 obs`,
+then its lines). The bench harnesses drive their timed sessions the same way.
 
 [#specs]
 === Specs
@@ -263,20 +265,23 @@ same specs.
 === Demos
 
 The README's tiles, `docs/images/<example>.gif`, are recorded from the
-built examples. Each example's `examples/<example>/demo.script` holds the
-steps of its demo, one or more to a line, paced with `wait` so a person can
-follow them, and ending with `quit`. After `blueprint run build`:
+built examples. Each example's `examples/<example>/demo.scm` is its demo: a
+spec in the same grammar as `specs/`, whose first step is `(window)` and
+whose `(live-effects)` lets timers tick and requests go out in real time,
+paced with `wait` so a person can follow it. It is not one of the
+example's specs, since its timing is real, but the `specs` stage parses it.
+After `blueprint run build`:
 
 [source,sh]
 ----
-roc-stable scripts/record_demos.roc                   # every example with a demo.script
+roc-stable scripts/record_demos.roc                   # every example with a demo.scm
 roc-stable scripts/record_demos.roc -- counter todos  # the named ones
 ----
 
 `scripts/record_demos.roc` runs each example with its steps in the light
-appearance, reads the window's number from a `window` step it adds first,
+appearance, reads the window's number from its `(window)` step,
 and takes a frame of that window every 100 ms with
-`screencapture -l<number> -o -x` until the app quits. A capture names the
+`screencapture -l<number> -o -x` until the spec ends. A capture names the
 window, so the app never needs focus and windows above it never show.
 ffmpeg then scales the frames to 400 pixels wide on the window's backdrop,
 drops repeated frames and frames caught mid-resize, and writes a looping GIF
