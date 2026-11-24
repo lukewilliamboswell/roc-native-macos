@@ -412,7 +412,7 @@ Spec := [].{
 	## the `audio.*` sources a surface would read.
 	report_fields : List({ step : Str, fields : List(Str) })
 	report_fields = [
-		{ step: "expect-probe", fields: ["r", "g", "b", "a"] },
+		{ step: "expect-probe", fields: ["r", "g", "b", "a", "tolerance"] },
 		{ step: "expect-surfaces", fields: ["shown", "ticking", "time"] },
 		{ step: "expect-audio-status", fields: ["state", "position", "duration", "track", "ended", "analysis"] },
 		{ step: "expect-eq", fields: ["bypass", "preamp", "bands", "volume"] },
@@ -835,7 +835,13 @@ step_form = |form| {
 		("require-metal", _) => return usage("(require-metal), which ends the spec, passing, on a Mac without a Metal device")
 		("bench-surfaces", [Int(n, _)]) if n >= 1 => BenchSurfaces(n)
 		("bench-surfaces", _) => return usage("(bench-surfaces N), N frames a size with each renderer, reported and never judged")
-		("expect-probe", [l, Int(x, _), Int(y, _), .. as rest]) if x >= 0 and y >= 0 => ExpectProbe(loc(l)?, x, y, report_pairs(head, rest)?)
+		("expect-probe", [l, Int(x, _), Int(y, _), .. as rest]) if x >= 0 and y >= 0 => {
+			want = report_pairs(head, rest)?
+			if want.any(|w| !(I64.from_str(w.value).map_ok(|n| n >= 0 and n <= 100) ?? Bool.False)) {
+				return usage("(expect-probe (surface \"label\") X Y :r 100 :g 0 :b 0 :a 100 :tolerance 2), each value a whole percentage from 0 to 100")
+			}
+			ExpectProbe(loc(l)?, x, y, want)
+		}
 		("expect-probe", _) => return usage("(expect-probe (surface \"label\") X Y :r 100 :g 0 :b 0 :a 100), X and Y in points from its top-left corner")
 		("expect-surfaces", [_, ..]) => ExpectSurfaces(report_pairs(head, args)?)
 		("expect-surfaces", _) => return usage("(expect-surfaces :shown 1 :ticking 1 :time \"200.0\")")
@@ -1298,7 +1304,7 @@ expectation = |op, seen, mark| {
 				Err(_) => Err("expected effect #${n.to_str()} to be cancelled, saw only ${e.issued.len().to_str()} effects issued")
 			}
 		}
-		ExpectProbe(l, x, y, want) => fields_expect("${Spec.show_loc(l)}'s colour at ${x.to_str()},${y.to_str()}", want, lines)
+		ExpectProbe(l, x, y, want) => probe_expect("${Spec.show_loc(l)}'s colour at ${x.to_str()},${y.to_str()}", want, lines)
 		ExpectSurfaces(want) => fields_expect("the surfaces'", want, lines)
 		ExpectAudioStatus(want) => fields_expect("the playback session's", want, lines)
 		ExpectTone(hz, want) => fields_expect("the ${hz.to_str()} Hz component's", [{ field: "level", value: want }], lines)
@@ -1333,6 +1339,41 @@ fields_expect = |what, want, lines| {
 		shown = |list| Str.join_with(list.map(|{ field, value }| ":${field} ${Str.inspect(value)}"), " ")
 		saw = wrong.map(|w| seen.find_first(|s| s.field == w.field) ?? { field: w.field, value: "nothing" })
 		Err("expected ${what} ${shown(wrong)}, saw ${shown(saw)}")
+	}
+}
+
+## Whether a probe's `name value` lines hold every channel wanted, each
+## within the probe's `:tolerance` in percentage points (0, exactly, when
+## it names none).
+probe_expect : Str, List(Spec.Field), List(Str) -> Try({}, Str)
+probe_expect = |what, want, lines| {
+	tolerance = want.find_first(|w| w.field == "tolerance").map_ok(|w| I64.from_str(w.value) ?? 0) ?? 0
+	seen = |name|
+		lines.keep_oks(
+			|line|
+				match line.split_on(" ") {
+					[field, value] if field == name => I64.from_str(value).map_err(|_| NotANumber)
+					_ => Err(NotANumber)
+				},
+		).first()
+	wrong = want.keep_if(
+		|w|
+			if w.field == "tolerance" {
+				Bool.False
+			} else {
+				match (seen(w.field), I64.from_str(w.value)) {
+					(Ok(got), Ok(n)) => (got - n).abs() > tolerance
+					_ => Bool.True
+				}
+			},
+	)
+	if wrong.is_empty() {
+		Ok({})
+	} else {
+		shown = |list| Str.join_with(list.map(|{ field, value }| ":${field} ${value}"), " ")
+		saw = wrong.map(|w| { field: w.field, value: seen(w.field).map_ok(|n| n.to_str()) ?? "nothing" })
+		within = if (tolerance > 0) " (within ${tolerance.to_str()})" else ""
+		Err("expected ${what} ${shown(wrong)}${within}, saw ${shown(saw)}")
 	}
 }
 
@@ -1952,4 +1993,16 @@ expect {
 	run = Spec.read_run("@2 obs\n|mean -12.5\n|p95 40.0\n|lead 20.0\n|offsets -20.0 5.0\n@3 obs\n|dropped 1\n|frames 99\n@done\n")
 	Spec.parse(text).map_ok(|p| (Spec.lower(p), Spec.judge(p, run).map(|x| x.message)))
 		== Ok(("roc-spec 1\n0\ttime\t0\n1\trequire-av-timing\n2\tav-timing\n3\tav-timing\n", ["expected the audio/visual offsets' :lead-at-most 15, saw lead 20.0 (offsets -20.0 5.0)", "expected the frame pacing's :frames-at-least 100, saw frames 99"]))
+}
+
+## A probe matches each channel exactly unless it names a tolerance, in
+## percentage points; its values are whole percentages.
+expect {
+	text = "(test \"p\" (steps (expect-probe (surface \"V\") 1 2 :r 30 :a 100 :tolerance 2) (expect-probe (surface \"V\") 1 2 :r 30 :b 0)))"
+	run = Spec.read_run("@1 obs\n|r 32\n|g 19\n|b 40\n|a 100\n@2 obs\n|r 32\n|g 19\n|b 40\n|a 100\n@done\n")
+	(
+		Spec.parse(text).map_ok(|p| Spec.judge(p, run).map(|x| x.message)),
+		Spec.parse("(test \"p\" (steps (expect-probe (surface \"V\") 1 2 :r 101)))").is_err(),
+	)
+		== (Ok(["expected (surface \"V\")'s colour at 1,2 :r 30 :b 0, saw :r 32 :b 40"]), Bool.True)
 }

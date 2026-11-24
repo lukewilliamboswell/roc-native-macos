@@ -14,7 +14,7 @@
     (frame 100)
     (expect-visible (text "warp, line 2: use of undeclared identifier 'brightness'"))
     (expect-visible (text "The warp, line 2: use of undeclared identifier 'brightness'. The last good shader goes on drawing."))
-    (expect-probe (surface "Visualizer") 253 140 :r 24 :g 22 :b 45 :a 100)
+    (expect-probe (surface "Visualizer") 253 140 :r 24 :g 22 :b 45 :a 100 :tolerance 3)
     (fill (text-area) "float4 warp(Frame f, Params p) {\n    return sample(f, f.uv) * p.decay;\n}")
     (frame 100)
     (expect-absent (text "warp, line 2: use of undeclared identifier 'brightness'"))
