@@ -819,8 +819,10 @@ measurements run at the source's rate and the mixer converts to the
 output's. A source of another format gets a fresh engine, player and EQ
 (with the same settings), so node times start at zero again and nothing the
 old graph scheduled can reach the new one.
-Loading:: `Load` copies the file's entry and opens it as an `AVAudioFile` on
-the file jobs' queue, off the main thread; the result hops back with
+Loading:: `Load` copies the file's entry, and `LoadAsset` resolves its path
+with the asset lookup (`Assets.lookup`, the one `Ui.asset_image` uses, here
+reporting rather than stopping on a name outside `assets/` or a missing
+file); either opens the file as an `AVAudioFile` on the file jobs' queue, off the main thread; the result hops back with
 `DispatchQueue.main.async` and is kept only if no later command superseded
 it. Core Audio's status codes name the error (`typ?` and `fmt?` are
 `Unsupported`, anything else `Corrupt`).

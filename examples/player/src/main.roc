@@ -7,7 +7,9 @@ import pf.Ui
 ## An audio player: choose or drop a local audio file, then play, pause,
 ## seek and set the volume. Ten EQ sliders, a preamp, Bypass and Flat shape
 ## what plays, and "Measure levels" turns on the session's measurements,
-## shown as a level readout and the loudest band. The host plays and
+## shown as a level readout and the loudest band. Play Sample loads a file
+## the app ships in `assets/` (`LoadAsset`); Escape Assets asks for one
+## outside it, which is refused. The host plays and
 ## measures the file (`Audio`); the app keeps only the controls' state.
 main : Engine.Program(_)
 main = Engine.program_store({}, |_boot| store, |_boot| view()).with_ports(Audio.ports)
@@ -54,6 +56,8 @@ view = || {
 					Ui.image("music.note", { style: Title1, color: Accent }),
 					Ui.text("Player", { style: Title2, weight: Semibold }),
 					Ui.spacer(),
+					Ui.button("Play Sample", { on_press: Engine.handle_by(cells.track.signal(), |track, _| sample(track + 1, "sample.wav")), icon: Symbol("music.note.list") }),
+					Ui.button("Escape Assets", { on_press: Engine.handle_by(cells.track.signal(), |track, _| sample(track + 1, "../specs/fixtures/clicks.wav")), size: Small }),
 					Ui.file_button("Choose Audio…", { on_files: Engine.handle_by(cells.track.signal(), received), icon: Symbol("waveform") }),
 				],
 			),
@@ -163,6 +167,12 @@ received = |track, { files, .. }|
 
 load : U64, File -> List(Engine.Write(_))
 load = |track, file| [cells.track.set(track), cells.name.set(file.name()), cells.event.set("Loading ${file.name()}…")].concat(send([Load({ track, file })]))
+
+## A file the app ships in `assets/`, loaded by its path there as the next
+## track (`LoadAsset`): no file handle, and a name that is not there fails
+## as a load does.
+sample : U64, Str -> List(Engine.Write(_))
+sample = |track, path| [cells.track.set(track), cells.name.set(path), cells.event.set("Loading ${path}…")].concat(send([LoadAsset({ track, path })]))
 
 seeked : Str -> List(Engine.Write(_))
 seeked = |typed| send([Seek((I64.from_str(typed) ?? 0).max(0).to_u64_wrap())])

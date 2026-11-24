@@ -25,10 +25,12 @@
     (expect-dump (window :width 600 :height 583
                    (vstack :views 1
                      (vstack :views 12
-                       (hstack :views 4
+                       (hstack :views 6
                          (image music.note)
                          (text "Player" :text-style title2 :weight semibold)
                          (spacer)
+                         (button "Play Sample")
+                         (button "Escape Assets")
                          (file-button "Choose Audio…"))
                        (drop-zone
                          (text "Drop an audio file here" :color secondary-label :text-style headline))
