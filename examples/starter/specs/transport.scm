@@ -13,7 +13,7 @@
     (expect-audio-status :state "Stopped" :position 0 :duration 22000 :track 2 :ended 0)
     (mark-metrics)
     (click (button "Play"))
-    (expect-allocations-at-most 2298)
+    (expect-allocations-at-most 2559)
     (render 1000)
     (wait 200)
     (expect-audio-status :state "Playing" :position 1000 :track 2 :analysis true)

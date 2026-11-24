@@ -60,7 +60,7 @@
                              (spacer))
                            (text "Using Ember Tunnel" :color secondary-label :text-style caption1)
                            (box :border line:1:separator :fill text-background
-                             (scroll :views 16 :height 190
+                             (scroll :views 17 :height 190
                                (hstack :views 2
                                  (text "" :color accent)
                                  (button "Scope"))
@@ -106,6 +106,9 @@
                                (hstack :views 2
                                  (text "" :color accent)
                                  (button "Orb Garden"))
+                               (hstack :views 2
+                                 (text "" :color accent)
+                                 (button "Sync Test"))
                                (hstack :views 2
                                  (text "●" :color accent)
                                  (button "Ember Tunnel"))))
