@@ -304,7 +304,8 @@ its own.
 `scene` holds one mark per line, in words separated by single spaces. A
 colour is a xref:architecture.adoc#looks[Looks] colour word. A number `N` is
 a decimal as Roc's `F64.to_str` writes it. A bound number is
-`@SOURCE:SCALE:OFFSET`.
+`@SOURCE:SCALE:OFFSET`, or `@SOURCE[INDEX]:SCALE:OFFSET` for one value of a
+series, `INDEX` from 0 below 4,096; past the series' end it reads 0.
 
 ----
 fill COLOUR SHAPE

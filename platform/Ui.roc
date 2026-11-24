@@ -816,11 +816,16 @@ Ui := [].{
 	## A rectangle of a scene: its top-left corner and its size.
 	Area : { x : F64, y : F64, width : F64, height : F64 }
 
-	## A number in a scene: a constant, or the latest scalar of the native
-	## source named `source`, as `offset + scale * value`. A source that is
-	## not registered, or has nothing yet, counts as 0, so the number is
-	## `offset`.
-	Number : [Value(F64), Source({ source : Str, scale : F64, offset : F64 })]
+	## A number in a scene: a constant, the latest scalar of the native
+	## source named `source` (`Source`), or the value at `index` (from 0) of
+	## its latest series (`Element`), as `offset + scale * value`. A source
+	## that is not registered, or has nothing yet, and an index past the end
+	## of the series, count as 0, so the number is `offset`.
+	Number : [
+		Value(F64),
+		Source({ source : Str, scale : F64, offset : F64 }),
+		Element({ source : Str, index : U64, scale : F64, offset : F64 }),
+	]
 
 	## One step of a `Path`, from where the last one ended.
 	Segment : [MoveTo(Point), LineTo(Point), QuadTo(Point, Point), CurveTo(Point, Point, Point), Close]
@@ -1354,12 +1359,13 @@ point_words = |{ x, y }| "${num(x)} ${num(y)}"
 points_words : List(Ui.Point) -> Str
 points_words = |points| Str.join_with(points.map(point_words), " ")
 
-## A constant, or `@source:scale:offset`.
+## A constant, `@source:scale:offset`, or `@source[index]:scale:offset`.
 number_word : Ui.Number -> Str
 number_word = |number|
 	match number {
 		Value(v) => num(v)
 		Source({ source, scale, offset }) => "@${source}:${num(scale)}:${num(offset)}"
+		Element({ source, index, scale, offset }) => "@${source}[${index.to_str()}]:${num(scale)}:${num(offset)}"
 	}
 
 nums : List(F64) -> Str
@@ -1375,6 +1381,7 @@ expect {
 		Fill(Rect({ x: 10, y: 20, width: 30.5, height: 40 }), Red),
 		Save,
 		Translate(Source({ source: "synthetic.level", scale: 200, offset: 10 }), Value(0)),
+		Scale(Element({ source: "audio.bands", index: 3, scale: 0.5, offset: 1 }), Value(1)),
 		Opacity(Value(0.5)),
 		Stroke(Polyline([{ x: 0, y: 0 }, { x: 4, y: 2 }]), { color: Adaptive({ light: 0x112233, dark: 0xffffff }), width: 2 }),
 		Restore,
@@ -1390,6 +1397,7 @@ expect {
 		\\fill red rect 10 20 30.5 40
 		\\save
 		\\translate @synthetic.level:200:10 0
+		\\scale @audio.bands[3]:0.5:1 1
 		\\opacity 0.5
 		\\stroke adaptive:112233:ffffff 2 line 2 0 0 4 2
 		\\restore

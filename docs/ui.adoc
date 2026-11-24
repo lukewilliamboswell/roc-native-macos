@@ -189,9 +189,13 @@ stops the app with an error naming the line of the scene.
 [#surface-sources]
 === Native sources
 
-A number in a scene is a constant, `Value(n)`, or
+A number in a scene is a constant, `Value(n)`,
 `Source({ source, scale, offset })`: the latest scalar of a native source,
-read as `offset + scale * value`. Three shapes draw a source's latest series
+read as `offset + scale * value`, or
+`Element({ source, index, scale, offset })`: the value at `index` (from 0)
+of a source's latest series, read the same way, so one band of
+`"audio.bands"` can move a mark. An index past the end of the series reads
+0, so the number is `offset`. Three shapes draw a source's latest series
 of numbers (at most 4,096). Each value `v` counts as
 `t = (v - low) / (high - low)`:
 

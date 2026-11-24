@@ -1,0 +1,1 @@
+renderer:metal;choose:Bands;size:600,300;frame:100;scene;probe:100,20;probe:380,80;step:synthetic.wave;step:synthetic.wave;frame:100;scene;probe:100,80;probe:100,20;probe:380,80;quit

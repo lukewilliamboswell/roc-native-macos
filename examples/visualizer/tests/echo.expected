@@ -16,7 +16,7 @@ frame at 300.0 ms: 1 surface
 --- 600x234
 ui-vstack [1 views]
   ui-vstack [2 views]
-    ui-segmented Scope [Echo]
+    ui-segmented Scope [Echo] Bands
     ui-hstack [2 views]
       ui-vstack [3 views]
         ui-button "Hide plot"

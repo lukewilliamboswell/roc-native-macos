@@ -2,7 +2,7 @@ frame at 100.0 ms: 1 surface
 --- 600x300
 ui-vstack [1 views]
   ui-vstack [2 views]
-    ui-segmented [Scope] Echo
+    ui-segmented [Scope] Echo Bands
     ui-hstack [2 views]
       ui-vstack [3 views]
         ui-button "Hide plot"
@@ -35,7 +35,7 @@ frame at 400.0 ms: 0 surfaces
 --- 800x146
 ui-vstack [1 views]
   ui-vstack [2 views]
-    ui-segmented [Scope] Echo
+    ui-segmented [Scope] Echo Bands
     ui-hstack [1 views]
       ui-vstack [3 views]
         ui-button "Show plot"
