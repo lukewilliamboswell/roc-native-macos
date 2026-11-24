@@ -138,6 +138,11 @@
       "reason": "Development or release task; the tool's contents are stated by its components"
     },
     {
+      "input": "task:run",
+      "component": "",
+      "reason": "Development task; it builds and starts one example and adds nothing to the tool"
+    },
+    {
       "input": "task:test",
       "component": "",
       "reason": "Development or release task; the tool's contents are stated by its components"
