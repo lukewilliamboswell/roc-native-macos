@@ -1,0 +1,38 @@
+{
+  "format": "roc-music-preset",
+  "version": 1,
+  "id": "user.ember-tunnel",
+  "name": "Ember Tunnel",
+  "background": "#0B0705",
+  "layers": [
+    {
+      "type": "circular-waveform",
+      "colors": ["#FF8C1A", "#FFD27A"],
+      "size": 200,
+      "thickness": 25,
+      "opacity": 100,
+      "brightness": 100,
+      "rotation": 0,
+      "mappings": [
+        {
+          "feature": "bass",
+          "property": "size",
+          "from": 200,
+          "to": 380
+        },
+        {
+          "feature": "treble",
+          "property": "brightness",
+          "from": 40,
+          "to": 100
+        }
+      ]
+    }
+  ],
+  "feedback": {
+    "enabled": true,
+    "zoom": 1030,
+    "rotation": 0,
+    "half_life_ms": 300
+  }
+}

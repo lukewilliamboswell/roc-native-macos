@@ -35,8 +35,10 @@ cd my-app
 roc macos.roc run
 ```
 
-`init` writes a project to build on: a small expense tracker with its app
-in `src/`, its business logic as a package of pure Roc in `logic/`,
+`init` writes a project to build on: a music player with a visualizer and
+lyrics (drop songs and their `.lrc` files in, choose a preset, press Play,
+and follow the words with Command-L), with its app in `src/`, its logic
+(lyrics, the queue, presets) as a package of pure Roc in `logic/`,
 [roc-fuzz](https://github.com/lukewilliamboswell/roc-fuzz) targets for that
 logic in `fuzz/`, an icon, specs of what it does in `specs/`, and an
 `AGENTS.md` saying how it is laid out and worked on. `run` builds

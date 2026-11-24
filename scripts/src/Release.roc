@@ -106,7 +106,7 @@ Release := [].{
 
 	## Whether a scaffold file is bytes, such as an image, rather than text.
 	binary : Str -> Bool
-	binary = |path| [".png", ".jpg", ".jpeg", ".pdf", ".icns"].any(|ext| path.ends_with(ext))
+	binary = |path| [".png", ".jpg", ".jpeg", ".pdf", ".icns", ".wav", ".mp3"].any(|ext| path.ends_with(ext))
 
 	## Where an app keeps its specs.
 	specs : Str
@@ -417,10 +417,10 @@ expect
 
 ## The scaffold is every file of the starter example, in order.
 expect
-	Release.scaffold(["src/main.roc", "assets/icon.png", "specs/add.scm"])
+	Release.scaffold(["src/main.roc", "assets/icon.png", "specs/presets.scm"])
 		== [
 			{ path: "assets/icon.png", source: "examples/starter/assets/icon.png" },
-			{ path: "specs/add.scm", source: "examples/starter/specs/add.scm" },
+			{ path: "specs/presets.scm", source: "examples/starter/specs/presets.scm" },
 			{ path: "src/main.roc", source: "examples/starter/src/main.roc" },
 		]
 

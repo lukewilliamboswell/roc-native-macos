@@ -3,34 +3,48 @@ app [main] {
 	pf: platform "../../../platform/main.roc",
 }
 
+import pf.Audio
 import pf.Engine
-import Home
-import Import
+import Export
+import Player
 import Store
 
-## Expenses: a starting point for a roc-native-macos app. Type what you
-## bought and what it cost, import a CSV file in a worker, and see the
-## totals; the list is saved between launches.
+## Music: a starting point for a roc-native-macos app. Drop songs into the
+## window with their lyric files, choose a visualizer preset and press
+## Play; turn on Lyrics (Command-L) to follow the words over the picture,
+## shape the sound with the EQ, and make, save, import and export presets
+## of your own. Presets and choices are saved between launches.
+##
+## Roc owns the queue, the controls, the preset documents and the lyrics.
+## The host owns decoding, the EQ, the audio clock and the drawing surface:
+## `src/Media.roc` and `src/Visual.roc` are the only modules that speak to
+## them, through the platform's `Audio` session and `Ui.surface`.
 ##
 ## Where things are (`AGENTS.md` says more):
 ##
 ## - `src/main.roc`: this file, the program: its store, its view and its
 ##   workers. The header names the platform (`pf`) and the logic package.
 ## - `src/Store.roc`: shared state and the decisions that change it.
-## - `src/Home.roc`: the window, composed from the store and the widgets.
+## - `src/Player.roc`: the window, composed from the store and the parts.
+## - `src/Words.roc`: the lyrics over the picture, and reading lyric files.
+## - `src/Panels.roc` and `src/Editor.roc`: the queue, EQ and preset editor.
 ## - `src/Widgets.roc`: reusable widgets, with no knowledge of the store.
-## - `src/Import.roc`: a worker task and the site that asks for it.
-## - `logic/`: the business logic, a package of pure Roc with no platform.
+## - `src/Export.roc`: a worker task that builds a preset's file.
+## - `src/Media.roc`, `src/Visual.roc`: the audio session and the drawing
+##   surface.
+## - `logic/`: lyrics, the queue, presets and scenes, a package of pure Roc
+##   with no platform.
 ## - `fuzz/main.roc`: roc-fuzz targets for the logic package.
 ## - `assets/`: images the app draws; `assets/icon.png` is its icon.
-## - `specs/`: specs of what the app does (`roc macos.roc test`).
+## - `specs/`: specs of the app (`roc macos.roc test`).
 ##
 ## State flows one way: an event runs a handler, which returns writes
 ## (decisions in `Store`, or a local state's update); the engine applies
 ## them and wakes only the views that read what changed. Effects (saving,
-## a worker job) are asked for by sites that watch a signal, and their
-## answers come back as writes.
+## reading a file, a worker job, a player command) are asked for by sites
+## that watch a signal, and their answers come back as writes.
 main : Engine.Program(_)
 main =
-	Engine.program_store({ storage_keys: [Store.storage_key] }, Store.start, |_boot| Home.view())
-		.with_workers([Import.task.registration()])
+	Engine.program_store({ storage_keys: [Store.presets_key, Store.prefs_key] }, Store.start, |_boot| Player.view())
+		.with_workers([Export.task.registration()])
+		.with_ports(Audio.ports)

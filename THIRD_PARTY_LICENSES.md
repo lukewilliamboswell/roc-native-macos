@@ -4,6 +4,18 @@ The repository's own code is under the [UPL 1.0](LICENSE). This file lists
 code it copies from elsewhere, the packages it fetches, and what its
 applications link at run time.
 
+## Media under other licences
+
+- *Polymorphic Defunctionalization Through Lambda Set Specialization*, by
+  Luke Boswell: the starter example's default song,
+  `examples/starter/assets/polymorphic-defunctionalization.mp3`, and its
+  timed lyrics, `polymorphic-defunctionalization.lrc`, which `macos.roc
+  init` copies into every new app. Copyright © 2026 Luke Boswell; licensed
+  under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/), not the
+  UPL. `examples/starter/assets/CREDITS.md` carries the attribution into
+  each app. Lyrics and liner notes:
+  <https://gist.github.com/lukewilliamboswell/be88b49154f602495f2821a01f995d1f>.
+
 ## Roc packages the compiler fetches
 
 The compiler fetches these by content-addressed URL. Their source is not copied

@@ -96,7 +96,7 @@ Bundle := [].{
 
 	## The spec run on the program extracted from the zip.
 	package_case : Str
-	package_case = "add"
+	package_case = "problem"
 
 	## What the zip must hold, in order, with each entry's Unix mode: an ad
 	## hoc seal (`_CodeSignature/`) over the program, `Info.plist` and the
@@ -111,7 +111,10 @@ Bundle := [].{
 		{ name: "my-app.app/Contents/Resources/", mode: 0o040755 },
 		{ name: "my-app.app/Contents/Resources/AppIcon.icns", mode: 0o100644 },
 		{ name: "my-app.app/Contents/Resources/assets/", mode: 0o040755 },
+		{ name: "my-app.app/Contents/Resources/assets/CREDITS.md", mode: 0o100644 },
 		{ name: "my-app.app/Contents/Resources/assets/icon.png", mode: 0o100644 },
+		{ name: "my-app.app/Contents/Resources/assets/polymorphic-defunctionalization.lrc", mode: 0o100644 },
+		{ name: "my-app.app/Contents/Resources/assets/polymorphic-defunctionalization.mp3", mode: 0o100644 },
 		{ name: "my-app.app/Contents/_CodeSignature/", mode: 0o040755 },
 		{ name: "my-app.app/Contents/_CodeSignature/CodeResources", mode: 0o100644 },
 	]
