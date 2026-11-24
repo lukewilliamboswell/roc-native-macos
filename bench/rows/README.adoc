@@ -30,8 +30,8 @@ rebuilds the view in the size of the table, 12–21 ms at a million). See
 It is a harness, not an example. The gate's `bench` stage builds it and runs
 `run.sh --smoke`: 200 rows through every phase below, which fails unless
 each phase ran and the list holds all 200 rows again once the filter is
-cleared. Then the specs beside it, `specs/rows-2000.scm` and
-`specs/rows-200000.scm`, count the work with the same bounds at both
+cleared. Then the specs beside it, `tests/specs/rows-2000.scm` and
+`tests/specs/rows-200000.scm`, count the work with the same bounds at both
 sizes (docs/apps.adoc, "Work metrics"): the mount
 creates at most 150 rows (one window), five ticks of the interval, each
 writing three rows, update at most 15 rows and emit at most 15 commands,

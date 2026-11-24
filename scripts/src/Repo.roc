@@ -23,6 +23,12 @@ Repo := [].{
 		}
 	}
 
+	## Where an example or a bench harness keeps its specs, relative to its
+	## directory; the files they use are in `tests/fixtures/`, and the
+	## starter's fuzz targets in `tests/fuzz/main.roc`.
+	specs : Str
+	specs = "tests/specs"
+
 	## The examples the matrix stage builds every way, the one spec it runs
 	## against each build, and whether it builds them for every Mac target or
 	## only for this Mac's own: `arith`, for every target, for the library
@@ -32,7 +38,7 @@ Repo := [].{
 	## TODO(slow-lambda-sets): `workers` takes 80 to 140 s a build with
 	## `--specialize=yes`; build it for every target too once that is fast.
 	matrix_examples : List({ name : Str, spec : Str, every_target : Bool })
-	matrix_examples = [{ name: "arith", spec: "specs/rows.scm", every_target: Bool.True }, { name: "workers", spec: "specs/crash.scm", every_target: Bool.False }]
+	matrix_examples = [{ name: "arith", spec: "${Repo.specs}/rows.scm", every_target: Bool.True }, { name: "workers", spec: "${Repo.specs}/crash.scm", every_target: Bool.False }]
 
 	## One build of the matrix: a target, an `--opt` and a `--specialize`,
 	## and whether this Mac runs what it builds.

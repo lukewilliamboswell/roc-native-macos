@@ -1,7 +1,7 @@
 import Gallery
 import JsonValue
 import Preset
-import "../specs/fixtures/ember-tunnel.json" as ember_file : Str
+import "../tests/fixtures/ember-tunnel.json" as ember_file : Str
 
 ## The preset library: the three built-ins every listener has, the presets
 ## a listener makes (kept in local storage), and the rules for saving,
@@ -68,7 +68,7 @@ Library := [].{
 	## with an ID starting `builtin.` and add it to this list; the `expect`s
 	## below check every built-in round-trips through its file.
 	builtins : List(Preset.Doc)
-	builtins =[Library.scope, Library.spectrum_bars, Library.echo_rings].concat(Gallery.all).append(Library.sync_test)
+	builtins = [Library.scope, Library.spectrum_bars, Library.echo_rings].concat(Gallery.all).append(Library.sync_test)
 
 	## The preset a first launch shows, and the one chosen when the chosen
 	## preset is gone: one of the shaded built-ins, at its best with the
@@ -258,7 +258,7 @@ expect {
 	Library.from_storage(Library.to_storage(mine)) == mine and Library.from_storage("nonsense") == [] and Library.from_storage("{\"presets\": [1, {\"version\": 1}]}") == []
 }
 
-## The fixture `specs/fixtures/ember-tunnel.json` is Ember Tunnel's file,
+## The fixture `tests/fixtures/ember-tunnel.json` is Ember Tunnel's file,
 ## exactly as Export… writes it, and reads back as Ember Tunnel.
 expect Preset.encode(Library.ember_tunnel) == ember_file.trim() and Preset.decode(ember_file) == Ok(Library.ember_tunnel)
 

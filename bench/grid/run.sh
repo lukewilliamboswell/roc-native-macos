@@ -10,7 +10,7 @@
 #
 # The timings are diagnostics: a ratio past its bound is reported, never a
 # failure. What a hover or a timer costs is checked by counting its work, in
-# the specs beside this file (specs/grid-20.scm and specs/grid-60.scm, the
+# the specs beside this file (tests/specs/grid-20.scm and tests/specs/grid-60.scm, the
 # same bounds at both sizes), which `blueprint run check -- bench` runs.
 #
 # Each N is a fresh process with ROC_BENCH=1 and a sweep (a spec's steps): the
@@ -121,7 +121,7 @@ if [[ -n $smoke && -z ${NO_SCALING:-} ]]; then
 	echo "== mount scaling: N=20 $small ms, N=60 $large ms: ratio $ratio for 9x the cells (linear 9; past 27 is reported)"
 	if perl -e 'exit($ARGV[0] > 27 ? 0 : 1)' "$ratio"; then
 		echo "bench/grid --smoke: mount grows superlinearly with the cells; see roc-signals#305 and #306" >&2
-		echo "  (timing is a diagnostic: the work is checked by the specs in $here/specs)" >&2
+		echo "  (timing is a diagnostic: the work is checked by the specs in $here/tests/specs)" >&2
 	fi
 	small="$(hover_p50 <<<"$small_log")"
 	large="$(hover_p50 <<<"$large_log")"
@@ -133,6 +133,6 @@ if [[ -n $smoke && -z ${NO_SCALING:-} ]]; then
 	echo "== turn scaling: hover engine p50 N=20 $small ms, N=60 $large ms: ratio $ratio for 9x the cells (constant 1, linear 9; past 4 is reported)"
 	if perl -e 'exit($ARGV[0] > 4 ? 0 : 1)' "$ratio"; then
 		echo "bench/grid --smoke: a hover turn's engine time grows with the cells; see roc-signals#307" >&2
-		echo "  (timing is a diagnostic: the work is checked by the specs in $here/specs)" >&2
+		echo "  (timing is a diagnostic: the work is checked by the specs in $here/tests/specs)" >&2
 	fi
 fi

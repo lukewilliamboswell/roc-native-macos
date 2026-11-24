@@ -8,7 +8,7 @@ import App
 ## `fuzz [--check] [--time SECONDS] [TARGET...]`: build the app's fuzz
 ## targets and run them.
 ##
-## `fuzz/main.roc` is an app on roc-fuzz's platform
+## `tests/fuzz/main.roc` is an app on roc-fuzz's platform
 ## (https://github.com/lukewilliamboswell/roc-fuzz) that imports the app's
 ## pure logic package and declares properties of it. `roc build --fuzz`
 ## builds it into one program, `.macos/fuzz`, which runs on Apple silicon
@@ -22,7 +22,7 @@ Fuzz := [].{
 
 	## Where an app keeps its fuzz targets.
 	source : Str
-	source = "fuzz/main.roc"
+	source = "tests/fuzz/main.roc"
 
 	## The program `roc build --fuzz` writes, in the build directory.
 	program : Str

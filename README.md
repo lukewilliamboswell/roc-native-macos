@@ -40,7 +40,7 @@ lyrics (drop songs and their `.lrc` files in, choose a preset, press Play,
 and follow the words with Command-L), with its app in `src/`, its logic
 (lyrics, the queue, presets) as a package of pure Roc in `logic/`,
 [roc-fuzz](https://github.com/lukewilliamboswell/roc-fuzz) targets for that
-logic in `fuzz/`, an icon, and specs of what it does in `specs/`. `run` builds
+logic and specs of what it does in `tests/`, and an icon. `run` builds
 `my-app.app` and starts it. While you edit it, `roc macos.roc dev` runs the
 app with hot reloading: it rebuilds as you save, and Command-R shows the new
 code. `roc macos.roc build` builds the app on any system, `roc macos.roc

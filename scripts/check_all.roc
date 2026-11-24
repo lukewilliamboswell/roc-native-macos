@@ -28,7 +28,7 @@ import src/Repo
 ##   `macos.roc` tool (`cli/`), and `roc-stable fmt --check` over the scripts.
 ## - `scripts`: the scripts' `expect` tests.
 ## - `specs`: every spec under `examples/` and `bench/` parses
-##   (`Spec.parse`), on any system.
+##   (`Spec.parse`), on any system, demos (`(demo …)`) included.
 ## - `tool`: `cli/Bundle.roc` is what `scripts/src/Release.roc` generates for
 ##   a checkout (`tool --update` writes it), `scripts/src/Spec.roc` and
 ##   `SpecRun.roc` are copies of the tool's, and `roc test` on the tool.
@@ -39,10 +39,11 @@ import src/Repo
 ##   example.
 ## - `test`: `roc test` on the platform root and on every example (its
 ##   `src/main.roc`, which also runs its logic package's
-##   `expect`s), and for an example with `fuzz/main.roc`, the roc-fuzz build
+##   `expect`s), and for an example with `tests/fuzz/main.roc`, the roc-fuzz build
 ##   of it and `check` on each of its targets (except on an Intel Mac, which
 ##   roc-fuzz has no target for).
-## - `examples`: every example's specs (`examples/<name>/specs/*.scm`, or
+## - `examples`: every example's specs (`examples/<name>/tests/specs/*.scm`
+##   but its demos, or
 ##   only the examples `EXAMPLES="counter todos"` names; `METRICS=1` prints
 ##   what each measured instead of judging it); `examples --update`
 ##   rewrites their dumps and lowers their allocation bounds. Then the
@@ -51,7 +52,7 @@ import src/Repo
 ##   against the stubs, and must pass the same.
 ## - `bench`: every harness under `bench/` (`bench/<name>/run.sh --smoke`),
 ##   built and run at a token size, so it never goes stale, then its specs
-##   (`bench/<name>/specs/*.scm`): the work a turn does, counted, at two
+##   (`bench/<name>/tests/specs/*.scm`): the work a turn does, counted, at two
 ##   sizes. Its timings are only reported.
 ## - `matrix`: every build an author can ask `roc build` for. Each of
 ##   `Repo.matrix_examples` (`arith` and `workers`) built with every `--opt`
@@ -242,7 +243,7 @@ test! = || {
 		# An example's fuzz targets: built with roc-fuzz, and each target's
 		# declared examples checked, as `macos.roc fuzz --check` does.
 		# roc-fuzz has no Intel Mac target, so an Intel Mac skips them.
-		if Path.exists!(Path.utf8("${dir}/fuzz/main.roc"))? {
+		if Path.exists!(Path.utf8("${dir}/tests/fuzz/main.roc"))? {
 			if intel {
 				note!("${dir}: roc-fuzz has no Intel Mac target, so its fuzz targets are not checked here")
 			} else {
@@ -253,14 +254,14 @@ test! = || {
 	Ok($problems)
 }
 
-## Build an example's `fuzz/main.roc` with roc-fuzz and run `check` on
+## Build an example's `tests/fuzz/main.roc` with roc-fuzz and run `check` on
 ## every target it lists, from the example's directory.
 fuzz_check! : Str => Try(List(Str), _)
 fuzz_check! = |dir| {
 	root = Env.cwd!()?.display()
 	program = "${root}/build/fuzz/${dir.drop_prefix("examples/")}"
 	Path.create_all!(Path.utf8("build/fuzz"))?
-	built = run_with!(Cmd.new("roc").args(["build", "--fuzz", "fuzz/main.roc", "--output=${program}"].map(OsStr.from_str)).cwd(Path.utf8(dir)), "roc build --fuzz ${dir}/fuzz/main.roc")?
+	built = run_with!(Cmd.new("roc").args(["build", "--fuzz", "tests/fuzz/main.roc", "--output=${program}"].map(OsStr.from_str)).cwd(Path.utf8(dir)), "roc build --fuzz ${dir}/tests/fuzz/main.roc")?
 	if !built.is_empty() {
 		return Ok(built)
 	}
@@ -286,15 +287,15 @@ bench! = |update| {
 		$problems = $problems.concat(run_with!(Cmd.new("bash").args([script, "--smoke"].map(OsStr.from_str)).env("ROC", "roc"), "${script} --smoke")?)
 		dir = script.drop_suffix("/run.sh")
 		name = dir.drop_prefix("bench/")
-		for spec in SpecRun.names(names_in!("${dir}/specs")) {
-			outcome = SpecRun.run!({ program: "${root}/${dir}/${name}", dir: "${root}/${dir}", spec: "specs/${spec}", update, metrics: measuring!(), args: [], env: [] })?
+		for spec in SpecRun.tests!(dir, SpecRun.names(names_in!("${dir}/${Repo.specs}")).map(|file| "${Repo.specs}/${file}")) {
+			outcome = SpecRun.run!({ program: "${root}/${dir}/${name}", dir: "${root}/${dir}", spec, update, metrics: measuring!(), args: [], env: [] })?
 			match outcome {
 				Measured(lines) => note!(Str.join_with(lines.map(|line| "${dir}/${line}"), "\n"))
-				Passed => note!("PASS ${dir}/specs/${spec}")
-				Updated => note!("SAVE ${dir}/specs/${spec}")
+				Passed => note!("PASS ${dir}/${spec}")
+				Updated => note!("SAVE ${dir}/${spec}")
 				Failed(problems) => {
-					note!("FAIL ${dir}/specs/${spec}")
-					$problems = $problems.append("${dir}/specs/${spec}: ${Str.join_with(problems, "\n  ")}")
+					note!("FAIL ${dir}/${spec}")
+					$problems = $problems.append("${dir}/${spec}: ${Str.join_with(problems, "\n  ")}")
 				}
 			}
 		}
@@ -320,9 +321,10 @@ examples! = |update, colour| {
 	# `EXAMPLES="counter todos"` runs only those examples' specs.
 	only = (Env.var_str!(OsStr.from_str("EXAMPLES")) ?? "").split_on(" ").keep_if(|name| !name.is_empty())
 	for example in examples_present!()?.keep_if(|name| only.is_empty() or only.contains(name)) {
-		specs = SpecRun.names(names_in!("examples/${example}/specs")).map(|name| { example, name: "specs/${name}" })
+		dir = "examples/${example}"
+		specs = SpecRun.tests!(dir, SpecRun.names(names_in!("${dir}/${Repo.specs}")).map(|file| "${Repo.specs}/${file}")).map(|name| { example, name })
 		if specs.is_empty() {
-			$problems = $problems.append("examples/${example} has no spec: add examples/${example}/specs/<name>.scm, then run `blueprint run examples -- --update`")
+			$problems = $problems.append("examples/${example} has no spec: add examples/${example}/${Repo.specs}/<name>.scm, then run `blueprint run examples -- --update`")
 		}
 		$cases = $cases.concat(specs)
 	}

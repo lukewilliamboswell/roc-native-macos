@@ -821,12 +821,12 @@ orb_garden = {
 
 ## Not a visualization: the audio/visual sync test. The screen flashes white
 ## as the level crosses half way, so played with a click track (the
-## specs' `fixtures/sync-clicks.wav`) every click is one flash, to measure
+## tests' `fixtures/sync-clicks.wav`) every click is one flash, to measure
 ## (host/AVTiming.swift) or to film beside the speaker.
 sync_test : Presets.Preset
 sync_test = {
 	name: "Sync Test",
-	about: "A white flash on every click of a click track: play specs/fixtures/sync-clicks.wav and film the screen beside the speaker to see how far apart they are.",
+	about: "A white flash on every click of a click track: play tests/fixtures/sync-clicks.wav and film the screen beside the speaker to see how far apart they are.",
 	background: hex(0x000000),
 	space,
 	scene: [Save, Opacity(Source({ source: "audio.level", scale: 1, offset: 0 })), Fill(Rect({ x: 0, y: 0, width: 1000, height: 625 }), hex(0xffffff)), Restore],

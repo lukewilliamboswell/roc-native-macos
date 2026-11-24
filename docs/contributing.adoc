@@ -191,8 +191,8 @@ roc-native-android's `android.roc` and roc-signals' `signals.roc`):
 | `cli/Init.roc` | `init`: the starter scaffold (`examples/starter`), never overwriting a file
 | `cli/App.roc` | the app's root module (`src/main.roc`), and `build` and `run`: `roc build --target=arm64mac` and `--target=x64mac`, joined into the universal `.macos/<name>` (or with `--target` one of them alone), then `<name>.app` with its `Info.plist`
 | `cli/Universal.roc` | the universal (fat) Mach-O file, written byte for byte as `lipo -create` writes it, with no Apple tool
-| `cli/Cases.roc` | `test`: `roc test` on the root module, then each `specs/<name>.scm` run against `.macos/<name>`, built for this Mac's own target alone
-| `cli/Fuzz.roc` | `fuzz`: `roc build --fuzz fuzz/main.roc` into `.macos/fuzz`, then each roc-fuzz target it lists, run or (`--check`) checked
+| `cli/Cases.roc` | `test`: `roc test` on the root module, then each `tests/specs/<name>.scm` but the demos run against `.macos/<name>`, built for this Mac's own target alone
+| `cli/Fuzz.roc` | `fuzz`: `roc build --fuzz tests/fuzz/main.roc` into `.macos/fuzz`, then each roc-fuzz target it lists, run or (`--check`) checked
 | `cli/Spec.roc` | the spec language: parsing, lowering to the host's `ROC_SPEC` steps, judging what the host observed, and `--update`'s rewrite of the dumps and allocation bounds; pure, shared with the scripts
 | `cli/SpecRun.roc` | one spec run against a built program, shared with the scripts
 | `cli/Bundle.roc` | generated: the release, its platform URL, the Roc that tested it, and the scaffold
@@ -267,11 +267,12 @@ then its lines). The bench harnesses drive their timed sessions the same way.
 [#specs]
 === Specs
 
-Every example has at least one spec, beside it as an app's are:
-`examples/<example>/specs/<name>.scm` (xref:apps.adoc#test-an-app[Test an
-app]). Files a spec uses, such as one it opens or drops, live in the
-example's `specs/fixtures/`, and its steps name them relative to the
-example. `blueprint run examples` runs each spec from the example's
+Every example and bench harness keeps its tests as an app does, under
+`tests/`: its specs in `tests/specs/<name>.scm`
+(xref:apps.adoc#test-an-app[Test an app]), the files they open or drop in
+`tests/fixtures/`, named relative to the example, and, for the starter, its
+roc-fuzz targets in `tests/fuzz/main.roc`. Every example has at least one
+spec that is not a demo. `blueprint run examples` runs each spec from the example's
 directory against the built app (`EXAMPLES="todos workers"` runs only
 those examples'), with a 120-second deadline. A new example needs a spec:
 write it with `(expect-dump _)` where a dump helps, run
@@ -286,16 +287,20 @@ same specs.
 === Demos
 
 The README's tiles, `docs/images/<example>.gif`, are recorded from the
-built examples. Each example's `examples/<example>/demo.scm` is its demo: a
-spec in the same grammar as `specs/`, whose first step is `(window)` and
-whose `(live-effects)` lets timers tick and requests go out in real time,
-paced with `wait` so a person can follow it. It is not one of the
-example's specs, since its timing is real, but the `specs` stage parses it.
+built examples. An example's demo is its one spec written `(demo "name" …)`
+in place of `(test "name" …)`, conventionally `tests/specs/demo.scm`: the
+same grammar, whose first step is `(window)` and whose `(live-effects)` lets
+timers tick and requests go out in real time, paced with `wait` so a person
+can follow it. Its timing is real, so the form, not the file's name, marks
+it: `macos.roc test`, `blueprint run examples` and the release's tests skip
+every `(demo …)` (`SpecRun.is_demo!`), the `specs` stage parses it with the
+rest, and `scripts/record_demos.roc` finds it by the same rule and runs it
+from the example's directory, as a spec runs.
 After `blueprint run build`:
 
 [source,sh]
 ----
-roc-stable scripts/record_demos.roc                   # every example with a demo.scm
+roc-stable scripts/record_demos.roc                   # every example with a demo
 roc-stable scripts/record_demos.roc -- counter todos  # the named ones
 ----
 
@@ -336,9 +341,9 @@ same one CI runs on `macos-15`, and in part on `macos-15-intel`
 | `tool` | `cli/Bundle.roc` is current (`tool --update` writes it), `scripts/src/{Spec,SpecRun}.roc` copy the tool's, and `roc test cli/main.roc`
 | `glue` | the committed glue is what `glue/SwiftGlue.roc` generates with the `roc` on PATH (`build -- glue --check`)
 | `build` | `scripts/build.roc` with the `roc` on PATH
-| `test` | `roc test` on `platform/main.roc` and every example (its `src/main.roc`, with the starter's logic package), and for an example with `fuzz/main.roc` (the starter) its roc-fuzz build and `check` on every target
+| `test` | `roc test` on `platform/main.roc` and every example (its `src/main.roc`, with the starter's logic package), and for an example with `tests/fuzz/main.roc` (the starter) its roc-fuzz build and `check` on every target
 | `examples` | every example's specs
-| `bench` | every harness under `bench/`, built and run at a token size (`bench/<name>/run.sh --smoke`) so it never goes stale, failing unless the run does what it measures; then its specs, `bench/<name>/specs/*.scm`, which count a turn's work with the same bounds at two sizes: a hover or a cooling timer at N=20 and N=60 cells, a tick writing 3 rows and a selection at 2,000 and 200,000 rows. The harnesses' timing ratios are reported as diagnostics and never fail
+| `bench` | every harness under `bench/`, built and run at a token size (`bench/<name>/run.sh --smoke`) so it never goes stale, failing unless the run does what it measures; then its specs, `bench/<name>/tests/specs/*.scm`, which count a turn's work with the same bounds at two sizes: a hover or a cooling timer at N=20 and N=60 cells, a tick writing 3 rows and a selection at 2,000 and 200,000 rows. The harnesses' timing ratios are reported as diagnostics and never fail
 | `matrix` | every build an author can ask `roc build` for, of `examples/arith` (the library calls 128-bit, `Dec` and float arithmetic lower to) and `examples/workers` (worker threads, and a crashed job's unwind): each built with every `--opt` (`speed`, `size`, `dev`, `interpreter`) and `--specialize` (`yes`, `no`) for this Mac's own target and run against one spec (`arith`'s `rows`, `workers`' `crash`), then `arith` with every `--opt` but `interpreter` (which builds only for the native target) for the other Mac targets, each linked, and run too where this Mac runs it: `x64v1mac` under Rosetta on Apple silicon, natively on an Intel Mac. Programs go to `build/matrix/`. It takes about 10 minutes on an M-series Mac, most of it `workers` with `--specialize=yes` (`TODO(slow-lambda-sets)`). A missing system symbol fails here first, so take it into `host/interfaces.json` with its evidence
 | `bundle` | the bundle from the `build` stage's inputs, and its consumer test: `macos.roc` `init`, `build`, `test`, `fuzz --check` and `ci package` against it
 |===

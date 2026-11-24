@@ -10,9 +10,9 @@ Run `blueprint run check` with a current Roc nightly installed as `roc`. It is
 the same gate CI runs on `macos-15`: compiler pins, the engine facades,
 formatting, the scripts' tests, the `macos.roc` tool's package (`cli/`),
 the committed glue, `scripts/build.roc`, `roc test`, every example's specs
-(`examples/<example>/specs/`), `arith` and `workers` built and run with every `--opt` and `--specialize`, `arith` for every Mac target (`matrix`), and the platform bundle with the starter app created, built,
+(`examples/<example>/tests/specs/`), `arith` and `workers` built and run with every `--opt` and `--specialize`, `arith` for every Mac target (`matrix`), and the platform bundle with the starter app created, built,
 tested and packaged against it through `macos.roc` (`scripts/bundle.roc --test`). A new example needs at
-least one spec: add `examples/<example>/specs/<name>.scm`, start it with
+least one spec: add `examples/<example>/tests/specs/<name>.scm`, start it with
 `(expect-dump _)`, and run `blueprint run examples -- --update`. Review the
 diff before you commit it.
 

@@ -8,8 +8,8 @@ import cli.Path
 import cli.Stdout
 
 ## Write the audio player's recorded-case fixtures,
-## `examples/player/specs/fixtures/*.wav`, and the sync test's click track,
-## `examples/visualizer/specs/fixtures/sync-clicks.wav` and the starter's
+## `examples/player/tests/fixtures/*.wav`, and the sync test's click track,
+## `examples/visualizer/tests/fixtures/sync-clicks.wav` and the starter's
 ## `examples/starter/assets/sync-test.wav`, which are committed:
 ##
 ##     roc-stable scripts/audio_fixtures.roc
@@ -31,14 +31,14 @@ import cli.Stdout
 ##   the first at 250 ms: the click track the audio/visual timing harness
 ##   (host/AVTiming.swift) and the starter's Sync test play.
 main! = |_args| {
-	dir = "examples/player/specs/fixtures"
+	dir = "examples/player/tests/fixtures"
 	Path.create_all!(Path.utf8(dir))?
 	for { name, bytes } in fixtures {
 		Path.write_bytes!(Path.utf8("${dir}/${name}"), bytes)?
 		Stdout.line!("wrote ${dir}/${name} (${bytes.len().to_str()} bytes)")?
 	}
 	sync = wav(48000, 1, bursts(48000, 8 * 48000))
-	for path in ["examples/visualizer/specs/fixtures/sync-clicks.wav", "examples/starter/assets/sync-test.wav"] {
+	for path in ["examples/visualizer/tests/fixtures/sync-clicks.wav", "examples/starter/assets/sync-test.wav"] {
 		Path.create_all!(Path.utf8(Str.join_with(path.split_on("/").drop_last(1), "/")))?
 		Path.write_bytes!(Path.utf8(path), sync)?
 		Stdout.line!("wrote ${path} (${sync.len().to_str()} bytes)")?

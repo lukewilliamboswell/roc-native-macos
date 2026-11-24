@@ -80,8 +80,8 @@ Release := [].{
 	is_tool_bundle = |name| name.starts_with("macos-") and name.ends_with(".tar.zst")
 
 	## The examples among tracked paths: each example's name and its app's
-	## entry, `src/main.roc` (with a logic package or fuzz targets beside
-	## `src/` in the starter), in order.
+	## entry, `src/main.roc` (with a logic package beside `src/` in the
+	## starter), in order.
 	examples : List(Str) -> List({ name : Str, entry : Str })
 	examples = |paths| {
 		found = paths.keep_oks(
@@ -107,10 +107,6 @@ Release := [].{
 	## Whether a scaffold file is bytes, such as an image, rather than text.
 	binary : Str -> Bool
 	binary = |path| [".png", ".jpg", ".jpeg", ".pdf", ".icns", ".wav", ".mp3"].any(|ext| path.ends_with(ext))
-
-	## Where an app keeps its specs.
-	specs : Str
-	specs = "specs"
 
 	## The checked-in `cli/Bundle.roc`: the tool in a checkout, importing the
 	## scaffold from the working tree.
@@ -160,7 +156,7 @@ Release := [].{
 			\\	roc_version = "${roc_version}"
 			\\
 			\\	## The files `init` writes: the starter example (`examples/starter`),
-			\\	## with its logic package, fuzz targets, assets and specs.
+			\\	## with its logic package, assets and tests.
 			\\	scaffold : List(File)
 			\\	scaffold = [
 		Str.join_with([header].concat(import_lines).concat(["", body]).concat(entries).concat(["\t]", "}", ""]), "\n")
@@ -201,8 +197,8 @@ Release := [].{
 		\\#     roc macos.roc run            build it and start it
 		\\#     roc macos.roc dev            start it, reloading it as you save
 		\\#     roc macos.roc build          build my-app.app, on any system
-		\\#     roc macos.roc test           run its expect tests and specs, specs/*.scm
-		\\#     roc macos.roc fuzz           run its roc-fuzz targets, fuzz/main.roc
+		\\#     roc macos.roc test           run its expect tests and specs, tests/specs/*.scm
+		\\#     roc macos.roc fuzz           run its roc-fuzz targets, tests/fuzz/main.roc
 		\\#
 		\\# To move to another release, download that release's macos.roc over
 		\\# this one and change the platform in src/main.roc to match.
@@ -412,24 +408,24 @@ expect Release.tool_bundle("Abc.tar.zst") == "macos-Abc.tar.zst" and Release.is_
 ## An example's entry is its src/main.roc; a top-level main.roc, a logic
 ## package's or a fuzz target's main.roc is not one.
 expect
-	Release.examples(["examples/todos/src/main.roc", "examples/old/main.roc", "examples/starter/logic/main.roc", "examples/starter/src/main.roc", "examples/starter/fuzz/main.roc", "examples/about/assets/icon.png"])
+	Release.examples(["examples/todos/src/main.roc", "examples/old/main.roc", "examples/starter/logic/main.roc", "examples/starter/src/main.roc", "examples/starter/tests/fuzz/main.roc", "examples/about/assets/icon.png"])
 		== [{ name: "starter", entry: "src/main.roc" }, { name: "todos", entry: "src/main.roc" }]
 
 ## The scaffold is every file of the starter example, in order.
 expect
-	Release.scaffold(["src/main.roc", "assets/icon.png", "specs/presets.scm"])
+	Release.scaffold(["src/main.roc", "assets/icon.png", "tests/specs/presets.scm"])
 		== [
 			{ path: "assets/icon.png", source: "examples/starter/assets/icon.png" },
-			{ path: "specs/presets.scm", source: "examples/starter/specs/presets.scm" },
 			{ path: "src/main.roc", source: "examples/starter/src/main.roc" },
+			{ path: "tests/specs/presets.scm", source: "examples/starter/tests/specs/presets.scm" },
 		]
 
 ## A checkout's Bundle.roc imports the working tree; a release's, its
 ## copies. An image is imported as bytes.
 expect {
-	dev = Release.development_bundle(["specs/a.scm", "assets/icon.png"])
+	dev = Release.development_bundle(["tests/specs/a.scm", "assets/icon.png"])
 	rel = Release.release_bundle({ version: "0.0.1", platform_url: "https://u/B.tar.zst", roc_version: "r" }, ["src/main.roc"])
-	dev.contains("import \"../examples/starter/specs/a.scm\" as scaffold_specs_a_scm : Str\n")
+	dev.contains("import \"../examples/starter/tests/specs/a.scm\" as scaffold_tests_specs_a_scm : Str\n")
 		and dev.contains("import \"../examples/starter/assets/icon.png\" as scaffold_assets_icon_png : List(U8)\n")
 		and dev.contains("\t\t{ path: \"assets/icon.png\", contents: Bytes(scaffold_assets_icon_png) },\n")
 		and dev.contains("\tversion = \"development\"\n")

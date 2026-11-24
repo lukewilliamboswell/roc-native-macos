@@ -27,7 +27,7 @@ App := [].{
 	work = ".macos"
 
 	## The app's root module, where `init` puts it. Everything else the tool
-	## reads (`assets/`, `macos.json`, `tests/`, `fuzz/`) is at the top of the
+	## reads (`assets/`, `macos.json`, `tests/`) is at the top of the
 	## app's directory.
 	nested_entry : Str
 	nested_entry = "src/main.roc"

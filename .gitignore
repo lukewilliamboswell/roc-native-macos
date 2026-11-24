@@ -11,20 +11,19 @@ examples/*/*
 examples/*/*.app/
 !examples/*/*.roc
 !examples/*/*.md
-!examples/*/demo.scm
 !examples/*/assets/
-!examples/*/specs/
-# The starter's app, logic package and fuzz targets (examples/starter)
+# Each app's tests: tests/specs/, tests/fixtures/ and the starter's tests/fuzz/
+!examples/*/tests/
+# The starter's app and logic package (examples/starter)
 !examples/*/src/
 !examples/*/logic/
-!examples/*/fuzz/
 # The bench harnesses' binaries (bench/<name>/<name>), beside their sources
 bench/*/*
 !bench/*/*.roc
 !bench/*/*.adoc
 !bench/*/*.sh
 !bench/*/src/
-!bench/*/specs/
+!bench/*/tests/
 
 # Blueprint's generated environment and links
 .blueprint/
