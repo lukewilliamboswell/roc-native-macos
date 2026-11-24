@@ -478,7 +478,18 @@ final class DropZoneView: Surface {
 // MARK: - The work itself (any thread; plain Swift data only)
 
 extension Files {
-    enum Progress { case done, cancelled, unreadable }
+    enum Progress {
+        case done, cancelled, unreadable
+
+        /// Whether every chunk was visited. A `switch`, not `== .done`, for
+        /// the reason `ShaderStage.isWarp` gives.
+        var isDone: Bool {
+            switch self {
+            case .done: return true
+            case .cancelled, .unreadable: return false
+            }
+        }
+    }
 
     /// Visit `len` bytes of the file from `start`, a chunk at a time
     /// (stdio: `fopen`, `fseeko`, `fread`), stopping when `job` is
@@ -537,7 +548,7 @@ extension Files {
             if !failed, fwrite(bytes.baseAddress, 1, bytes.count, out) != bytes.count { failed = true }
         }
         if fclose(out) != 0 { failed = true }
-        return progress == .done && !failed
+        return progress.isDone && !failed
     }
 }
 

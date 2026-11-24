@@ -222,11 +222,13 @@ final class AudioService: PortService {
         publishStatus()
         guard let url = URL(string: "file://" + AudioService.percentEncoded(path)), let queue = host?.files.queue else { fatal("audio: no file URL for \(path)") }
         // Opening reads the header: off the main thread, on the file jobs' queue.
-        queue.async {
+        // Weak from the outer closure: an inner `[weak self]` alone would
+        // still capture `self` strongly here (#ImplicitStrongCapture).
+        queue.async { [weak self] in
             var opened: AVAudioFile?
             var failure = (tag: "Corrupt", why: "the file holds no audio")
             do { opened = try AVAudioFile(forReading: url) } catch { failure = AudioService.openFailure(error) }
-            DispatchQueue.main.async { [weak self] in self?.loaded(gen, opened, failure) }
+            DispatchQueue.main.async { self?.loaded(gen, opened, failure) }
         }
     }
 
