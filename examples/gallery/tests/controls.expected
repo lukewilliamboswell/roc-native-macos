@@ -1,6 +1,6 @@
 key cmd+n (heard)
 key cmd+n (heard)
---- 560x409
+--- 560x519
 ui-vstack [1 views]
   ui-vstack [4 views]
     ui-hstack [2 views]
@@ -13,7 +13,7 @@ ui-vstack [1 views]
         ui-spacer
         ui-segmented [Controls] Text Styles Shortcuts
         ui-spacer
-      ui-vstack [3 views]
+      ui-vstack [4 views]
         ui-vstack [2 views]
           ui-text "CHOICE" {color=secondary-label text-style=subheadline weight=semibold}
           ui-box {border=line:1:separator}
@@ -32,6 +32,18 @@ ui-vstack [1 views]
                 ui-slider 40.0
                 ui-text "40" {design=monospaced-digits}
               ui-progress 40/100
+        ui-vstack [2 views]
+          ui-text "RANGES" {color=secondary-label text-style=subheadline weight=semibold}
+          ui-box {border=line:1:separator}
+            ui-vstack [2 views]
+              ui-hstack [3 views]
+                ui-text "Gain"
+                ui-slider -6.0
+                ui-text "-6" {design=monospaced-digits}
+              ui-hstack [3 views]
+                ui-text "Zoom"
+                ui-slider 200.0
+                ui-text "200" {design=monospaced-digits}
         ui-vstack [2 views]
           ui-text "ACTIVITY" {color=secondary-label text-style=subheadline weight=semibold}
           ui-box {border=line:1:separator}

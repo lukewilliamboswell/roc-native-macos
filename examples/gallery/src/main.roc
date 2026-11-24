@@ -5,7 +5,7 @@ import pf.Ui
 
 ## A gallery of the native controls and looks: tabs over four pages of
 ## labelled sections (controls, text, styles and shortcuts), a dropdown,
-## a slider, a multi-line text area, symbols, progress bars, text styles,
+## sliders over their own ranges, a multi-line text area, symbols, progress bars, text styles,
 ## semantic colours that name themselves under the pointer, and two
 ## window-wide shortcuts (Command-N and Command-K).
 main : Engine.Program(_)
@@ -17,6 +17,8 @@ store = Engine.store(
 		tab: Engine.cell("Controls"),
 		fruit: Engine.cell("Apple"),
 		level: Engine.cell(40.I64),
+		gain: Engine.cell(-6.I64),
+		zoom: Engine.cell(200.I64),
 		busy: Engine.cell(Bool.False),
 		notes: Engine.cell(""),
 		presses: Engine.cell(0.I64),
@@ -84,6 +86,17 @@ section = |title, content|
 		],
 	)
 
+## A labelled slider over `range` following `cell`, and its value.
+ranged = |label, cell, range|
+	Ui.hstack(
+		{},
+		[
+			Ui.text(Engine.const(label), { width: Fixed(40) }),
+			Ui.slider(cell.signal(), { range, on_input: Engine.handle(|typed| [cell.set(I64.from_str(typed) ?? 0)]), width: Fill }),
+			Ui.text(cell.signal().map(|n| n.to_str()), { design: MonospacedDigits, align: Trailing, width: Fixed(40) }),
+		],
+	)
+
 controls : () -> Elem(Engine.StoreRoot(_))
 controls = ||
 	Ui.vstack(
@@ -120,6 +133,16 @@ controls = ||
 							],
 						),
 						Ui.progress(cells.level.signal(), {}),
+					],
+				),
+			),
+			section(
+				"RANGES",
+				Ui.vstack(
+					{ spacing: 8, align: Fill },
+					[
+						ranged("Gain", cells.gain, { min: -12, max: 12 }),
+						ranged("Zoom", cells.zoom, { min: 0, max: 1000 }),
 					],
 				),
 			),

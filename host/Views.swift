@@ -469,10 +469,15 @@ extension Host {
             case "false": control.isEnabled = false
             case let other: fatal("enabled \(other) is not true or false")
             }
+        // A slider clamps its value to its range, and attributes arrive in
+        // any order: a new range applies the engine's value again, as a new
+        // pop-up's choices select its value again.
         case (let slider as NSSlider, "min"):
             slider.minValue = Double(value ?? "") ?? 0
+            applyAttr(n, "value", n.attrs["value"])
         case (let slider as NSSlider, "max"):
             slider.maxValue = Double(value ?? "") ?? 100
+            applyAttr(n, "value", n.attrs["value"])
         case (let slider as NSSlider, "value"):
             let v = Double(value ?? "") ?? 0
             if slider.doubleValue != v { slider.doubleValue = v }
