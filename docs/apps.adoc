@@ -26,6 +26,9 @@ cd my-app
 roc macos.roc run
 ----
 
+* `roc macos.roc init my-app` writes the starter, a music player to build on.
+* `roc macos.roc init --simple my-app` writes the counter, one `src/main.roc` and its specs.
+
 `init` writes a project to build on, not a minimal one (the
 xref:apps.adoc#the-examples[examples] are smaller): a music player with a
 visualizer and lyrics that shows how a real app is laid out. Drop songs
@@ -71,6 +74,10 @@ my-app/
   tests/fuzz/main.roc  roc-fuzz targets for the logic package, run by `fuzz`
   macos.json         the app's name, bundle identifier and version
 ----
+
+`init --simple` writes the same layout with only `src/main.roc` and
+`tests/specs/`, beside the same `macos.json`, `macos.roc`, `.gitignore` and
+workflow; add `assets/`, `logic/` and `tests/fuzz/` as the app needs them.
 
 Every module opens with a `##` comment saying what belongs in it and how to
 extend it (a panel, a widget, a worker, a layer kind, a fuzz target): read
@@ -194,7 +201,8 @@ and `macos.json`:
 |===
 | Command | What it does
 
-| `roc macos.roc init [DIR]` | create an app in `DIR`, or in this directory; it never overwrites a file
+| `roc macos.roc init [DIR]` | create an app in `DIR`, or in this directory: the starter, a music player; it never overwrites a file
+| `roc macos.roc init --simple [DIR]` | create the counter instead, one `src/main.roc` and its specs, with the same `macos.json`, `.gitignore` and release workflow
 | `roc macos.roc build` | build `<name>.app`, universal, on any system; `--target arm64mac` or `--target x64mac` builds it for that Mac alone
 | `roc macos.roc run` | build the app and start it, on a Mac; it takes `--target` as `build` does
 | `roc macos.roc dev` | start the app with `roc src/main.roc`, which reloads it as you save, on a Mac; no `.app`, so `macos.json` and the icon do not apply (xref:apps.adoc#hot-reloading[Hot reloading])
@@ -482,7 +490,7 @@ The README shows each example running. What each one uses:
 | Example | Shows
 
 | `starter` | What `init` writes: a music player with a visualizer and lyrics, laid out as a project, with modules in `src/` (a store with decisions and an outbox of player commands, a window composing it, queue, EQ and preset-editor panels, `section`, `confirm_button` and `labelled_slider` widgets with local state, each used more than once), lyric files paired with songs by name and read through the bounded file API, timed lyrics following the position, presets saved to local storage, imported with a bounded read and exported by a worker's file builder and the save panel, an icon, a pure logic package in `logic/` (LRC parsing, the queue, a versioned preset format in JSON with field-level checks, scenes) with `expect` tests, roc-fuzz targets for it in `tests/fuzz/`, the `Audio` session with a default song (`LoadAsset`), and a `Ui.surface` visualizer under a `Ui.overlay` of lyrics, whose presets carry Metal shaders (the visualizer example's twelve among its built-ins) with a Core Graphics fallback
-| `counter` | Local state (`Engine.state`), icon buttons, a large monospaced readout
+| `counter` | What `init --simple` writes: local state (`Engine.state`), icon buttons, a large monospaced readout
 | `todos` | A store with a table, `table_view` rows (row templates) in a `Ui.scroll` inside a `box`, a form with Return-to-submit, a segmented filter, a Command-N shortcut, done rows greyed by `text_s`, an empty state, a shared `Theme`, saving to local storage and reading it back at boot, and `expect` tests
 | `gallery` | `tabs` over labelled sections: a dropdown, a slider and progress bar, a text area, text styles, semantic and adaptive colours, SF Symbols, Command-N/Command-K shortcuts
 | `contacts` | 10,000 generated rows in a sidebar `Ui.table_list` (`NSTableView`, drawing only the rows near those in sight), a search field filtering through the list's query, a detail pane for the selected row

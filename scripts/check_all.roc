@@ -189,13 +189,13 @@ fmt! = |colour| {
 tool! : Bool => Try(List(Str), _)
 tool! = |update| {
 	var $problems = []
-	files = tracked!([Release.starter])?.map(|path| path.drop_prefix("${Release.starter}/"))
+	files = tracked!(Release.template_dirs)?
 	generated = Release.development_bundle(files)
 	if update {
 		Path.write_utf8!(Path.utf8("cli/Bundle.roc"), generated)?
 		note!("wrote cli/Bundle.roc")
 	} else if Path.read_utf8!(Path.utf8("cli/Bundle.roc"))? != generated {
-		$problems = $problems.append("cli/Bundle.roc is not what scripts/src/Release.roc generates for this checkout (a file of ${Release.starter} may have been added, removed or changed): run `blueprint run check -- tool --update` and review the diff")
+		$problems = $problems.append("cli/Bundle.roc is not what scripts/src/Release.roc generates for this checkout (a file of ${Str.join_with(Release.template_dirs, " or ")} may have been added, removed or changed): run `blueprint run check -- tool --update` and review the diff")
 	}
 	for name in Repo.shared_modules {
 		if Path.read_utf8!(Path.utf8("cli/${name}"))? != Path.read_utf8!(Path.utf8("scripts/src/${name}"))? {

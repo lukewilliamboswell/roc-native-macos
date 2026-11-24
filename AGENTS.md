@@ -44,7 +44,8 @@ in `docs/contributing.adoc` ("The check gate").
     for a new shape rather than encoding a Roc value by hand in Swift;
   - the engine facades, `platform/{Engine,Layout,Wire,Worker}.roc`:
     `blueprint run build -- engine`;
-  - `cli/Bundle.roc`, which embeds the starter as `init`'s scaffold:
+  - `cli/Bundle.roc`, which embeds the starter and the counter as
+    `init`'s scaffold:
     `blueprint run check -- tool --update`;
   - `scripts/src/Spec.roc` and `scripts/src/SpecRun.roc` are byte-identical
     copies of `cli/Spec.roc` and `cli/SpecRun.roc`: change those, then copy.
@@ -71,7 +72,8 @@ in `docs/contributing.adoc` ("The check gate").
   new example needs at least one spec, recorded with
   `blueprint run examples -- --update` and its diff reviewed.
 - What `macos.roc init` writes is `examples/starter`, every tracked file of
-  it: change the scaffold there, then regenerate `cli/Bundle.roc`.
+  it, and `init --simple` writes `examples/counter` likewise: change the
+  scaffold there, then regenerate `cli/Bundle.roc`.
 - Documentation in the manual, one chapter a file: `docs/apps.adoc` and
   `docs/ui.adoc` for app authors, `docs/architecture.adoc` and
   `docs/contributing.adoc` for contributors. `README.md` is the app

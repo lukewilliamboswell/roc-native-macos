@@ -94,15 +94,38 @@ Release := [].{
 		found.sort_with(|a, b| Release.compare_text(a.name, b.name))
 	}
 
-	## The example `macos.roc init` writes as a new app's scaffold.
-	starter : Str
-	starter = "examples/starter"
+	## The templates `macos.roc init` writes, each an example of this
+	## repository: the starter for `init`, the counter for `init --simple`.
+	## A template's name names its file list in `Bundle.roc`, and `about`
+	## is that list's doc comment.
+	templates : List({ name : Str, example : Str, about : List(Str) })
+	templates = [
+		{ name: "starter", example: "examples/starter", about: ["The files `init` writes: the starter example (`examples/starter`),", "with its logic package, assets and tests."] },
+		{ name: "simple", example: "examples/counter", about: ["The files `init --simple` writes: the counter example", "(`examples/counter`), with its specs."] },
+	]
 
-	## The scaffold `macos.roc init` writes, by its path in the new app, and
-	## where it comes from in the checkout: every file of the starter
-	## example (`files`, relative to it), in order.
-	scaffold : List(Str) -> List({ path : Str, source : Str })
-	scaffold = |files| files.sort_with(Release.compare_text).map(|path| { path, source: "${Release.starter}/${path}" })
+	## The templates' examples, whose tracked files are the scaffold.
+	template_dirs : List(Str)
+	template_dirs = Release.templates.map(|template| template.example)
+
+	## The scaffold `macos.roc init` writes, from tracked paths of the
+	## checkout: every file of each template's example, by its template, its
+	## path in the new app and its path in the checkout, a template at a
+	## time and each template's files in order. Other paths are ignored.
+	scaffold : List(Str) -> List({ template : Str, path : Str, source : Str })
+	scaffold = |tracked|
+		Release.templates.fold(
+			[],
+			|found, { name, example, .. }| {
+				prefix = "${example}/"
+				files = tracked.keep_if(|source| source.starts_with(prefix)).map(|source| source.drop_prefix(prefix)).sort_with(Release.compare_text)
+				found.concat(files.map(|path| { template: name, path, source: "${prefix}${path}" }))
+			},
+		)
+
+	## Where a release stages a scaffold file beside its `Bundle.roc`.
+	staged : { template : Str, path : Str, source : Str } -> Str
+	staged = |file| "scaffold/${file.template}/${file.path}"
 
 	## Whether a scaffold file is bytes, such as an image, rather than text.
 	binary : Str -> Bool
@@ -111,23 +134,29 @@ Release := [].{
 	## The checked-in `cli/Bundle.roc`: the tool in a checkout, importing the
 	## scaffold from the working tree.
 	development_bundle : List(Str) -> Str
-	development_bundle = |files|
+	development_bundle = |tracked|
 		Release.bundle_module(
 			{ version: "development", platform_url: "../platform/main.roc", roc_version: "development" },
-			Release.scaffold(files).map(|file| { path: file.path, from: "../${file.source}" }),
+			Release.scaffold(tracked).map(|file| { template: file.template, path: file.path, from: "../${file.source}" }),
 		)
 
 	## A release's `Bundle.roc`, importing the scaffold staged beside it
-	## under `scaffold/`.
+	## under `scaffold/<template>/`.
 	release_bundle : { version : Str, platform_url : Str, roc_version : Str }, List(Str) -> Str
-	release_bundle = |facts, files| Release.bundle_module(facts, Release.scaffold(files).map(|file| { path: file.path, from: "scaffold/${file.path}" }))
+	release_bundle = |facts, tracked| Release.bundle_module(facts, Release.scaffold(tracked).map(|file| { template: file.template, path: file.path, from: Release.staged(file) }))
 
-	## The tool's `Bundle.roc`, exactly as `roc fmt` writes it. An image is
-	## imported as bytes, every other file as text.
-	bundle_module : { version : Str, platform_url : Str, roc_version : Str }, List({ path : Str, from : Str }) -> Str
+	## The tool's `Bundle.roc`, exactly as `roc fmt` writes it, with a file
+	## list for each template. An image is imported as bytes, every other
+	## file as text.
+	bundle_module : { version : Str, platform_url : Str, roc_version : Str }, List({ template : Str, path : Str, from : Str }) -> Str
 	bundle_module = |{ version, platform_url, roc_version }, files| {
-		import_lines = files.map(|file| "import \"${file.from}\" as ${Release.alias(file.path)} : ${if (Release.binary(file.path)) "List(U8)" else "Str"}")
-		entries = files.map(|file| "\t\t{ path: \"${file.path}\", contents: ${if (Release.binary(file.path)) "Bytes" else "Text"}(${Release.alias(file.path)}) },")
+		import_lines = files.map(|file| "import \"${file.from}\" as ${Release.alias(file.template, file.path)} : ${if (Release.binary(file.path)) "List(U8)" else "Str"}")
+		lists = Release.templates.map(
+			|{ name, about, .. }| {
+				entries = files.keep_if(|file| file.template == name).map(|file| "\t\t{ path: \"${file.path}\", contents: ${if (Release.binary(file.path)) "Bytes" else "Text"}(${Release.alias(file.template, file.path)}) },")
+				Str.join_with([""].concat(about.map(|line| "\t## ${line}")).concat(["\t${name} : List(File)", "\t${name} = ["]).concat(entries).concat(["\t]"]), "\n")
+			},
+		)
 		header =
 			\\# Generated by scripts/src/Release.roc: for each release, bundled beside
 			\\# copies of the files it imports, and as cli/Bundle.roc for a checkout, where
@@ -135,7 +164,8 @@ Release := [].{
 			\\# differs from what the script generates for a checkout.
 		body =
 			\\## What this copy of the tool ships with: the release it belongs to, that
-			\\## release's platform, the Roc it was tested with, and the app `init` writes.
+			\\## release's platform, the Roc it was tested with, and the apps `init`
+			\\## writes.
 			\\Bundle := [].{
 			\\
 			\\	## A file `init` writes, by its path in the app: text, or bytes such
@@ -154,28 +184,23 @@ Release := [].{
 			\\	## The Roc the release was built and tested with.
 			\\	roc_version : Str
 			\\	roc_version = "${roc_version}"
-			\\
-			\\	## The files `init` writes: the starter example (`examples/starter`),
-			\\	## with its logic package, assets and tests.
-			\\	scaffold : List(File)
-			\\	scaffold = [
-		Str.join_with([header].concat(import_lines).concat(["", body]).concat(entries).concat(["\t]", "}", ""]), "\n")
+		Str.join_with([header].concat(import_lines).concat(["", body]).concat(lists).concat(["}", ""]), "\n")
 	}
 
-	## A Roc name for a file of the scaffold: `scaffold_` and its path, with
-	## `_` for anything but a letter or a digit.
-	alias : Str -> Str
-	alias = |path| "scaffold_${Str.from_utf8_lossy(path.to_utf8().map(|c| if ((c >= 'a' and c <= 'z') or (c >= '0' and c <= '9')) c else if (c >= 'A' and c <= 'Z') c + 32 else '_'))}"
+	## A Roc name for a file of a template: the template's name and the
+	## file's path, with `_` for anything but a letter or a digit.
+	alias : Str, Str -> Str
+	alias = |template, path| "${template}_${Str.from_utf8_lossy(path.to_utf8().map(|c| if ((c >= 'a' and c <= 'z') or (c >= '0' and c <= '9')) c else if (c >= 'A' and c <= 'Z') c + 32 else '_'))}"
 
 	## The files `roc bundle` packs for the tool, relative to its stage: the
 	## package root first, then its modules, the generated `Bundle.roc`, the
-	## scaffold and the notices.
+	## scaffold, a template at a time, and the notices.
 	tool_files : List(Str), List(Str) -> List(Str)
-	tool_files = |modules, files|
+	tool_files = |modules, tracked|
 		["main.roc"]
 			.concat(modules.drop_if(|name| name == "main.roc" or name == "Bundle.roc").sort_with(Release.compare_text))
 			.concat(["Bundle.roc"])
-			.concat(Release.scaffold(files).map(|file| "scaffold/${file.path}"))
+			.concat(Release.scaffold(tracked).map(Release.staged))
 			.concat(["LICENSE", "THIRD_PARTY_LICENSES.md"])
 
 	## The platform a package's or an app's header names.
@@ -414,30 +439,40 @@ expect
 	Release.examples(["examples/todos/src/main.roc", "examples/old/main.roc", "examples/starter/logic/main.roc", "examples/starter/src/main.roc", "examples/starter/tests/fuzz/main.roc", "examples/about/assets/icon.png"])
 		== [{ name: "starter", entry: "src/main.roc" }, { name: "todos", entry: "src/main.roc" }]
 
-## The scaffold is every file of the starter example, in order.
+## The scaffold is every file of each template's example, the starter's
+## first, each in order; other paths are not in it.
 expect
-	Release.scaffold(["src/main.roc", "assets/icon.png", "tests/specs/presets.scm"])
+	Release.scaffold(["examples/counter/src/main.roc", "examples/starter/src/main.roc", "examples/starter/assets/icon.png", "examples/about/src/main.roc", "examples/counter/tests/specs/reset.scm", "examples/starter/tests/specs/presets.scm"])
 		== [
-			{ path: "assets/icon.png", source: "examples/starter/assets/icon.png" },
-			{ path: "src/main.roc", source: "examples/starter/src/main.roc" },
-			{ path: "tests/specs/presets.scm", source: "examples/starter/tests/specs/presets.scm" },
+			{ template: "starter", path: "assets/icon.png", source: "examples/starter/assets/icon.png" },
+			{ template: "starter", path: "src/main.roc", source: "examples/starter/src/main.roc" },
+			{ template: "starter", path: "tests/specs/presets.scm", source: "examples/starter/tests/specs/presets.scm" },
+			{ template: "simple", path: "src/main.roc", source: "examples/counter/src/main.roc" },
+			{ template: "simple", path: "tests/specs/reset.scm", source: "examples/counter/tests/specs/reset.scm" },
 		]
 
+## `init` writes the starter, `init --simple` the counter.
+expect Release.template_dirs == ["examples/starter", "examples/counter"]
+
 ## A checkout's Bundle.roc imports the working tree; a release's, its
-## copies. An image is imported as bytes.
+## copies. Each template has its own list, and an image is imported as
+## bytes.
 expect {
-	dev = Release.development_bundle(["tests/specs/a.scm", "assets/icon.png"])
-	rel = Release.release_bundle({ version: "0.0.1", platform_url: "https://u/B.tar.zst", roc_version: "r" }, ["src/main.roc"])
-	dev.contains("import \"../examples/starter/tests/specs/a.scm\" as scaffold_tests_specs_a_scm : Str\n")
-		and dev.contains("import \"../examples/starter/assets/icon.png\" as scaffold_assets_icon_png : List(U8)\n")
-		and dev.contains("\t\t{ path: \"assets/icon.png\", contents: Bytes(scaffold_assets_icon_png) },\n")
+	dev = Release.development_bundle(["examples/starter/tests/specs/a.scm", "examples/starter/assets/icon.png", "examples/counter/src/main.roc"])
+	rel = Release.release_bundle({ version: "0.0.1", platform_url: "https://u/B.tar.zst", roc_version: "r" }, ["examples/starter/src/main.roc", "examples/counter/src/main.roc"])
+	dev.contains("import \"../examples/starter/tests/specs/a.scm\" as starter_tests_specs_a_scm : Str\n")
+		and dev.contains("import \"../examples/starter/assets/icon.png\" as starter_assets_icon_png : List(U8)\n")
+		and dev.contains("import \"../examples/counter/src/main.roc\" as simple_src_main_roc : Str\n")
+		and dev.contains("\tstarter = [\n\t\t{ path: \"assets/icon.png\", contents: Bytes(starter_assets_icon_png) },\n")
+		and dev.contains("\tsimple = [\n\t\t{ path: \"src/main.roc\", contents: Text(simple_src_main_roc) },\n\t]\n}\n")
 		and dev.contains("\tversion = \"development\"\n")
-		and rel.contains("import \"scaffold/src/main.roc\" as scaffold_src_main_roc : Str\n")
+		and rel.contains("import \"scaffold/starter/src/main.roc\" as starter_src_main_roc : Str\n")
+		and rel.contains("import \"scaffold/simple/src/main.roc\" as simple_src_main_roc : Str\n")
 		and rel.contains("\tplatform_url = \"https://u/B.tar.zst\"\n")
-		and rel.contains("\t\t{ path: \"src/main.roc\", contents: Text(scaffold_src_main_roc) },\n")
+		and rel.contains("\t\t{ path: \"src/main.roc\", contents: Text(starter_src_main_roc) },\n")
 }
 
-expect Release.tool_files(["MacOS.roc", "main.roc", "Bundle.roc", "App.roc"], ["src/main.roc", "assets/icon.png"]) == ["main.roc", "App.roc", "MacOS.roc", "Bundle.roc", "scaffold/assets/icon.png", "scaffold/src/main.roc", "LICENSE", "THIRD_PARTY_LICENSES.md"]
+expect Release.tool_files(["MacOS.roc", "main.roc", "Bundle.roc", "App.roc"], ["examples/counter/src/main.roc", "examples/starter/src/main.roc", "examples/starter/assets/icon.png"]) == ["main.roc", "App.roc", "MacOS.roc", "Bundle.roc", "scaffold/starter/assets/icon.png", "scaffold/starter/src/main.roc", "scaffold/simple/src/main.roc", "LICENSE", "THIRD_PARTY_LICENSES.md"]
 
 expect Release.platform_of("package\n\t[MacOS]\n\t{\n\t\tcli: platform \"https://b/c.tar.zst\",\n\t}\n") == Ok("https://b/c.tar.zst")
 

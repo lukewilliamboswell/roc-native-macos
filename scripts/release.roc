@@ -31,8 +31,9 @@ import src/Release
 ##
 ## `tool` writes `macos.roc`, the app author's tool: it stages the tool's
 ## package (`cli/`) with a generated `Bundle.roc` naming the release (its
-## version, the platform's URL and the Roc that tested it) and the starter
-## scaffold (`examples/starter`), runs its `expect`s, and `roc bundle`s it as
+## version, the platform's URL and the Roc that tested it) and the scaffold
+## `init` writes (`examples/starter`, and `examples/counter` for
+## `init --simple`), runs its `expect`s, and `roc bundle`s it as
 ## `macos-<hash>.tar.zst`. Then it writes `macos.roc`, the small app an
 ## author downloads, naming that bundle. Both are named by their URLs under
 ## `--base-url`, by default the release's download URL.
@@ -148,10 +149,10 @@ tool! = |root, version, dir, base| {
 	for name in modules {
 		write!("${stage}/${name}", read!("cli/${name}")?)?
 	}
-	# The starter example, byte for byte: its icon is not text.
-	scaffold_files = tracked!([Release.starter])?.map(|path| path.drop_prefix("${Release.starter}/"))
+	# The templates' examples, byte for byte: the starter's icon is not text.
+	scaffold_files = tracked!(Release.template_dirs)?
 	for file in Release.scaffold(scaffold_files) {
-		copy!(file.source, "${stage}/scaffold/${file.path}")?
+		copy!(file.source, "${stage}/${Release.staged(file)}")?
 	}
 	for notice in ["LICENSE", "THIRD_PARTY_LICENSES.md"] {
 		write!("${stage}/${notice}", read!(notice)?)?

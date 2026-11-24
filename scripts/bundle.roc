@@ -37,7 +37,10 @@ import src/SpecRun
 ## the checkout: `roc macos.roc init my-app`, which writes the starter app
 ## (`examples/starter`, with `src/main.roc`), then `build`, `test` (its
 ## `expect`s and specs) and `fuzz --check` (its roc-fuzz targets) in
-## `my-app/`. It packages the app twice with `macos.roc package`, and
+## `my-app/`; then `roc macos.roc init --simple my-counter`, which writes
+## the counter (`examples/counter`), and `test` in `my-counter/`, which
+## builds it and runs its specs. It packages the starter twice with
+## `macos.roc package`, and
 ## checks that the two zips are
 ## the same bytes, hold the sealed bundle with each entry's Unix mode, and
 ## extract with `ditto` to an app whose seal verifies and whose program runs
@@ -145,7 +148,7 @@ consumer_test! = |root, out, bundle| {
 	server.close!() ?? {}
 	match result {
 		Ok({}) => {
-			note!("bundle: macos.roc created, built, tested and packaged the starter app, and built, tested and ran under dev ${Bundle.assets_example} with its assets, against the served bundle")
+			note!("bundle: macos.roc created, built, tested and packaged the starter app, created and tested the counter with init --simple, and built, tested and ran under dev ${Bundle.assets_example} with its assets, against the served bundle")
 			Ok({})
 		}
 		Err(problem) => {
@@ -165,8 +168,9 @@ served! = |server|
 	}
 
 ## `roc macos.roc init my-app`, then `build`, `test` and `fuzz --check`
-## (not on an Intel Mac, which roc-fuzz does not run on), as an author takes
-## them, with the tool and the platform fetched from `base_url`.
+## (not on an Intel Mac, which roc-fuzz does not run on), and
+## `init --simple my-counter` and `test` there, as an author takes them,
+## with the tool and the platform fetched from `base_url`.
 first_steps! : Str, Str, Str => Try({}, Str)
 first_steps! = |root, dir, base_url| {
 	served_dir = "${dir}/served"

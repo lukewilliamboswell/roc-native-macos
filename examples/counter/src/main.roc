@@ -4,9 +4,15 @@ import pf.Engine exposing [Elem, In, Root, State]
 import pf.Ui
 
 ## A counter: one piece of local state and three buttons that change it.
+## `Engine.state(0, view)` holds the count, starting at 0, and builds the
+## window once with `view`; after that, a change to the count updates only
+## what depends on it.
 main : Engine.Program
 main = Engine.program(|| Engine.state(0, view))
 
+## The window's contents. `count` is the state: `count.signal()` reads it
+## where the view shows it, and `count.update` makes an action that changes
+## it, such as a button's `on_press`.
 view : State(In(Root, I64), I64) -> Elem(In(Root, I64))
 view = |count|
 	Ui.vstack(
@@ -19,6 +25,9 @@ view = |count|
 				{ fill: ControlBackground, border: Line({ color: Separator, width: 1 }), radius: 16, padding: All(16), width: Fill },
 				Ui.text("${count.signal()}", { size: Fixed(72), weight: Medium, design: MonospacedDigits, align: Center, width: Fill }),
 			),
+
+			## The specs in tests/specs/ find these buttons by their titles,
+			## so the hidden titles "−" and "+" still matter.
 			Ui.hstack(
 				{ spacing: 12 },
 				[

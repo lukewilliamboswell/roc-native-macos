@@ -1,7 +1,7 @@
-; The README's demo of the counter example: scripts/record_demos.roc records
-; its window while these steps run, as docs/images/counter.gif. A (demo …)
-; is a spec with real effects and time, so `test` and the check parse it but
-; never run it.
+; A recording of the counter: a (demo …) is a spec with real effects and
+; time, so `roc macos.roc test` parses it but never runs it. The platform's
+; repository records this one as its README's demo, docs/images/counter.gif
+; (scripts/record_demos.roc).
 (demo "counter demo"
   (setup
     (live-effects))
