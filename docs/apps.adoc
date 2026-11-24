@@ -504,7 +504,7 @@ roc macos.roc dev
 
 `dev` runs it from the build directory, `.macos/`, because Roc's watcher
 makes a `.zig-cache/` directory in the directory it runs in, for the list of
-files it watches; run yourself, `roc src/main.roc` makes it where you run it,
+files it watches (https://github.com/roc-lang/roc/issues/13420[roc-lang/roc#13420]); run yourself, `roc src/main.roc` makes it where you run it,
 and the `.gitignore` `init` writes leaves it out. The bare program finds its
 images in `assets/` of the app's directory, as the `.app` does: `dev` sets
 `ROC_ASSETS` to it, unless you have. `macos.json` and the icon belong to the

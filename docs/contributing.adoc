@@ -414,9 +414,10 @@ xref:architecture.adoc#how-it-fits-together[How it fits together],
 commit. A change the platform needs in the engine is made in roc-signals
 first.
 
-A cost that turns out to be the compiler's is not patched here. It gets a
-standalone reproducer and a write-up in `patches/roc-compiler/`, listed in
-its `README.adoc` for reporting to roc-lang/roc.
+A cost that turns out to be the compiler's is not patched here. It is
+reported to https://github.com/roc-lang/roc/issues[roc-lang/roc] as an issue
+with a standalone reproducer (in the issue, or a gist it links), and the
+workaround, wherever it lives, links that issue.
 
 [#releasing]
 == Releasing
@@ -661,24 +662,23 @@ exactly one function. A site's block is then shared, and rebuilding it
 copies its child list: with 10,000 sites in one block, a 2.4 MB copy and
 most of a 2.5 ms hover turn. roc-signals avoids both since 0.8.0-rc2
 (`Core.call` keeps a site call out of tail position, and `Inst` has a
-`Spare` variant; `patches/roc-compiler`, "Erased closures borrow their
-captures"). Mount was quadratic, also the compiler's doing, until the same
-release mounted each node kind in a function of its own.
+`Spare` variant; https://github.com/roc-lang/roc/issues/13374[roc-lang/roc#13374]). Mount was
+quadratic, also the compiler's doing
+(https://github.com/roc-lang/roc/issues/13421[roc-lang/roc#13421]), until the same release
+mounted each node kind in a function of its own.
 Take a large value apart with `match`:: In optimized builds a record or
 tuple taken apart by a destructuring statement (`{ rows, record } = table`,
 `(root2, out, tx2) = call(..)`) or a parameter pattern (`|{ t }| t`) keeps
 its refcounted parts shared until the function returns, so an update of one
 copies it. `match table { { rows, record } => .. }` moves them. Every table
 write copied the table's rows, and a `table_view` its columns, until
-roc-signals 0.8.0-rc2 (`patches/roc-compiler`, "Destructuring leaves the
-parts shared").
+roc-signals 0.8.0-rc2 (https://github.com/roc-lang/roc/issues/13376[roc-lang/roc#13376]).
 `Dict.update` can copy the dictionary:: In some programs a dictionary
 grown with `Dict.update` is shared when it grows, so each update copies
 it; `contains` and `insert` do not. Building a table with `Table.insert`
 in a loop was quadratic for this reason (the table's change record) until
 roc-signals 0.8.0-rc2; keep `Dict.update` off the engine's write paths
-(`patches/roc-compiler`, "Dict.update copies a dictionary the loop
-owns").
+(https://github.com/roc-lang/roc/issues/13377[roc-lang/roc#13377]).
 A bundle is fetched only over https, or http to localhost:: Roc rejects a
 local `.tar.zst` path as a platform and an absolute platform path, and
 accepts plain `http` only for `localhost`, `127.0.0.1` and `[::1]`. It

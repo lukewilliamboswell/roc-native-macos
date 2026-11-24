@@ -212,13 +212,13 @@ Proportional to what changed (good)::
   pass read its block shared, so the `table_view` copied its per-row
   columns (marks, a hole column, the shown column: 196 MB at a million
   rows) on every turn. The reader was never the cost. See
-  xref:../../patches/roc-compiler/README.adoc#destructure-sharing[destructure-sharing].
+  https://github.com/roc-lang/roc/issues/13376[roc-lang/roc#13376].
 * *Building a table by inserting rows one at a time.* Inserting the rows
   in a `var` loop with `Table.insert`, as `examples/contacts` does, was
   quadratic: the mount's engine time was 0.3 s at 10,000 rows, 4.6–5.4 s
   at 30,000 and 53 s at 100,000, because every insert copied the table's
   change record (`Dict.update`, a compiler issue:
-  xref:../../patches/roc-compiler/README.adoc#dict-update-sharing[dict-update-sharing]).
+  https://github.com/roc-lang/roc/issues/13377[roc-lang/roc#13377]).
   Since engine patch 0004 it is 19 ms, 48 ms, 0.15 s and 1.8 s at a
   million (`-rows-build insert`), against 13 ms, 0.11 s and 1.45 s for
   `Table.from_list`, which the harness still uses by default.

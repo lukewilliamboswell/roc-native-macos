@@ -35,8 +35,9 @@ what the package gives.
   `sbom/composition.json`, all in the same commit.
 - Nothing in the engine is patched here. A change this platform needs is
   made in roc-signals first, and taken with its release.
-- A cost that is the compiler's goes in `patches/roc-compiler/` as a
-  standalone reproducer and its write-up; never patch the compiler here.
+- A cost that is the compiler's is reported to roc-lang/roc as an issue
+  with a standalone reproducer, and its workaround links the issue; never
+  patch the compiler here.
 
 The native vocabulary belongs in `platform/Ui.roc`, and the root in
 `platform/main.roc`.
