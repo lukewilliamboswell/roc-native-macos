@@ -7,7 +7,7 @@ ui-vstack [1 views]
     ui-segmented [Bitmap] Vector
     ui-hstack [2 views]
       ui-asset-image mark.pdf [160x160, 14pt wide, 14pt high]
-      ui-text "Images from assets/, beside main.roc" {color=tertiary-label text-style=caption1}
+      ui-text "Images from assets/, beside src/" {color=tertiary-label text-style=caption1}
 --- 360x325
 ui-vstack [1 views]
   ui-vstack [5 views]
@@ -17,4 +17,4 @@ ui-vstack [1 views]
     ui-segmented Bitmap [Vector]
     ui-hstack [2 views]
       ui-asset-image mark.pdf [160x160, 14pt wide, 14pt high]
-      ui-text "Images from assets/, beside main.roc" {color=tertiary-label text-style=caption1}
+      ui-text "Images from assets/, beside src/" {color=tertiary-label text-style=caption1}

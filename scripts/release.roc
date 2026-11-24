@@ -180,7 +180,7 @@ tool! = |root, version, dir, base| {
 }
 
 ## The examples archive: `roc-native-macos-examples-VERSION/` holding each
-## example's `main.roc` with the release URL in its header, the recorded
+## example's `src/main.roc` with the release URL in its header, the recorded
 ## cases and fixtures, and a README.
 archive! : Str, Str, Str => Try({}, Str)
 archive! = |root, version, dir| {
@@ -228,26 +228,23 @@ readme = |version, url, count|
 			"    ${url}",
 			"",
 			"Build one with a Roc compiler on any system; the app runs on Apple silicon",
-			"and Intel Macs with macOS 15 or later. examples/starter is laid out as",
-			"`roc macos.roc init` writes an app, with its root module in src/: with",
-			"macos.roc, the tool this release publishes, saved beside this directory,",
-			"build and start it from its own directory:",
+			"and Intel Macs with macOS 15 or later. With macos.roc, the tool this release",
+			"publishes, saved beside this directory, build and start an example from its",
+			"own directory:",
 			"",
-			"    cd examples/starter",
+			"    cd examples/todos",
 			"    roc ../../../macos.roc run",
 			"",
-			"`roc ../../../macos.roc build` builds `starter.app`, a universal app for",
-			"both kinds of Mac, on any system, and `roc ../../../macos.roc test` runs its",
-			"expect tests and recorded cases. Each other example is one `main.roc`: on a",
-			"Mac, `roc main.roc` in its directory starts it, and anywhere `roc build`",
-			"builds it for the Mac you name:",
+			"`roc ../../../macos.roc build` builds `todos.app`, a universal app for both",
+			"kinds of Mac, on any system. Without the tool, name the Mac to build for:",
 			"",
-			"    roc build main.roc --target=arm64mac   # Apple silicon",
-			"    roc build main.roc --target=x64mac     # Intel",
+			"    roc build src/main.roc --target=arm64mac   # Apple silicon",
+			"    roc build src/main.roc --target=x64mac     # Intel",
 			"",
 			"Each example's `tests/<case>.script` holds the steps of a recorded run and",
-			"`<case>.expected` what the app prints: set `ROC_SCRIPT` to a script's steps",
-			"when you start the program, as `ROC_SCRIPT=\"$(cat tests/<case>.script)\"`.",
+			"`<case>.expected` what the app prints. Run them from the example's directory:",
+			"",
+			"    roc ../../../macos.roc test",
 			"",
 			"The window's size is written `--- <size>`, and the example's directory",
 			"`<app>`, where the output printed the path.",
@@ -351,7 +348,7 @@ build_each! = |work, top, url, bundle, examples| {
 	Path.create_all!(Path.utf8(cache)) ? |error| "could not create ${cache}: ${Str.inspect(error)}"
 	for example in examples {
 		app_dir = "${top}/examples/${example}"
-		entry = entry_in!(app_dir)
+		entry = "src/main.roc"
 		source = read!("${app_dir}/${entry}")?
 		served = Release.served_main(source, bundle, url) ? |_| "examples/${example}/${entry} does not name the release URL of ${bundle}"
 		write!("${app_dir}/${entry}", served)?
@@ -361,11 +358,6 @@ build_each! = |work, top, url, bundle, examples| {
 	}
 	Ok({})
 }
-
-## An archived example's entry in its directory: `src/main.roc` (the
-## starter), or `main.roc` at its top (the one-file examples).
-entry_in! : Str => Str
-entry_in! = |app_dir| if (Path.exists!(Path.utf8("${app_dir}/src/main.roc")) ?? Bool.False) "src/main.roc" else "main.roc"
 
 ## An author's first steps, through the release's `macos.roc` served from
 ## localhost, with an empty package cache: `init` an app, then `build`

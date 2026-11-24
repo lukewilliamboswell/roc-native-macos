@@ -224,7 +224,7 @@ the system's, to check both looks.
 [#assets]
 == Assets
 
-An app's assets are the files of `assets/` beside its `main.roc`
+An app's assets are the files of `assets/` beside its `src/`
 (xref:apps.adoc#assets[Assets and the icon]). They are delivered as files,
 not compiled into the program: `macos.roc build` copies the directory into
 `<name>.app/Contents/Resources/assets/` and to `.macos/assets/` beside the
@@ -1182,7 +1182,7 @@ against what the catalog exports for it: the Intel `roc`'s import the libm
 rounding functions (`ceil`, `floor`, `trunc` and their `f` forms) and
 `__bzero`, which Apple silicon's inline, so the Intel CI job audits them.
 The check's `examples` stage then runs the counter's first recorded case
-through `roc main.roc`, so a run mode the stubs cannot link fails the gate.
+through `roc src/main.roc`, so a run mode the stubs cannot link fails the gate.
 
 Swift is compiled with `-disable-autolink-frameworks` and
 `-disable-force-load-symbols`, so the frameworks linked are exactly the

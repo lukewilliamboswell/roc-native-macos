@@ -1,4 +1,4 @@
-app [main] { pf: platform "../../platform/main.roc" }
+app [main] { pf: platform "../../../platform/main.roc" }
 
 import pf.Engine exposing [Elem, In, Root, State]
 import pf.Ui

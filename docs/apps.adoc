@@ -299,25 +299,21 @@ Each release attaches `roc-native-macos-examples-<version>.zip`: every
 example, each with its header naming that release, and the recorded runs it
 was tested with. Download it from the
 https://github.com/lukewilliamboswell/roc-native-macos/releases[release],
-unzip it beside `macos.roc` and run the starter, which is laid out as `init`
-writes an app, from its directory:
+unzip it beside `macos.roc` and run an example from its directory:
 
 [source,sh]
 ----
 unzip roc-native-macos-examples-<version>.zip
-cd roc-native-macos-examples-<version>/examples/starter
+cd roc-native-macos-examples-<version>/examples/todos
 roc ../../../macos.roc run
 ----
 
-Every other example is one `main.roc`, which the tool does not build; on a
-Mac, `roc main.roc` in its directory starts it (see
-xref:apps.adoc#without-the-tool[Without the tool]).
-
-To start your own app from a one-file example, copy its `main.roc` over
-the `src/main.roc` `init` wrote, and delete the `src/` modules it no longer
-imports. A copy from the archive already names the release; a copy of an
-example read on GitHub names the platform by a path in this repository
-(`../../platform/main.roc`), so keep `init`'s platform line instead.
+Every example is laid out as `init` writes an app, with its root module in
+`src/main.roc`. To start your own app from a one-module example, copy its
+`src/main.roc` over the one `init` wrote, and delete the `src/` modules it
+no longer imports. A copy from the archive already names the release; a copy
+of an example read on GitHub names the platform by a path in this repository
+(`../../../platform/main.roc`), so keep `init`'s platform line instead.
 
 [#the-examples]
 === The examples

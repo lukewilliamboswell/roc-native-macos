@@ -31,11 +31,11 @@ sizes=("$@")
 [[ ${#sizes[@]} -eq 0 ]] && sizes=(10 32 100 150 200 316)
 
 if [[ -z ${NO_BUILD:-} ]]; then
-	(cd "$here" && "$ROC" build main.roc --output="$here/grid")
+	(cd "$here" && "$ROC" build src/main.roc --output="$here/grid")
 fi
 
 for n in "${sizes[@]}"; do
-	# The cell side main.roc's side_of gives; the grid starts at the root's
+	# The cell side src/main.roc's side_of gives; the grid starts at the root's
 	# 20-point padding.
 	side=$((640 / n))
 	((side > 24)) && side=24

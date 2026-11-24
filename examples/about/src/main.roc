@@ -1,4 +1,4 @@
-app [main] { pf: platform "../../platform/main.roc" }
+app [main] { pf: platform "../../../platform/main.roc" }
 
 import pf.Engine exposing [Elem, In, Root, State]
 import pf.Ui
@@ -26,7 +26,7 @@ view = |shown|
 				{ spacing: 6 },
 				[
 					Ui.asset_image("mark.pdf", { height: Fixed(14) }),
-					Ui.text("Images from assets/, beside main.roc", { style: Caption1, color: TertiaryLabel }),
+					Ui.text("Images from assets/, beside src/", { style: Caption1, color: TertiaryLabel }),
 				],
 			),
 		],

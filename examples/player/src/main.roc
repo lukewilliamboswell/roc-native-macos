@@ -1,4 +1,4 @@
-app [main] { pf: platform "../../platform/main.roc" }
+app [main] { pf: platform "../../../platform/main.roc" }
 
 import pf.Audio
 import pf.Engine exposing [Elem, File, Signal]

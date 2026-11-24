@@ -668,7 +668,7 @@ standard error.
 
 == Testing an app
 
-`roc test main.roc` runs an app's `expect` tests, as `examples/todos` has.
+`roc test src/main.roc` runs an app's `expect` tests, as `examples/todos` has.
 Run it: it also reports the single-field record builder
 (`{ a: Engine.cell(…) }.Engine.Cells`) that builds but fails at run time with
 current compilers. Give a store at least two cells.

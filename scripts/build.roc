@@ -466,7 +466,7 @@ examples! = |roc, named| {
 		Err(All) => {
 			var $found = []
 			for name in list!("examples")? {
-				if Path.exists!(Path.utf8("examples/${name}/${entry!("examples/${name}")}")) ?? Bool.False {
+				if Path.exists!(Path.utf8("examples/${name}/${example_entry}")) ?? Bool.False {
 					$found = $found.append(name)
 				}
 			}
@@ -479,16 +479,15 @@ examples! = |roc, named| {
 	Ok({})
 }
 
-## An example's entry: `src/main.roc` (the starter), or `main.roc` at its
-## top (the one-file examples).
-entry! : Str => Str
-entry! = |dir| if (Path.exists!(Path.utf8("${dir}/src/main.roc")) ?? Bool.False) "src/main.roc" else "main.roc"
+## An example's entry, where `macos.roc` finds an app's.
+example_entry : Str
+example_entry = "src/main.roc"
 
 ## One example's binary and its `.app`.
 example! : Str, Str => Try({}, Str)
 example! = |roc, name| {
 	dir = "examples/${name}"
-	main = entry!(dir)
+	main = example_entry
 	note!("building ${dir}")
 	step!(Cmd.new(OsStr.from_str(roc)).args(["build", main, "--output=${name}"].map(OsStr.from_str)).cwd(Path.utf8(dir)), "${roc} build ${dir}/${main}")?
 	bundle_dir = "${dir}/${name}.app"

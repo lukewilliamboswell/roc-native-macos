@@ -36,7 +36,7 @@
       "to": "roc-native-macos-examples",
       "relation": "contains",
       "scope": "",
-      "basis": "Every example's tracked files from examples/ but its demo steps: its main.roc (or, for the starter, src/main.roc), its header naming the release's platform bundle URL; the starter's other modules, its logic package (logic/) and its fuzz targets (fuzz/main.roc, whose header names roc-fuzz 0.7.0's platform by its content-addressed URL, which the compiler fetches only when the targets are built and which is not in the archive); each example's assets; each example's recorded cases (examples/<example>/tests/<case>.script and .expected) and the fixtures they use (examples/<example>/tests/fixtures); and a generated README.md. All are this repository's own files."
+      "basis": "Every example's tracked files from examples/ but its demo steps: its src/main.roc, its header naming the release's platform bundle URL; the starter's other modules, its logic package (logic/) and its fuzz targets (fuzz/main.roc, whose header names roc-fuzz 0.7.0's platform by its content-addressed URL, which the compiler fetches only when the targets are built and which is not in the archive); each example's assets; each example's recorded cases (examples/<example>/tests/<case>.script and .expected) and the fixtures they use (examples/<example>/tests/fixtures); and a generated README.md. All are this repository's own files."
     },
     {
       "from": "Subject",

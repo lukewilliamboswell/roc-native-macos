@@ -30,7 +30,7 @@ sizes=("$@")
 [[ ${#sizes[@]} -eq 0 ]] && sizes=(10000 100000 1000000)
 
 if [[ -z ${NO_BUILD:-} ]]; then
-	(cd "$here" && "$ROC" build main.roc --output="$here/rows")
+	(cd "$here" && "$ROC" build src/main.roc --output="$here/rows")
 fi
 
 # The windowing guard (part of --smoke): the windowed list mounted over

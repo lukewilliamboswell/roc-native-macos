@@ -48,7 +48,7 @@ targets. `roc macos.roc package` zips the app for people to
 download, signed and notarized with a Developer ID if you have one, and the
 workflow `init` writes does that on GitHub when you push a tag ([Ship your app](https://lukewilliamboswell.github.io/roc-native-macos/apps.html#ship-your-app)).
 
-An app can be as small as one `main.roc`, as this counter is:
+An app can be as small as one module, `src/main.roc`, as this counter is:
 
 ```roc
 app [main] { pf: platform "https://github.com/lukewilliamboswell/roc-native-macos/releases/download/<version>/<hash>.tar.zst" }

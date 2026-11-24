@@ -101,7 +101,7 @@ expect Repo.paint("failed", Bool.True) == "\u(001b)[31mfailed\u(001b)[0m"
 expect Repo.paint("SKIP", Bool.True) == "\u(001b)[33mSKIP\u(001b)[0m"
 
 expect Repo.fmt_skip("platform/Ui.roc") == Err(Checked)
-expect Repo.fmt_skip("examples/todos/main.roc") == Err(Checked)
+expect Repo.fmt_skip("examples/todos/src/main.roc") == Err(Checked)
 
 expect (Repo.millis(12), Repo.millis(1204), Repo.millis(10000), Repo.millis(1002003)) == ("12ms", "1_204ms", "10_000ms", "1_002_003ms")
 

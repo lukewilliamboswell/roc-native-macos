@@ -165,13 +165,12 @@ Bundle := [].{
 
 	## An example's `main.roc` with its checkout platform path replaced by
 	## the bundle's URL, as an app author's header names it: the path from
-	## `examples/<name>/main.roc`, or from `examples/<name>/src/main.roc`.
+	## `examples/<name>/src/main.roc`.
 	released_main : Str, Str -> Try(Str, [NoPlatformPath])
-	released_main = |source, url|
-		match ["platform \"../../platform/main.roc\"", "platform \"../../../platform/main.roc\""].keep_if(|local| source.contains(local)) {
-			[local] => Ok(source.replace_each(local, "platform \"${url}\""))
-			_ => Err(NoPlatformPath)
-		}
+	released_main = |source, url| {
+		local = "platform \"../../../platform/main.roc\""
+		if (source.contains(local)) Ok(source.replace_each(local, "platform \"${url}\"")) else Err(NoPlatformPath)
+	}
 
 	## The port Python's `http.server` says it is serving on, from its first
 	## line: `Serving HTTP on :: port 54321 (http://[::]:54321/) ...`.
@@ -210,9 +209,9 @@ expect
 		== ["main.roc", "Core.roc", "Ui.roc", "targets/arm64mac/libhost.a", "targets/macos-sysroot/usr/lib/libSystem.tbd", "targets/x64mac/libhost.a", "LICENSE", "THIRD_PARTY_LICENSES.md"]
 
 expect
-	Bundle.released_main("app [main] { pf: platform \"../../platform/main.roc\" }\n", "http://localhost:8000/abc.tar.zst")
+	Bundle.released_main("app [main] { pf: platform \"../../../platform/main.roc\" }\n", "http://localhost:8000/abc.tar.zst")
 		== Ok("app [main] { pf: platform \"http://localhost:8000/abc.tar.zst\" }\n")
-expect Bundle.released_main("app [main] { pf: platform \"x\" }\n", "u") == Err(NoPlatformPath)
+expect [Bundle.released_main("app [main] { pf: platform \"x\" }\n", "u"), Bundle.released_main("app [main] { pf: platform \"../../platform/main.roc\" }\n", "u")] == [Err(NoPlatformPath), Err(NoPlatformPath)]
 expect Bundle.released_main("app [main] {\n\tpf: platform \"../../../platform/main.roc\",\n\tlogic: \"../logic/main.roc\",\n}\n", "u") == Ok("app [main] {\n\tpf: platform \"u\",\n\tlogic: \"../logic/main.roc\",\n}\n")
 
 expect Bundle.served_port("Serving HTTP on :: port 54321 (http://[::]:54321/) ...\n") == Ok(54321)

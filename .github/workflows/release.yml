@@ -305,10 +305,7 @@ jobs:
           export XDG_CACHE_HOME="$tmp/roc-cache"
           for dir in "$top"/examples/*/; do
             name=$(basename "$dir")
-            # An example's entry is src/main.roc (the starter), or main.roc
-            # at its top (the one-file examples).
-            entry=main.roc
-            if [ -f "$dir/src/main.roc" ]; then entry=src/main.roc; fi
+            entry=src/main.roc
             sed -i "s#platform \"https://[^\"]*/$bundle\"#platform \"$url\"#" "$dir/$entry"
             grep -q "platform \"$url\"" "$dir/$entry" || { echo "::error::$name does not name the release URL of $bundle"; exit 1; }
             for target in arm64mac x64mac; do
@@ -336,15 +333,13 @@ jobs:
           cp -R "$beginner/starter/starter.app" "$apps/starter.app"
           # Each other archived example with assets/ is built through
           # macos.roc too, which copies them into <name>.app and makes its
-          # icon from assets/icon.png with no Apple tool. A one-file example's
-          # main.roc moves to src/main.roc first, where the tool reads an
-          # app's root module. cross-run runs its cases on the program inside
-          # the bundle, which finds its images there.
+          # icon from assets/icon.png with no Apple tool. cross-run runs its
+          # cases on the program inside the bundle, which finds its images
+          # there.
           for dir in "$top"/examples/*/; do
             name=$(basename "$dir")
             [ -d "$dir/assets" ] || continue
             if [ -e "$apps/$name.app" ]; then continue; fi
-            if [ ! -f "$dir/src/main.roc" ]; then mkdir -p "$dir/src" && mv "$dir/main.roc" "$dir/src/main.roc"; fi
             cp "$beginner/macos.roc" "$dir/macos.roc"
             (cd "$dir" && roc macos.roc build)
             test -d "$dir/$name.app/Contents/Resources/assets" \
@@ -364,7 +359,7 @@ jobs:
           # does not declare. This step
           # reports, and never fails on, that behaviour.
           counter="$top/examples/counter"
-          if (cd "$counter" && roc build main.roc --output="$tmp/probe") > "$tmp/probe.log" 2>&1; then
+          if (cd "$counter" && roc build src/main.roc --output="$tmp/probe") > "$tmp/probe.log" 2>&1; then
             echo "::warning::roc build without --target succeeded on $SYSTEM"
           else
             echo "roc build without --target on $SYSTEM:"; cat "$tmp/probe.log"

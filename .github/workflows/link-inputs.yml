@@ -15,7 +15,7 @@ name: Linker inputs
 #   intel     macos-15-intel: the same candidate, the stubs' x86_64 slice,
 #             with the hosts that job built: the audit of the Intel `roc`'s
 #             run shims, every example built for Intel and its recorded cases
-#             run, the counter's also through `roc main.roc`
+#             run, the counter's also through `roc src/main.roc`
 #   assemble  the manifest and the archive, attested for a release candidate,
 #             uploaded as the one artifact the publisher admits, once both
 #             Macs have linked and run against it

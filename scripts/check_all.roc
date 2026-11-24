@@ -36,13 +36,13 @@ import src/Repo
 ##   (reused when its fingerprint matches), the linker inputs and every
 ##   example.
 ## - `test`: `roc test` on the platform root and on every example (its
-##   `main.roc` or `src/main.roc`, which also runs its logic package's
+##   `src/main.roc`, which also runs its logic package's
 ##   `expect`s), and for an example with `fuzz/main.roc`, the roc-fuzz build
 ##   of it and `check` on each of its targets (except on an Intel Mac, which
 ##   roc-fuzz has no target for).
 ## - `examples`: every example's recorded scripted runs; `examples --update`
 ##   records what they print now. Then the counter's first case once more
-##   through Roc's run mode, `roc main.roc`, which links the host with the
+##   through Roc's run mode, `roc src/main.roc`, which links the host with the
 ##   compiler's own run shim against the stubs, and must print the same.
 ## - `bench`: every harness under `bench/` (`bench/<name>/run.sh --smoke`),
 ##   built and run at a token size, so it never goes stale.
@@ -247,8 +247,8 @@ bench! = || {
 	Ok($problems)
 }
 
-## The examples: every directory under `examples/` with a `main.roc`, or a
-## `src/main.roc`, and that entry.
+## The examples: every directory under `examples/` with a `src/main.roc`,
+## and that entry.
 examples_found! : () => Try(List({ name : Str, entry : Str }), _)
 examples_found! = || Ok(Release.examples(tracked!(["examples"])?))
 
@@ -310,16 +310,16 @@ examples! = |update, colour| {
 				run_start = Monotonic.now!()
 				outcome = run_case!(case, RunMode)?
 				label = if (outcome.is_ok()) "PASS" else "FAIL"
-				note!(Repo.progress({ index: 1, total: 1, name: "counter/${case.name} via roc main.roc", outcome: Repo.paint(label, colour), ms: Monotonic.elapsed!(run_start).to_millis() }))
+				note!(Repo.progress({ index: 1, total: 1, name: "counter/${case.name} via roc src/main.roc", outcome: Repo.paint(label, colour), ms: Monotonic.elapsed!(run_start).to_millis() }))
 				match outcome {
 					Ok(_) => {}
 					Err(problem) => {
-						$problems = $problems.append("counter/${case.name} via `roc main.roc`: ${problem}")
+						$problems = $problems.append("counter/${case.name} via `roc src/main.roc`: ${problem}")
 					}
 				}
 			}
 			Err(_) => {
-				$problems = $problems.append("the counter has no recorded case to run through `roc main.roc`")
+				$problems = $problems.append("the counter has no recorded case to run through `roc src/main.roc`")
 			}
 		}
 	}
@@ -327,7 +327,7 @@ examples! = |update, colour| {
 }
 
 ## One recorded case: the built app (`Built`), recording its output when
-## `Update`, or `roc main.roc` in the example's directory (`RunMode`).
+## `Update`, or `roc src/main.roc` in the example's directory (`RunMode`).
 run_case! : { example : Str, name : Str, base : Str }, [Built, Update, RunMode] => Try(Try([Passed, Recorded], Str), _)
 run_case! = |{ example, base, .. }, how| {
 	exe = "examples/${example}/${example}"
@@ -341,7 +341,7 @@ run_case! = |{ example, base, .. }, how| {
 	# writes the app's directory `<app>`.
 	root = Env.cwd!().map_ok(|cwd| cwd.display()) ?? "."
 	app_dir = "${root}/examples/${example}"
-	command = (if (how == RunMode) Cmd.new("roc").args(["main.roc"]) else Cmd.new(OsStr.from_str("${app_dir}/${example}"))).cwd(Path.utf8(app_dir))
+	command = (if (how == RunMode) Cmd.new("roc").args(["src/main.roc"]) else Cmd.new(OsStr.from_str("${app_dir}/${example}"))).cwd(Path.utf8(app_dir))
 	result = command
 		.env("ROC_SCRIPT", OsStr.from_str(steps))
 		.stdin(Null)

@@ -80,14 +80,13 @@ Release := [].{
 	is_tool_bundle = |name| name.starts_with("macos-") and name.ends_with(".tar.zst")
 
 	## The examples among tracked paths: each example's name and its app's
-	## entry, `main.roc` at its top or `src/main.roc` (with a logic package
-	## or fuzz targets beside `src/`), in order.
+	## entry, `src/main.roc` (with a logic package or fuzz targets beside
+	## `src/` in the starter), in order.
 	examples : List(Str) -> List({ name : Str, entry : Str })
 	examples = |paths| {
 		found = paths.keep_oks(
 			|path|
 				match path.split_on("/") {
-					["examples", name, "main.roc"] => Ok({ name, entry: "main.roc" })
 					["examples", name, "src", "main.roc"] => Ok({ name, entry: "src/main.roc" })
 					_ => Err(NotAnEntry)
 				},
@@ -394,7 +393,7 @@ expect Release.served_main("app [main] { pf: platform \"https://github.com/o/r/r
 
 ## A header that names another bundle, or a checkout path, is refused.
 expect Release.served_main("app [main] { pf: platform \"https://x/Other.tar.zst\" }", "Abc.tar.zst", "http://localhost:1/Abc.tar.zst") == Err(NoReleaseUrl)
-expect Release.served_main("app [main] { pf: platform \"../../platform/main.roc\" }", "Abc.tar.zst", "http://localhost:1/Abc.tar.zst") == Err(NoReleaseUrl)
+expect Release.served_main("app [main] { pf: platform \"../../../platform/main.roc\" }", "Abc.tar.zst", "http://localhost:1/Abc.tar.zst") == Err(NoReleaseUrl)
 
 expect Release.render_notes({ source: "= roc-native-macos 0.0.1\n\nThe first release.\n\n== Use it\n\n[source,roc]\n----\napp [main] { pf: platform \"{platform-url}\" }\n----\n\nThe [examples]({examples-url}).\n", version: "0.0.1", platform_url: "https://u/B.tar.zst", examples_url: "https://u/e.zip", launcher_url: "https://u/macos.roc" }) == Ok("# roc-native-macos 0.0.1\n\nThe first release.\n\n## Use it\n\n```roc\napp [main] { pf: platform \"https://u/B.tar.zst\" }\n```\n\nThe [examples](https://u/e.zip).\n")
 
@@ -406,11 +405,11 @@ expect Release.render_notes({ source: "= roc-native-macos 0.0.1\n{platform-url}\
 ## The tool's bundle is told apart from the platform's by its prefix.
 expect Release.tool_bundle("Abc.tar.zst") == "macos-Abc.tar.zst" and Release.is_tool_bundle("macos-Abc.tar.zst") and !Release.is_tool_bundle("Abc.tar.zst")
 
-## An example's entry is its top-level main.roc or its src/main.roc; a
-## logic package's or fuzz target's main.roc is not one.
+## An example's entry is its src/main.roc; a top-level main.roc, a logic
+## package's or a fuzz target's main.roc is not one.
 expect
-	Release.examples(["examples/todos/main.roc", "examples/starter/logic/main.roc", "examples/starter/src/main.roc", "examples/starter/fuzz/main.roc", "examples/about/assets/icon.png"])
-		== [{ name: "starter", entry: "src/main.roc" }, { name: "todos", entry: "main.roc" }]
+	Release.examples(["examples/todos/src/main.roc", "examples/old/main.roc", "examples/starter/logic/main.roc", "examples/starter/src/main.roc", "examples/starter/fuzz/main.roc", "examples/about/assets/icon.png"])
+		== [{ name: "starter", entry: "src/main.roc" }, { name: "todos", entry: "src/main.roc" }]
 
 ## The scaffold is every file of the starter example, in order.
 expect

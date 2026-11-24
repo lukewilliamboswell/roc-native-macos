@@ -82,7 +82,8 @@ The two keep separate `UserDefaults` domains (`todos` versus
 === Run the examples
 
 The examples under `examples/` are apps that name the platform by its path in
-the checkout, `pf: platform "../../platform/main.roc"`, so they always build
+the checkout, `pf: platform "../../../platform/main.roc"` from each
+example's `src/main.roc`, so they always build
 against the working tree and may use what no release has yet. A release's
 examples archive is a copy of them whose headers name that release's bundle
 (`release -- archive`, see xref:contributing.adoc#releasing[Releasing]);
@@ -322,7 +323,7 @@ same one CI runs on `macos-15`, and in part on `macos-15-intel`
 |===
 | Stage | Checks
 
-| `pins` | `roc-policy check` (roc-automation's source-policy utility) with `repository_policy` from `Blueprint.roc`: the scripts pin `roc-stable`, nothing else pins a compiler, and every example names `../../platform/main.roc`
+| `pins` | `roc-policy check` (roc-automation's source-policy utility) with `repository_policy` from `Blueprint.roc`: the scripts pin `roc-stable`, nothing else pins a compiler, and every example's `src/main.roc` names `../../../platform/main.roc`
 | `engine` | the engine facades `platform/{Engine,Layout,Wire,Worker}.roc` are what the engine package `platform/main.roc` names gives (`build -- engine --check`; xref:contributing.adoc#engine-package[The engine package])
 | `fmt` | `roc fmt --check` over the platform, glue, examples and tool, and `roc-stable fmt --check` over the scripts
 | `scripts` | the scripts' `expect` tests
@@ -355,7 +356,7 @@ cross-compiled:
   generates (identical to Apple silicon's), the stub audit of both hosts and
   of the Intel `roc`'s own run shims, every example's `expect`s, every
   example built natively and its recorded cases run, the counter's through
-  `roc main.roc` too, and the bundle's consumer test, which inits the
+  `roc src/main.roc` too, and the bundle's consumer test, which inits the
   starter app and whose `macos.roc` builds a universal app and runs its
   Intel half. roc-fuzz has no Intel Mac target (only `arm64mac` and
   `x64musl`), so on Intel the `test` stage does not check the starter's

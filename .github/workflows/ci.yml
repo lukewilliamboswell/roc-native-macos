@@ -20,7 +20,7 @@ name: CI
 #            (macos-15-intel) with the same hosts: the glue the Intel `roc`
 #            generates, the stub audit of the hosts and of the Intel `roc`'s
 #            own run shims, every example built natively for Intel and its
-#            recorded cases run (and the counter's through `roc main.roc`), and
+#            recorded cases run (and the counter's through `roc src/main.roc`), and
 #            the bundle's consumer test, whose macos.roc builds a universal app
 #            and runs its Intel half. roc-fuzz has no Intel Mac target, so the
 #            starter's fuzz targets are checked on Apple silicon only.

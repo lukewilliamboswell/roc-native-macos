@@ -255,9 +255,8 @@ package_app! = |dir| {
 }
 
 ## The repository's example with assets, as an author would have it beside
-## the tool: its one-file `main.roc`, naming the served bundle, as
-## `src/main.roc`, where the tool reads an app's root module, with
-## `assets/` and `tests/`.
+## the tool: `src/main.roc` naming the served bundle, `assets/` and
+## `tests/`.
 ## `macos.roc build` and `test` it, check the bundle it made, and run its
 ## case on the program inside the bundle, then under `macos.roc dev`.
 assets_app! : Str, Str, Str => Try({}, Str)
@@ -265,8 +264,8 @@ assets_app! = |root, dir, url| {
 	name = Bundle.assets_example
 	app_dir = "${dir}/${name}"
 	cache = "${dir}/cache"
-	source = Path.read_utf8!(Path.utf8("${root}/examples/${name}/main.roc")) ? |error| "could not read examples/${name}/main.roc: ${Str.inspect(error)}"
-	served = Bundle.released_main(source, url) ? |_| "examples/${name}/main.roc does not name ../../platform/main.roc"
+	source = Path.read_utf8!(Path.utf8("${root}/examples/${name}/src/main.roc")) ? |error| "could not read examples/${name}/src/main.roc: ${Str.inspect(error)}"
+	served = Bundle.released_main(source, url) ? |_| "examples/${name}/src/main.roc does not name ../../../platform/main.roc"
 	for sub in ["tests", "src"] {
 		Path.create_all!(Path.utf8("${app_dir}/${sub}")) ? |error| "could not create ${app_dir}/${sub}: ${Str.inspect(error)}"
 	}
