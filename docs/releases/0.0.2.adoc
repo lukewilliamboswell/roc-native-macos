@@ -1,0 +1,80 @@
+= roc-native-macos 0.0.2
+
+A music player with Winamp-era visualizations is now the app `init` writes,
+built on a new native drawing surface with Metal shaders, audio playback and
+analysis, and a new test format. The platform now runs on Intel Macs too.
+
+== Use this release
+
+Download [macos.roc]({launcher-url}), the tool that creates, builds, runs and
+tests an app, then create one and run it:
+
+[source,sh]
+----
+curl -LO {launcher-url}
+roc macos.roc init my-app
+cd my-app
+roc macos.roc run
+----
+
+`init` writes the starter app: a music player with a lyrics overlay, a queue,
+an equalizer, a preset editor and fifteen visualizations. It ships with a
+song, _Polymorphic Defunctionalization Through Lambda Set Specialization_,
+by Luke Boswell (CC BY 4.0), with timed lyrics. `roc macos.roc build` builds
+a universal `.app` on any system, `roc macos.roc test` runs its specs, and
+`roc macos.roc fuzz` runs its fuzz targets. To use the release without the
+tool, name the platform by this release's bundle in your app's header:
+
+[source,roc]
+----
+app [main] { pf: platform "{platform-url}" }
+----
+
+The [examples archive]({examples-url}) holds every example, each with its
+header naming this release and its specs. Building an app needs only a Roc
+compiler, on any system: the bundle carries the prebuilt Swift hosts and the
+generated macOS linker stubs.
+
+== What is new
+
+* *Intel Macs.* The platform has hosts for `arm64mac`, `x64mac` and
+  `x64v1mac`. `build`, `run` and `package` make a universal `.app`;
+  `--target arm64mac` or `--target x64mac` makes one for that Mac alone.
+* *Drawing surface.* `Ui.surface` draws a scene of paths, shapes and
+  transforms in one native view, paced by the display, with a fading trail of
+  previous frames. Scene numbers can follow live sources such as the audio's
+  levels. It draws with Metal, falling back to Core Graphics.
+* *Shaders.* A surface can run your own Metal warp and composite shaders,
+  compiled when the app runs, with the audio's waveform, bands and levels as
+  inputs. Without Metal it draws the scene's simpler shapes instead.
+* *Overlay.* `Ui.overlay` places native, accessible views over a surface.
+* *Audio.* `pf.Audio` plays a file, or one shipped in `assets/`, with seek,
+  volume, a 10-band equalizer and analysis of what is playing. A
+  visualization is drawn within about 10 ms of when its sound is heard on
+  built-in output, and the offset can be calibrated for each output device.
+* *Specs.* An app's tests are S-expression specs in `tests/specs/*.scm`.
+  They drive the window, compare a structured dump of it, simulate HTTP and
+  timers on a virtual clock, and can bound the allocations and engine work of
+  each step. `roc macos.roc test --update` records dumps and lowers allocation
+  bounds; it never raises them.
+* *Engine.* The engine is roc-signals 0.8.0-rc2's engine package.
+
+== Breaking changes
+
+* An app's root module is `src/main.roc`. A top-level `main.roc` is not read.
+* Tests are `tests/specs/*.scm`, files they use go in `tests/fixtures/`, and
+  fuzz targets go in `tests/fuzz/main.roc`. The `tests/*.script` and
+  `.expected` cases and `ROC_SCRIPT` are gone. A demo is a `(demo …)` spec,
+  which `test` parses but never runs.
+* An app needs macOS 15 or later.
+* `Ui.Pen`'s `width` is a `Number`: write `width: Value(2)` for a fixed width.
+
+== Known limits
+
+* Apps are built with `roc build --opt=size` for now. Today's Roc compilers
+  take minutes and many gigabytes of memory to build an app with many store
+  cells and handlers at `--opt=speed`. Apps built this way allocate more per
+  step than they will once `--opt=speed` is the default again.
+
+This platform is experimental. Expect the API to change in every release
+before 1.0.
