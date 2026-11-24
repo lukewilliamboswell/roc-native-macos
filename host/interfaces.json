@@ -444,6 +444,11 @@
           "evidence": "objc_msgSendSuper2 (apple-oss-distributions/objc4, runtime/objc-abi.h)"
         },
         {
+          "name": "_objc_msgSendSuper2_stret",
+          "evidence": "objc_msgSendSuper2_stret, the superclass message send for a method returning a structure in memory, which x86-64 code calls for such methods, as an override of -[NSWindow constrainFrameRect:toScreen:] does (apple-oss-distributions/objc4, runtime/objc-abi.h, marked OBJC_ARM64_UNAVAILABLE: arm64 has no such variant)",
+          "only": ["x86_64-macos"]
+        },
+        {
           "name": "_objc_opt_self",
           "evidence": "objc_opt_self (apple-oss-distributions/objc4, runtime/objc-internal.h)"
         },
@@ -2046,6 +2051,10 @@
         {
           "name": "_OBJC_METACLASS_$_NSView",
           "evidence": "the metaclass of the Objective-C class NSView, which a Swift subclass of NSView references (https://developer.apple.com/documentation/appkit/nsview)"
+        },
+        {
+          "name": "_OBJC_METACLASS_$_NSWindow",
+          "evidence": "the metaclass of the Objective-C class NSWindow, which a Swift subclass of NSWindow references (https://developer.apple.com/documentation/appkit/nswindow)"
         }
       ]
     },

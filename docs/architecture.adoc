@@ -216,7 +216,17 @@ two of them centre what lies between.
 
 Window sizing:: The window fits its content, measured after two layout
 passes (the first gives wrapping labels their widths). Once it holds a scroll
-area or list it grows only when its content needs more room.
+area or list it grows only when its content needs more room. It never grows
+past the room its screen has (`Host.windowRoom`: the screen's visible frame
+less the title bar), and fits again when it changes screen or the screens
+change. The root stack sits in a document view inside the window's page, an
+`NSScrollView` whose document fills it at a priority (749) below a view's
+resistance to compression: what cannot shrink makes the document taller
+than the window, and the page scrolls it. The window's minimum is its
+content's, within that room. A spec's window is on a virtual screen
+(`SpecScreen`, 1440 × 840 points of content unless `(screen-size W H)` says
+otherwise), and `HostWindow` keeps AppKit from constraining it to the run's
+real display, so its size is the same on every Mac.
 
 `ROC_APPEARANCE=dark` (or `light`) draws the app in that appearance whatever
 the system's, to check both looks.

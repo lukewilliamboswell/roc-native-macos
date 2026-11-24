@@ -73,11 +73,17 @@ Player := [].{
 	panel : Str -> Elem(Engine.StoreRoot(_))
 	panel = |name|
 		match name {
-			"Queue" => Panels.queue()
-			"EQ" => Panels.eq()
-			"Editor" => Editor.view()
+			"Queue" => Player.scrolled(Panels.queue())
+			"EQ" => Player.scrolled(Panels.eq())
+			"Editor" => Player.scrolled(Editor.view())
 			_ => Engine.text("")
 		}
+
+	## A panel in a scroll area of its own, so a tall one (the editor, with
+	## its sources and params) scrolls within the window on a small screen
+	## rather than make the window taller than the screen.
+	scrolled : Elem(Engine.StoreRoot(_)) -> Elem(Engine.StoreRoot(_))
+	scrolled = |content| Ui.scroll({ opening_height: 360, height: AtLeast(160), spacing: 0 }, Ui.vstack({ align: Fill, width: Fill }, [content]))
 
 	## The scene the visualization draws: the editor's draft while it is
 	## open, the chosen preset otherwise. `Engine.derive` computes it once per

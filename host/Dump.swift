@@ -13,7 +13,12 @@ extension Host {
     /// (cli/Spec.roc): `(window :width 360 :height 237 (vstack :views 1 …))`.
     func dumpWindow() -> [String] {
         let size = window.contentView?.frame.size ?? .zero
-        var out = ["(window :width \(Int(size.width)) :height \(Int(size.height))"]
+        // A window too small for its content scrolls it: the content's own
+        // size follows the window's, in whichever dimension it scrolls.
+        let whole = document.frame.size
+        let wider = whole.width > size.width + 0.5 ? " :content-width \(Int(whole.width))" : ""
+        let taller = whole.height > size.height + 0.5 ? " :content-height \(Int(whole.height))" : ""
+        var out = ["(window :width \(Int(size.width)) :height \(Int(size.height))\(wider)\(taller)"]
         tree(root, 1, &out)
         out[out.count - 1] += ")"
         return out

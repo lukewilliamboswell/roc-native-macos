@@ -86,6 +86,7 @@ Spec := [].{
 		StepSource(Str, I64),
 		Repaint,
 		WindowSize(I64, I64),
+		ScreenSize(I64, I64),
 		Renderer(Str),
 		RequireMetal,
 		BenchSurfaces(I64),
@@ -403,7 +404,7 @@ Spec := [].{
 
 	## The step names, for an unknown step's message.
 	step_names : List(Str)
-	step_names = ["click", "fill", "submit", "toggle", "select", "hover", "choose", "press", "files", "drop", "move", "leave", "sweep", "scroll", "phase", "stats", "window", "wait", "reload", "expect-dump", "expect-tree", "expect-visible", "expect-absent", "expect-text", "expect-checked", "expect-disabled", "expect-workers", "stub-http", "fail-http", "run-effect", "tick-interval", "fire-timer", "advance-time", "await-work", "expect-pending-effects", "expect-interval", "expect-request", "expect-cancelled", "mark-metrics", "expect-metric-delta", "expect-metric-delta-at-most", "expect-allocations-at-most", "expect-allocated-bytes-at-most", "expect-no-new-live-allocations", "frame", "frame-clock", "step-source", "repaint", "window-size", "renderer", "require-metal", "bench-surfaces", "expect-probe", "expect-surfaces", "render", "slide", "stall-analysis", "expect-audio-status", "expect-tone", "expect-eq", "expect-snapshot", "expect-history", "expect-sources", "require-av-timing", "mark-av-timing", "expect-av-offset", "expect-frame-pacing"]
+	step_names = ["click", "fill", "submit", "toggle", "select", "hover", "choose", "press", "files", "drop", "move", "leave", "sweep", "scroll", "phase", "stats", "window", "wait", "reload", "expect-dump", "expect-tree", "expect-visible", "expect-absent", "expect-text", "expect-checked", "expect-disabled", "expect-workers", "stub-http", "fail-http", "run-effect", "tick-interval", "fire-timer", "advance-time", "await-work", "expect-pending-effects", "expect-interval", "expect-request", "expect-cancelled", "mark-metrics", "expect-metric-delta", "expect-metric-delta-at-most", "expect-allocations-at-most", "expect-allocated-bytes-at-most", "expect-no-new-live-allocations", "frame", "frame-clock", "step-source", "repaint", "window-size", "screen-size", "renderer", "require-metal", "bench-surfaces", "expect-probe", "expect-surfaces", "render", "slide", "stall-analysis", "expect-audio-status", "expect-tone", "expect-eq", "expect-snapshot", "expect-history", "expect-sources", "require-av-timing", "mark-av-timing", "expect-av-offset", "expect-frame-pacing"]
 
 	## The fields each report expectation may name: a drawing surface's
 	## colour at a point, in percent; the surfaces shown and on the frame
@@ -829,6 +830,8 @@ step_form = |form| {
 		("repaint", _) => return usage("(repaint)")
 		("window-size", [Int(w, _), Int(h, _)]) if w >= 1 and h >= 1 => WindowSize(w, h)
 		("window-size", _) => return usage("(window-size W H), the window's content size in points")
+		("screen-size", [Int(w, _), Int(h, _)]) if w >= 1 and h >= 1 => ScreenSize(w, h)
+		("screen-size", _) => return usage("(screen-size W H), the most content the window has room for, in points, as on a screen that size")
 		("renderer", [Sym(r, _)]) if r == "metal" or r == "cg" or r == "auto" => Renderer(r)
 		("renderer", _) => return usage("(renderer metal), (renderer cg) or (renderer auto)")
 		("require-metal", []) => RequireMetal
@@ -1100,6 +1103,7 @@ lowered = |op|
 		StepSource(name, n) => ["step-source", name, n.to_str()]
 		Repaint => ["repaint"]
 		WindowSize(w, h) => ["window-size", w.to_str(), h.to_str()]
+		ScreenSize(w, h) => ["screen-size", w.to_str(), h.to_str()]
 		Renderer(r) => ["renderer", r]
 		RequireMetal => ["require-metal"]
 		BenchSurfaces(n) => ["bench-surfaces", n.to_str()]
@@ -1605,7 +1609,7 @@ tolerance_pt = 4
 
 ## The keywords whose numbers are sizes, which match within the tolerance.
 sizes : List(Str)
-sizes = [":width", ":height"]
+sizes = [":width", ":height", ":content-width", ":content-height"]
 
 ## Whether `got` matches `want`, node by node: `_` matches anything, a
 ## list matches a list of the same kind and as many items, each matching,

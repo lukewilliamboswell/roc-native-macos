@@ -853,6 +853,24 @@ extension Host {
 
     func markText(_ n: Node) { markChildren(n) }
 
+    /// The most content the window may show: its screen's visible frame
+    /// (less the menu bar and the Dock) less the title bar. A spec's window
+    /// is on a virtual screen instead (`SpecScreen`), so the same steps size
+    /// the window the same way on any display.
+    func windowRoom() -> NSSize {
+        let unbounded = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
+        if driven { return SpecScreen.room }
+        guard let screen = window.screen else { return unbounded }
+        return window.contentRect(forFrameRect: screen.visibleFrame).size
+    }
+
+    /// Size the window again for the room it has now: after it moves to
+    /// another screen, or a screen's arrangement or resolution changes.
+    func refit() {
+        relayout = true
+        sync()
+    }
+
     /// Bring every view touched by the batch up to date: a text-bearing
     /// control shows its subtree's text, a stack arranges its children's
     /// views, a list applies its row changes. Then size the window: to fit
@@ -894,12 +912,16 @@ extension Host {
             // with them their heights (`Label`).
             content.layoutSubtreeIfNeeded()
             content.layoutSubtreeIfNeeded()
-            let fit = content.fittingSize
+            // What the content needs, measured on the page's document
+            // alone; the window gives it that, within the room its screen
+            // has, and the page scrolls what does not fit.
+            let fit = document.fittingSize
             let current = content.frame.size
+            let room = windowRoom()
             let height = flexibleNow && flexible ? max(fit.height, current.height) : fit.height
-            let size = NSSize(width: max(fit.width, window.contentLayoutRect.width), height: height)
-            if size != current { window.setContentSize(size) }
-        }
+            let size = NSSize(width: min(max(fit.width, window.contentLayoutRect.width), room.width), height: min(height, room.height))
+            window.contentMinSize = NSSize(width: min(fit.width, room.width), height: min(fit.height, room.height))
+            if size != current { window.setContentSize(size) }        }
         // The window now has room for each new scroll area's opening
         // height; from here on the window decides it.
         for box in unsettled {

@@ -65,6 +65,11 @@ final class Host: NSObject, NSTextFieldDelegate {
     /// Whether an attribute that can move or resize a view changed since
     /// the last layout pass (`sync`).
     var relayout = false
+    /// The window's page: a scroll view over the document that holds the
+    /// root stack, which scrolls only when the window is smaller than its
+    /// content needs (a screen too small for it).
+    let page = NSScrollView()
+    let document = FlippedView()
     var keyMonitor: Any?
 
     init(window: NSWindow) {
@@ -80,13 +85,44 @@ final class Host: NSObject, NSTextFieldDelegate {
         stack.translatesAutoresizingMaskIntoConstraints = false
         let content = ContentView()
         content.host = self
-        content.addSubview(stack)
+        // The root stack fills the page's document, which fills the window
+        // and grows past it only when the content needs more than the
+        // window has: on a screen too small for the content, the page
+        // scrolls rather than cut it off (`sync`).
+        page.hasVerticalScroller = true
+        page.hasHorizontalScroller = true
+        page.autohidesScrollers = true
+        page.drawsBackground = false
+        page.translatesAutoresizingMaskIntoConstraints = false
+        document.translatesAutoresizingMaskIntoConstraints = false
+        document.addSubview(stack)
+        page.documentView = document
+        content.addSubview(page)
+        let clip = page.contentView
+        let fillWidth = document.widthAnchor.constraint(equalTo: clip.widthAnchor)
+        let fillHeight = document.heightAnchor.constraint(equalTo: clip.heightAnchor)
+        // Below the priority that holds a window's size (500, what
+        // AppKit calls windowSizeStayPut), so filling never resizes the
+        // window, and so below a view's resistance to compression (750):
+        // what cannot shrink makes the document taller than the window,
+        // and the page scrolls it.
+        fillWidth.priority = .init(490)
+        fillHeight.priority = .init(490)
         NSLayoutConstraint.activate([
-            stack.topAnchor.constraint(equalTo: content.topAnchor),
-            stack.leadingAnchor.constraint(equalTo: content.leadingAnchor),
-            stack.trailingAnchor.constraint(equalTo: content.trailingAnchor),
-            stack.bottomAnchor.constraint(equalTo: content.bottomAnchor),
-            content.widthAnchor.constraint(greaterThanOrEqualToConstant: 320),
+            page.topAnchor.constraint(equalTo: content.topAnchor),
+            page.leadingAnchor.constraint(equalTo: content.leadingAnchor),
+            page.trailingAnchor.constraint(equalTo: content.trailingAnchor),
+            page.bottomAnchor.constraint(equalTo: content.bottomAnchor),
+            document.topAnchor.constraint(equalTo: clip.topAnchor),
+            document.leadingAnchor.constraint(equalTo: clip.leadingAnchor),
+            document.widthAnchor.constraint(greaterThanOrEqualTo: clip.widthAnchor),
+            document.heightAnchor.constraint(greaterThanOrEqualTo: clip.heightAnchor),
+            fillWidth, fillHeight,
+            stack.topAnchor.constraint(equalTo: document.topAnchor),
+            stack.leadingAnchor.constraint(equalTo: document.leadingAnchor),
+            stack.trailingAnchor.constraint(equalTo: document.trailingAnchor),
+            stack.bottomAnchor.constraint(equalTo: document.bottomAnchor),
+            document.widthAnchor.constraint(greaterThanOrEqualToConstant: 320),
         ])
         window.contentView = content
         ports.deliver = { [weak self] id, payload in self?.send(EngineInstance.effectNode, id, payload) }

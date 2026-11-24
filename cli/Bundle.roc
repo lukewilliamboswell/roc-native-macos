@@ -36,6 +36,7 @@ import "../examples/starter/specs/plain.scm" as scaffold_specs_plain_scm : Str
 import "../examples/starter/specs/presets.scm" as scaffold_specs_presets_scm : Str
 import "../examples/starter/specs/problem.scm" as scaffold_specs_problem_scm : Str
 import "../examples/starter/specs/shaders.scm" as scaffold_specs_shaders_scm : Str
+import "../examples/starter/specs/small-screen.scm" as scaffold_specs_small_screen_scm : Str
 import "../examples/starter/specs/trails.scm" as scaffold_specs_trails_scm : Str
 import "../examples/starter/specs/transport.scm" as scaffold_specs_transport_scm : Str
 import "../examples/starter/src/Editor.roc" as scaffold_src_editor_roc : Str
@@ -108,6 +109,7 @@ Bundle := [].{
 		{ path: "specs/presets.scm", contents: Text(scaffold_specs_presets_scm) },
 		{ path: "specs/problem.scm", contents: Text(scaffold_specs_problem_scm) },
 		{ path: "specs/shaders.scm", contents: Text(scaffold_specs_shaders_scm) },
+		{ path: "specs/small-screen.scm", contents: Text(scaffold_specs_small_screen_scm) },
 		{ path: "specs/trails.scm", contents: Text(scaffold_specs_trails_scm) },
 		{ path: "specs/transport.scm", contents: Text(scaffold_specs_transport_scm) },
 		{ path: "src/Editor.roc", contents: Text(scaffold_src_editor_roc) },

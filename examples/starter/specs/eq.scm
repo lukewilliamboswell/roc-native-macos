@@ -33,7 +33,7 @@
     (wait 200)
     (expect-eq :volume 50)
     (expect-snapshot :present true :loudest "7 -20, 18 -20")
-    (expect-dump (window :width 760 :height 907
+    (expect-dump (window :width 760 :height 840
                    (vstack :views 1
                      (vstack :views 9
                        (hstack :views 6
@@ -122,71 +122,73 @@
                            (image speaker.wave.2.fill)
                            (slider :value 50.0)))
                        (segmented :items ("Hide Panels" "Queue" "EQ" "Editor") :selected "EQ")
-                       (vstack :views 4
-                         (hstack :views 4
-                           (text "Equalizer" :text-style headline)
-                           (spacer)
-                           (checkbox "Bypass" :checked #f)
-                           (button "Flat" :enabled #f))
-                         (hstack :views 3
-                           (text "Preamp" :color secondary-label :text-style caption1)
-                           (slider :value 0.0)
-                           (text "0.0 dB" :design monospaced-digits :text-style caption1))
-                         (vstack :views 2
-                           (hstack :views 3
-                             (text "Bands" :text-style subheadline :weight semibold)
-                             (spacer)
-                             (button "Hide Bands"))
-                           (vstack :views 10
+                       (scroll :views 1 :height 289
+                         (vstack :views 1
+                           (vstack :views 4
+                             (hstack :views 4
+                               (text "Equalizer" :text-style headline)
+                               (spacer)
+                               (checkbox "Bypass" :checked #f)
+                               (button "Flat" :enabled #f))
                              (hstack :views 3
-                               (text "32 Hz" :color secondary-label :text-style caption1)
+                               (text "Preamp" :color secondary-label :text-style caption1)
                                (slider :value 0.0)
                                (text "0.0 dB" :design monospaced-digits :text-style caption1))
-                             (hstack :views 3
-                               (text "64 Hz" :color secondary-label :text-style caption1)
-                               (slider :value 0.0)
-                               (text "0.0 dB" :design monospaced-digits :text-style caption1))
-                             (hstack :views 3
-                               (text "125 Hz" :color secondary-label :text-style caption1)
-                               (slider :value 0.0)
-                               (text "0.0 dB" :design monospaced-digits :text-style caption1))
-                             (hstack :views 3
-                               (text "250 Hz" :color secondary-label :text-style caption1)
-                               (slider :value 0.0)
-                               (text "0.0 dB" :design monospaced-digits :text-style caption1))
-                             (hstack :views 3
-                               (text "500 Hz" :color secondary-label :text-style caption1)
-                               (slider :value 0.0)
-                               (text "0.0 dB" :design monospaced-digits :text-style caption1))
-                             (hstack :views 3
-                               (text "1 kHz" :color secondary-label :text-style caption1)
-                               (slider :value 0.0)
-                               (text "0.0 dB" :design monospaced-digits :text-style caption1))
-                             (hstack :views 3
-                               (text "2 kHz" :color secondary-label :text-style caption1)
-                               (slider :value 0.0)
-                               (text "0.0 dB" :design monospaced-digits :text-style caption1))
-                             (hstack :views 3
-                               (text "4 kHz" :color secondary-label :text-style caption1)
-                               (slider :value 0.0)
-                               (text "0.0 dB" :design monospaced-digits :text-style caption1))
-                             (hstack :views 3
-                               (text "8 kHz" :color secondary-label :text-style caption1)
-                               (slider :value 0.0)
-                               (text "0.0 dB" :design monospaced-digits :text-style caption1))
-                             (hstack :views 3
-                               (text "16 kHz" :color secondary-label :text-style caption1)
-                               (slider :value 0.0)
-                               (text "0.0 dB" :design monospaced-digits :text-style caption1))))
-                         (vstack :views 2
-                           (hstack :views 3
-                             (text "Picture sync" :text-style headline)
-                             (spacer)
-                             (button "Sync Test"))
-                           (hstack :views 3
-                             (text "Offset" :color secondary-label :text-style caption1)
-                             (slider :value 0.0)
-                             (text "0 ms" :design monospaced-digits :text-style caption1))))
+                             (vstack :views 2
+                               (hstack :views 3
+                                 (text "Bands" :text-style subheadline :weight semibold)
+                                 (spacer)
+                                 (button "Hide Bands"))
+                               (vstack :views 10
+                                 (hstack :views 3
+                                   (text "32 Hz" :color secondary-label :text-style caption1)
+                                   (slider :value 0.0)
+                                   (text "0.0 dB" :design monospaced-digits :text-style caption1))
+                                 (hstack :views 3
+                                   (text "64 Hz" :color secondary-label :text-style caption1)
+                                   (slider :value 0.0)
+                                   (text "0.0 dB" :design monospaced-digits :text-style caption1))
+                                 (hstack :views 3
+                                   (text "125 Hz" :color secondary-label :text-style caption1)
+                                   (slider :value 0.0)
+                                   (text "0.0 dB" :design monospaced-digits :text-style caption1))
+                                 (hstack :views 3
+                                   (text "250 Hz" :color secondary-label :text-style caption1)
+                                   (slider :value 0.0)
+                                   (text "0.0 dB" :design monospaced-digits :text-style caption1))
+                                 (hstack :views 3
+                                   (text "500 Hz" :color secondary-label :text-style caption1)
+                                   (slider :value 0.0)
+                                   (text "0.0 dB" :design monospaced-digits :text-style caption1))
+                                 (hstack :views 3
+                                   (text "1 kHz" :color secondary-label :text-style caption1)
+                                   (slider :value 0.0)
+                                   (text "0.0 dB" :design monospaced-digits :text-style caption1))
+                                 (hstack :views 3
+                                   (text "2 kHz" :color secondary-label :text-style caption1)
+                                   (slider :value 0.0)
+                                   (text "0.0 dB" :design monospaced-digits :text-style caption1))
+                                 (hstack :views 3
+                                   (text "4 kHz" :color secondary-label :text-style caption1)
+                                   (slider :value 0.0)
+                                   (text "0.0 dB" :design monospaced-digits :text-style caption1))
+                                 (hstack :views 3
+                                   (text "8 kHz" :color secondary-label :text-style caption1)
+                                   (slider :value 0.0)
+                                   (text "0.0 dB" :design monospaced-digits :text-style caption1))
+                                 (hstack :views 3
+                                   (text "16 kHz" :color secondary-label :text-style caption1)
+                                   (slider :value 0.0)
+                                   (text "0.0 dB" :design monospaced-digits :text-style caption1))))
+                             (vstack :views 2
+                               (hstack :views 3
+                                 (text "Picture sync" :text-style headline)
+                                 (spacer)
+                                 (button "Sync Test"))
+                               (hstack :views 3
+                                 (text "Offset" :color secondary-label :text-style caption1)
+                                 (slider :value 0.0)
+                                 (text "0 ms" :design monospaced-digits :text-style caption1))))))
                        (text "Added 1 song." :color secondary-label :text-style callout)
                        (shortcut)
                        (shortcut)

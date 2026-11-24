@@ -1399,7 +1399,15 @@ extension Host {
             for s in allSurfaces() { s.display() }
         case "window-size":
             guard f.count == 2, let w = Double(f[0]), let h = Double(f[1]), w > 0, h > 0 else { return .failed("window-size needs a width and a height", nil) }
-            window.setContentSize(NSSize(width: w, height: h))
+            let room = windowRoom()
+            window.setContentSize(NSSize(width: min(w, room.width), height: min(h, room.height)))
+            window.contentView?.layoutSubtreeIfNeeded()
+        case "screen-size":
+            // The window from here on has room for this much content, as on
+            // a screen this size, and the page scrolls what does not fit.
+            guard f.count == 2, let w = Double(f[0]), let h = Double(f[1]), w > 0, h > 0 else { return .failed("screen-size needs a width and a height", nil) }
+            SpecScreen.room = NSSize(width: w, height: h)
+            refit()
             window.contentView?.layoutSubtreeIfNeeded()
         case "renderer":
             // Display-paced surfaces from here on draw with this renderer
