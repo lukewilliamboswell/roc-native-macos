@@ -310,7 +310,8 @@ jobs:
             grep -q "platform \"$url\"" "$dir/$entry" || { echo "::error::$name does not name the release URL of $bundle"; exit 1; }
             for target in arm64mac x64mac; do
               echo "::group::$name for $target"
-              (cd "$dir" && roc build "$entry" --target="$target" --output="$apps/$target/$name")
+              # TODO(slow-lambda-sets): restore the default --opt=speed (cli/App.roc build_opt).
+              (cd "$dir" && roc build "$entry" --target="$target" --opt=size --output="$apps/$target/$name")
               echo "::endgroup::"
               test "$(magic "$apps/$target/$name")" = "$(expected "$target")" \
                 || { echo "::error::$apps/$target/$name is not a $target Mach-O executable"; exit 1; }

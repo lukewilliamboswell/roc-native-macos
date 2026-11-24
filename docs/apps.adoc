@@ -116,6 +116,12 @@ Apple silicon Mac runs an `x64mac` build under Rosetta; an Intel Mac cannot
 run an `arm64mac` one. `test` and `dev` build the program for the Mac they
 run on alone.
 
+For now the tool builds with `roc build --opt=size`, not Roc's default
+`--opt=speed`. Today's Roc nightlies take minutes, and many gigabytes of
+memory, to specialize an app whose store has many cells written by many
+handlers, as the starter's is; `--opt=size` builds it in seconds. The
+default returns when Roc fixes it.
+
 [#metadata]
 === The app's metadata
 

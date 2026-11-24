@@ -489,7 +489,9 @@ example! = |roc, name| {
 	dir = "examples/${name}"
 	main = example_entry
 	note!("building ${dir}")
-	step!(Cmd.new(OsStr.from_str(roc)).args(["build", main, "--output=${name}"].map(OsStr.from_str)).cwd(Path.utf8(dir)), "${roc} build ${dir}/${main}")?
+	# TODO(slow-lambda-sets): restore the default `--opt=speed`; see
+	# `App.build_opt` in cli/App.roc. Built as `macos.roc build` builds apps.
+	step!(Cmd.new(OsStr.from_str(roc)).args(["build", main, "--opt=size", "--output=${name}"].map(OsStr.from_str)).cwd(Path.utf8(dir)), "${roc} build ${dir}/${main}")?
 	bundle_dir = "${dir}/${name}.app"
 	if Path.exists!(Path.utf8(bundle_dir)) ?? Bool.False {
 		Path.delete_all!(Path.utf8(bundle_dir)) ? |error| "could not replace ${bundle_dir}: ${Str.inspect(error)}"

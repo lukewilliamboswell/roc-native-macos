@@ -112,12 +112,27 @@ App := [].{
 		Ok({ name, program })
 	}
 
+	## The optimisation every `build`, `run` and `package` asks Roc for.
+	##
+	## TODO(slow-lambda-sets): RESTORE THE DEFAULT `--opt=speed` BUILD.
+	## This is a workaround, not a choice. Roc's lambda-set specialization,
+	## which `--opt=speed` runs, grows superlinearly with a store's cells
+	## times its handlers: the starter takes 10–15 minutes and 22 GB to build
+	## that way, and 23 s with `--opt=size` (reproducer:
+	## https://gist.github.com/lukewilliamboswell/8f80530bc6bfd7306a80f6682212a4d1,
+	## `patches/roc-compiler/handler-lambda-sets/`). When a Roc nightly builds
+	## that reproducer at N = 64 in about the `--specialize=no` time, delete
+	## this and build with the default again, here and in `scripts/` (grep
+	## for `slow-lambda-sets`).
+	build_opt : Str
+	build_opt = "--opt=size"
+
 	## `roc build` the app's root module, `entry`, for one target into
-	## `program`.
+	## `program`, with `build_opt`.
 	build_for! : Str, Str, Str => Try({}, _)
 	build_for! = |entry, target, program| {
 		Stdout.line!("Building ${entry} for ${App.target_name(target)}...")?
-		built = Cmd.new("roc").args(["build", entry, "--target=${target}", "--output=${program}"].map(OsStr.from_str)).inherit_stdio().run!()?
+		built = Cmd.new("roc").args(["build", entry, "--target=${target}", App.build_opt, "--output=${program}"].map(OsStr.from_str)).inherit_stdio().run!()?
 		if built.status != Exited(0) {
 			return Err(BuildFailed)
 		}

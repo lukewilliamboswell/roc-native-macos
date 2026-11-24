@@ -355,7 +355,9 @@ build_each! = |work, top, url, bundle, examples| {
 		write!("${app_dir}/${entry}", served)?
 		out = "${work}/apps/${example}"
 		Path.create_all!(Path.utf8("${work}/apps")) ? |error| "could not create ${work}/apps: ${Str.inspect(error)}"
-		step!(Cmd.new("roc").args(["build", OsStr.from_str(entry), OsStr.from_str("--output=${out}")]).cwd(Path.utf8(app_dir)).env("XDG_CACHE_HOME", OsStr.from_str(cache)), "roc build examples/${example}/${entry} against ${url}")?
+		# TODO(slow-lambda-sets): restore the default `--opt=speed`; see
+		# `App.build_opt` in cli/App.roc.
+		step!(Cmd.new("roc").args(["build", OsStr.from_str(entry), "--opt=size", OsStr.from_str("--output=${out}")]).cwd(Path.utf8(app_dir)).env("XDG_CACHE_HOME", OsStr.from_str(cache)), "roc build examples/${example}/${entry} against ${url}")?
 	}
 	Ok({})
 }
