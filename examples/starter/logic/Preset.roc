@@ -38,21 +38,38 @@ Preset := [].{
 
 	Doc : { id : Str, name : Str, background : Color, layers : List(Layer), feedback : Feedback, shaders : Shaders }
 
-	## A preset's shader stages, for a drawing surface that runs
-	## user-written Metal shaders: absent, or a JSON object kept as it is.
-	## This version only checks that it is an object, and draws without it;
-	## its warp and composite stages, uniforms and audio-bound parameters
-	## will be read and validated when the surface takes them.
-	Shaders : [NoShaders, Shaders(JsonValue)]
+	## A preset's own GPU shaders, for the Metal renderer (docs/ui.adoc,
+	## "Shaders"): none, or a warp, a composite or both, each Metal Shading
+	## Language source defining one function (`float4 warp(Frame f, Params
+	## p)` or `float4 composite(Frame f, Params p)`) and its helpers, and the
+	## params they read as `p.NAME`. Where shaders do not run (Core
+	## Graphics), the layers and the feedback are the whole picture.
+	Shaders : [NoShaders, Shaders(Stages)]
+
+	Stages : { warp : [None, Some(Str)], composite : [None, Some(Str)], params : List(Param) }
+
+	## A number the shaders read as `p.NAME`: fixed at `value`, or following
+	## a sound feature from 0 to 1 onto `low` to `high`. The range is also
+	## the editor's slider, and `about` says what the number does.
+	Param : { name : Str, value : Dec, low : Dec, high : Dec, follows : [Fixed, Feature(Feature)], about : Str }
+
+	## The most params a preset's shaders have, and the longest a stage's
+	## source may be, in bytes: the surface's own limits.
+	most_params : U64
+	most_params = 16
+
+	most_source_bytes : U64
+	most_source_bytes = 65_536
 
 	Color : { r : U8, g : U8, b : U8 }
 
 	Layer : { kind : Kind, colors : List(Color), size : I64, thickness : I64, opacity : I64, brightness : I64, rotation : I64, mappings : List(Mapping) }
 
 	## The kinds of layer: a waveform drawn across the view (an
-	## oscilloscope), one wrapped round a circle, the spectrum as bars, and a
-	## plain ring.
-	Kind : [Waveform, CircularWaveform, Bars, Ring]
+	## oscilloscope), one wrapped round a circle, the spectrum as bars, a
+	## plain ring, and the left channel against the right (a stereo
+	## vectorscope, `Lissajous`).
+	Kind : [Waveform, CircularWaveform, Bars, Ring, Lissajous]
 
 	Mapping : { feature : Feature, property : Property, from : I64, to : I64 }
 
@@ -88,7 +105,7 @@ Preset := [].{
 	band_count = 24
 
 	kinds : List(Kind)
-	kinds = [Waveform, CircularWaveform, Bars, Ring]
+	kinds = [Waveform, CircularWaveform, Bars, Ring, Lissajous]
 
 	kind_name : Kind -> Str
 	kind_name = |kind|
@@ -97,6 +114,7 @@ Preset := [].{
 			CircularWaveform => "Circular waveform"
 			Bars => "Spectrum bars"
 			Ring => "Ring"
+			Lissajous => "Lissajous"
 		}
 
 	## A kind as a file spells it.
@@ -107,6 +125,7 @@ Preset := [].{
 			CircularWaveform => "circular-waveform"
 			Bars => "bars"
 			Ring => "ring"
+			Lissajous => "lissajous"
 		}
 
 	properties : List(Property)
@@ -163,7 +182,7 @@ Preset := [].{
 
 	## The ranges of the feedback settings.
 	zoom_range : { min : I64, max : I64 }
-	zoom_range = { min: 900, max: 1100 }
+	zoom_range = { min: 500, max: 4000 }
 
 	spin_range : { min : I64, max : I64 }
 	spin_range = { min: -360, max: 360 }
@@ -201,7 +220,7 @@ Preset := [].{
 			Preset.within(feedback.rotation, Preset.spin_range, "feedback.rotation"),
 			Preset.within(feedback.half_life_ms, Preset.half_life_range, "feedback.half_life_ms"),
 		].join()
-		[about_name, about_id, about_layers, in_layers, about_feedback].join()
+		[about_name, about_id, about_layers, in_layers, about_feedback, Preset.shader_problems(preset.shaders)].join()
 	}
 
 	## Whether a text is an ID: 1 to 64 of `a-z`, `0-9`, `.` and `-`.
@@ -273,7 +292,7 @@ Preset := [].{
 				),
 			].concat(
 				match preset.shaders {
-					Shaders(stages) => [("shaders", stages)]
+					Shaders(stages) => [("shaders", Preset.stages_json(stages))]
 					NoShaders => []
 				},
 			),
@@ -376,8 +395,7 @@ Preset := [].{
 		shaders =
 			match JsonValue.field(json, "shaders") {
 				Err(Missing) => NoShaders
-				Ok(Object(stages)) => Shaders(JsonValue.Object(stages))
-				Ok(_) => return Err({ field: "shaders", problem: "is not an object of shader stages" })
+				Ok(given) => Shaders(Preset.stages_from(given)?)
 			}
 		Ok({ id, name, background, layers, feedback, shaders })
 	}
@@ -422,6 +440,154 @@ Preset := [].{
 		property = Preset.properties.find_first(|p| Preset.property_key(p) == property_text).map_err(|_| { field: "${at}.property", problem: "is \"${property_text}\", not one of ${Preset.listed(Preset.properties.map(Preset.property_key))}" })?
 		Ok({ feature, property, from: Preset.int_at(json, "from", "${at}.")?, to: Preset.int_at(json, "to", "${at}.")? })
 	}
+
+	## Everything wrong with a preset's shaders: a stage too long, none at
+	## all, too many params, a name the shaders cannot read, a range upside
+	## down, or a value outside its range.
+	shader_problems : Shaders -> List(FieldError)
+	shader_problems = |shaders|
+		match shaders {
+			NoShaders => []
+			Shaders(stages) => {
+				long = |stage, source|
+					match source {
+						Some(text) if text.count_utf8_bytes() > Preset.most_source_bytes => [{ field: "shaders.${stage}", problem: "is longer than 64 KiB" }]
+						_ => []
+					}
+				none = if (stages.warp == None and stages.composite == None) [{ field: "shaders", problem: "needs a warp or a composite" }] else []
+				count = if (stages.params.len() > Preset.most_params) [{ field: "shaders.params", problem: "has more than ${Preset.most_params.to_str()} params" }] else []
+				each = stages.params.map_with_index(
+					|param, index| {
+						spot = "shaders.params[${index.to_str()}]"
+						name =
+							if !Preset.is_param_name(param.name) {
+								[{ field: "${spot}.name", problem: "is 1 to 32 of a-z, 0-9 and _, not starting with a digit" }]
+							} else if stages.params.take_first(index).any(|earlier| earlier.name == param.name) {
+								[{ field: "${spot}.name", problem: "names ${param.name} a second time" }]
+							} else {
+								[]
+							}
+						range = if (param.high < param.low) [{ field: "${spot}.high", problem: "is below its low" }] else []
+						value = if (param.follows == Fixed and (param.value < param.low or param.value > param.high)) [{ field: "${spot}.value", problem: "must be between its low and high" }] else []
+						band =
+							match param.follows {
+								Feature(Band(n)) if n >= Preset.band_count => [{ field: "${spot}.follows", problem: "names band ${n.to_str()}; the bands are 0 to ${(Preset.band_count - 1).to_str()}" }]
+								_ => []
+							}
+						[name, range, value, band].join()
+					},
+				)
+				[long("warp", stages.warp), long("composite", stages.composite), none, count, each.join()].join()
+			}
+		}
+
+	## Whether a text is a param's name: 1 to 32 of `a-z`, `0-9` and `_`,
+	## not starting with a digit.
+	is_param_name : Str -> Bool
+	is_param_name = |text| {
+		bytes = text.to_utf8()
+		first_ok =
+			match bytes.first() {
+				Ok(b) => b < '0' or b > '9'
+				Err(_) => Bool.False
+			}
+		first_ok and bytes.len() <= 32 and bytes.all(|b| (b >= 'a' and b <= 'z') or (b >= '0' and b <= '9') or b == '_')
+	}
+
+	## A preset's shaders as their file writes them.
+	stages_json : Stages -> JsonValue
+	stages_json = |stages| {
+		source = |key, stage|
+			match stage {
+				Some(text) => [(key, JsonValue.Text(text))]
+				None => []
+			}
+		JsonValue.Object(
+			source("warp", stages.warp)
+				.concat(source("composite", stages.composite))
+				.append((
+					"params",
+					JsonValue.Array(
+						stages.params.map(
+							|param|
+								JsonValue.Object(
+									[
+										("name", JsonValue.Text(param.name)),
+										("value", JsonValue.Dec(param.value)),
+										("low", JsonValue.Dec(param.low)),
+										("high", JsonValue.Dec(param.high)),
+									]
+										.concat(
+											match param.follows {
+												Fixed => []
+												Feature(feature) => [("follows", JsonValue.Text(Preset.feature_key(feature)))]
+											},
+										)
+										.concat(if (param.about.is_empty()) [] else [("about", JsonValue.Text(param.about))]),
+								),
+						),
+					),
+				)),
+		)
+	}
+
+	## A preset's shaders from their file, or the first field that is
+	## missing, of the wrong type, or unknown.
+	stages_from : JsonValue -> Try(Stages, FieldError)
+	stages_from = |json| {
+		fields = Preset.object_at(json, "shaders")?
+		Preset.known(fields, ["warp", "composite", "params"], "shaders.")?
+		source = |key|
+			match JsonValue.field(json, key) {
+				Err(Missing) => Ok(None)
+				Ok(Text(text)) => Ok(Some(text))
+				Ok(_) => Err({ field: "shaders.${key}", problem: "is not text" })
+			}
+		params =
+			match JsonValue.field(json, "params") {
+				Err(Missing) => []
+				Ok(Array(items)) => Preset.all_of(items.map_with_index(|item, index| Preset.param_from(item, "shaders.params[${index.to_str()}]")))?
+				Ok(_) => return Err({ field: "shaders.params", problem: "is not a list" })
+			}
+		Ok({ warp: source("warp")?, composite: source("composite")?, params })
+	}
+
+	param_from : JsonValue, Str -> Try(Param, FieldError)
+	param_from = |json, at| {
+		fields = Preset.object_at(json, at)?
+		Preset.known(fields, ["name", "value", "low", "high", "follows", "about"], "${at}.")?
+		follows =
+			match JsonValue.field(json, "follows") {
+				Err(Missing) => Fixed
+				Ok(Text("fixed")) => Fixed
+				Ok(Text(key)) => Feature(Preset.feature_named(key).map_err(|_| { field: "${at}.follows", problem: "is \"${key}\", not fixed, level, bass, mids, treble or band-0 to band-${(Preset.band_count - 1).to_str()}" })?)
+				Ok(_) => return Err({ field: "${at}.follows", problem: "is not text" })
+			}
+		about =
+			match JsonValue.field(json, "about") {
+				Err(Missing) => ""
+				Ok(Text(text)) => text
+				Ok(_) => return Err({ field: "${at}.about", problem: "is not text" })
+			}
+		Ok({
+			name: Preset.text_at(json, "name", "${at}.")?,
+			value: Preset.dec_at(json, "value", "${at}.")?,
+			low: Preset.dec_at(json, "low", "${at}.")?,
+			high: Preset.dec_at(json, "high", "${at}.")?,
+			follows,
+			about,
+		})
+	}
+
+	## A number field, whole or not, as a `Dec`.
+	dec_at : JsonValue, Str, Str -> Try(Dec, FieldError)
+	dec_at = |json, key, prefix|
+		match JsonValue.field(json, key) {
+			Ok(Dec(d)) => Ok(d)
+			Ok(Int(n)) => Ok(n.to_dec())
+			Ok(_) => Err({ field: "${prefix}${key}", problem: "is not a number" })
+			Err(Missing) => Err({ field: "${prefix}${key}", problem: "is missing" })
+		}
 
 	## The feature a file's text names. A band past the last is read, and
 	## `problems` reports it.
