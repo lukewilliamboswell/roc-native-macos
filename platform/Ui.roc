@@ -852,8 +852,9 @@ Ui := [].{
 	]
 
 	## How a shape's outline is drawn: its colour and its line width, in the
-	## scene's units, with round joins and caps.
-	Pen : { color : Color, width : F64 }
+	## scene's units, with round joins and caps. The width is a `Number`, so
+	## a source can drive it; a width below 0 draws as 0, so nothing.
+	Pen : { color : Color, width : Number }
 
 	## One step of a surface's scene, drawn in order, as a canvas draws.
 	## `Fill` and `Stroke` draw a shape; `Translate`, `Rotate` (radians,
@@ -914,7 +915,7 @@ Ui := [].{
 	## A drawing surface: one native view drawing `scene`, an ordered list of
 	## marks, over `background`. A new scene redraws only this view, with no
 	## view per shape and no layout pass.
-	## `Ui.surface(points.map(|ps| [Stroke(Polyline(ps), { color: Green, width: 2 })]), { label: "Plot" })`.
+	## `Ui.surface(points.map(|ps| [Stroke(Polyline(ps), { color: Green, width: Value(2) })]), { label: "Plot" })`.
 	surface : Signal(ctx, List(Mark)), SurfaceProps(ctx) -> Elem(ctx)
 	surface = |scene, props|
 		Engine.element(
@@ -1317,7 +1318,7 @@ mark_line : Ui.Mark -> Str
 mark_line = |mark|
 	match mark {
 		Fill(shape, color) => "fill ${color_word(color)} ${shape_words(shape)}"
-		Stroke(shape, { color, width }) => "stroke ${color_word(color)} ${num(width)} ${shape_words(shape)}"
+		Stroke(shape, { color, width }) => "stroke ${color_word(color)} ${number_word(width)} ${shape_words(shape)}"
 		Save => "save"
 		Restore => "restore"
 		Translate(x, y) => "translate ${number_word(x)} ${number_word(y)}"
@@ -1383,14 +1384,14 @@ expect {
 		Translate(Source({ source: "synthetic.level", scale: 200, offset: 10 }), Value(0)),
 		Scale(Element({ source: "audio.bands", index: 3, scale: 0.5, offset: 1 }), Value(1)),
 		Opacity(Value(0.5)),
-		Stroke(Polyline([{ x: 0, y: 0 }, { x: 4, y: 2 }]), { color: Adaptive({ light: 0x112233, dark: 0xffffff }), width: 2 }),
+		Stroke(Polyline([{ x: 0, y: 0 }, { x: 4, y: 2 }]), { color: Adaptive({ light: 0x112233, dark: 0xffffff }), width: Value(2) }),
 		Restore,
 		Fill(Path([MoveTo({ x: 0, y: 0 }), LineTo({ x: 1, y: 0 }), Close]), Green),
-		Stroke(Wave({ source: "synthetic.wave", area: { x: 0, y: 0, width: 100, height: 50 }, low: -1, high: 1 }), { color: Green, width: 1.5 }),
+		Stroke(Wave({ source: "synthetic.wave", area: { x: 0, y: 0, width: 100, height: 50 }, low: -1, high: 1 }), { color: Green, width: Value(1.5) }),
 		Fill(Bars({ source: "audio.bands", area: { x: 0, y: 0, width: 240, height: 60 }, low: 0, high: 1, gap: 2 }), Orange),
-		Stroke(Ring({ source: "audio.waveform", x: 50, y: 50, radius: 20, depth: 8, low: -1, high: 1 }), { color: Yellow, width: 1 }),
+		Stroke(Ring({ source: "audio.waveform", x: 50, y: 50, radius: 20, depth: 8, low: -1, high: 1 }), { color: Yellow, width: Source({ source: "synthetic.level", scale: 4, offset: 1 }) }),
 		Matrix({ a: 1, b: 0, c: 0, d: 1, tx: 3, ty: 4 }),
-		Stroke(Polygon([]), { color: Blue, width: 1 }),
+		Stroke(Polygon([]), { color: Blue, width: Value(1) }),
 	]
 	actual = scene_text(scene)
 	expected =
@@ -1404,7 +1405,7 @@ expect {
 		\\fill green path 3 M 0 0 L 1 0 Z
 		\\stroke green 1.5 wave synthetic.wave 0 0 100 50 -1 1
 		\\fill orange bars audio.bands 0 0 240 60 0 1 2
-		\\stroke yellow 1 ring audio.waveform 50 50 20 8 -1 1
+		\\stroke yellow @synthetic.level:4:1 ring audio.waveform 50 50 20 8 -1 1
 		\\matrix 1 0 0 1 3 4
 		\\stroke blue 1 polygon 0
 	actual == expected

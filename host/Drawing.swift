@@ -60,7 +60,7 @@ enum SceneShape {
 
 enum SceneMark {
     case fill(SceneShape, NSColor, String)
-    case stroke(SceneShape, NSColor, String, Double)
+    case stroke(SceneShape, NSColor, String, SceneNumber)
     case save
     case restore
     case translate(SceneNumber, SceneNumber)
@@ -90,8 +90,10 @@ enum Scene {
                 marks.append(.fill(w.shape(&points), Host.color(word), word))
             case "stroke":
                 let word = w.word("a colour")
-                let width = w.number("a line width")
-                if width < 0 { w.fail("a line width is not negative") }
+                // A constant width is not negative; a bound one below 0
+                // draws as 0.
+                let width = w.sceneNumber()
+                if width.source == nil, width.offset < 0 { w.fail("a line width is not negative") }
                 marks.append(.stroke(w.shape(&points), Host.color(word), word, width))
             case "save":
                 depth += 1
@@ -349,7 +351,7 @@ extension DrawingSurface {
             case let .stroke(shape, color, word, width):
                 let p = path(shape)
                 points += p.count
-                if !p.isEmpty { steps.append(.figure(fill: false, color: color, word: word, width: width, path: p)) }
+                if !p.isEmpty { steps.append(.figure(fill: false, color: color, word: word, width: max(0, value(width)), path: p)) }
             case .save: steps.append(.save)
             case .restore: steps.append(.restore)
             case let .translate(x, y): steps.append(.transform(1, 0, 0, 1, value(x), value(y)))
@@ -805,7 +807,8 @@ final class DrawingSurface: NSView {
         func number(_ n: SceneNumber) -> Bool { n.source == source }
         return marks.contains { mark in
             switch mark {
-            case let .fill(s, _, _), let .stroke(s, _, _, _): return shape(s)
+            case let .fill(s, _, _): return shape(s)
+            case let .stroke(s, _, _, width): return shape(s) || number(width)
             case let .translate(x, y), let .scale(x, y): return number(x) || number(y)
             case let .rotate(n), let .opacity(n): return number(n)
             case .save, .restore, .matrix: return false

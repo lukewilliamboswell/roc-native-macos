@@ -149,7 +149,7 @@ The scene is a signal, so a plot that follows state is a `map`:
 Ui.surface(
     points.map(|ps| [
         Fill(Rect({ x: 0, y: 0, width: 320, height: 160 }), Adaptive({ light: 0xf4f4f4, dark: 0x202020 })),
-        Stroke(Polyline(ps), { color: Green, width: 2 }),
+        Stroke(Polyline(ps), { color: Green, width: Value(2) }),
     ]),
     { label: "Temperature", space: Engine.const(Fit({ width: 320, height: 160 })) },
 )
@@ -161,7 +161,9 @@ pass, so a scene can change at every turn.
 *Marks*, drawn in order:
 
 * `Fill(shape, color)` and `Stroke(shape, { color, width })` draw a shape.
-  Strokes have round joins and caps.
+  Strokes have round joins and caps. The width is a number
+  (xref:ui.adoc#surface-sources[Native sources]), `Value(2)` or one a source
+  drives; a width below 0 draws nothing.
 * `Translate(x, y)`, `Rotate(radians)`, `Scale(x, y)` and
   `Matrix({ a, b, c, d, tx, ty })` move everything drawn after them.
   `Opacity(amount)` multiplies its opacity.

@@ -309,7 +309,7 @@ series, `INDEX` from 0 below 4,096; past the series' end it reads 0.
 
 ----
 fill COLOUR SHAPE
-stroke COLOUR WIDTH SHAPE
+stroke COLOUR N SHAPE
 save | restore
 translate N N | rotate N | scale N N | matrix A B C D TX TY | opacity N
 

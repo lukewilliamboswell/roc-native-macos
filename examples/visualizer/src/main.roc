@@ -8,8 +8,9 @@ import pf.Ui
 ## and a caption over it. `Scope` draws a wave and a marker that moves with a
 ## level; `Echo` draws a mark and a ring whose previous frames drift right and
 ## fade (a trail); `Bands` draws the wave as bars, with a marker riding one
-## value of it and another bound past its end, which reads 0. The caption is native text over the surface, which the
-## trail never draws.
+## value of it, another bound past its end, which reads 0, and a line as
+## thick as the level. The caption is native text over the surface, which
+## the trail never draws.
 main : Engine.Program(_)
 main = Engine.program_store({}, |_boot| store, |_boot| view())
 
@@ -85,7 +86,7 @@ scene = |mode|
 	if mode == "Echo" {
 		[
 			Fill(Rect({ x: 20, y: 20, width: 20, height: 20 }), red),
-			Stroke(Ring({ source: "synthetic.wave", x: 240, y: 80, radius: 36, depth: 16, low: -1, high: 1 }), { color: Orange, width: 2 }),
+			Stroke(Ring({ source: "synthetic.wave", x: 240, y: 80, radius: 36, depth: 16, low: -1, high: 1 }), { color: Orange, width: Value(2) }),
 		]
 	} else if mode == "Bands" {
 		[
@@ -98,10 +99,11 @@ scene = |mode|
 			Translate(Value(380), Element({ source: "synthetic.wave", index: 99, scale: -60, offset: 80 })),
 			Fill(Rect({ x: -8, y: -8, width: 16, height: 16 }), red),
 			Restore,
+			Stroke(Polyline([{ x: 0, y: 150 }, { x: 360, y: 150 }]), { color: Orange, width: Source({ source: "synthetic.level", scale: 16, offset: 1 }) }),
 		]
 	} else {
 		[
-			Stroke(Wave({ source: "synthetic.wave", area: { x: 0, y: 20, width: 640, height: 120 }, low: -1, high: 1 }), { color: Green, width: 3 }),
+			Stroke(Wave({ source: "synthetic.wave", area: { x: 0, y: 20, width: 640, height: 120 }, low: -1, high: 1 }), { color: Green, width: Value(3) }),
 			Save,
 			Translate(Source({ source: "synthetic.level", scale: 640, offset: 0 }), Value(0)),
 			Fill(Oval({ x: -12, y: 68, width: 24, height: 24 }), amber),
@@ -131,4 +133,4 @@ white : Ui.Color
 white = Adaptive({ light: 0xffffff, dark: 0xffffff })
 
 ## The scenes encode as the host reads them.
-expect scene("Echo").len() == 2 and scene("Scope").len() == 5 and scene("Bands").len() == 9
+expect scene("Echo").len() == 2 and scene("Scope").len() == 5 and scene("Bands").len() == 10
