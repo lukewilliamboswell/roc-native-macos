@@ -9,7 +9,7 @@
 #
 # The timings are diagnostics: a ratio past its bound is reported, never a
 # failure. What a turn costs is checked by counting its work, in the specs
-# beside this file (specs/rows-2000.scm and specs/rows-200000.scm, the same
+# beside this file (tests/specs/rows-2000.scm and tests/specs/rows-200000.scm, the same
 # bounds at both sizes), which `blueprint run check -- bench` runs.
 #   LIST=every bench/rows/run.sh      # a Ui.list drawing every row instead of the windowed Ui.table_list
 #
@@ -70,11 +70,11 @@ window_guard() {
 	done
 	if [[ ${drawns[0]} != "${drawns[1]}" ]] || ((drawns[1] > 300)); then
 		echo "bench/rows --smoke: the windowed list draws ${drawns[0]} rows of 2,000 and ${drawns[1]} of 200,000; it should draw the same window, at most 300" >&2
-		echo "  (timing is a diagnostic: the work is checked by the specs in $here/specs)" >&2
+		echo "  (timing is a diagnostic: the work is checked by the specs in $here/tests/specs)" >&2
 	fi
 	if ! awk -v a="${applies[0]}" -v b="${applies[1]}" 'BEGIN { exit !(b <= 3 * a + 15) }'; then
 		echo "bench/rows --smoke: the mount's apply took ${applies[0]} ms at 2,000 rows and ${applies[1]} ms at 200,000; windowed, it should not grow with the rows" >&2
-		echo "  (timing is a diagnostic: the work is checked by the specs in $here/specs)" >&2
+		echo "  (timing is a diagnostic: the work is checked by the specs in $here/tests/specs)" >&2
 	fi
 }
 
@@ -146,7 +146,7 @@ if [[ -n $smoke && -z ${NO_SCALING:-} ]]; then
 	echo "== write scaling: tick engine p50 2,000 rows $small ms, 200,000 rows $large ms: ratio $ratio for 100x the rows (constant 1, linear 100; past 5 is reported)"
 	if perl -e 'exit($ARGV[0] > 5 ? 0 : 1)' "$ratio"; then
 		echo "bench/rows --smoke: a 3-row table write's engine time grows with the table; see roc-signals#308 and #309" >&2
-		echo "  (timing is a diagnostic: the work is checked by the specs in $here/specs)" >&2
+		echo "  (timing is a diagnostic: the work is checked by the specs in $here/tests/specs)" >&2
 	fi
 fi
 
@@ -162,7 +162,7 @@ insert_scaling_guard() {
 	echo "== insert loop: mount engine ${small} ms at 2000 rows, ${large} ms at 18000"
 	if ! awk -v s="$small" -v l="$large" 'BEGIN { exit !(s > 0 && l > 0 && l < 25 * (s > 1 ? s : 1)) }'; then
 		echo "bench/rows --smoke: building 18000 rows with Table.insert took ${large} ms, more than 25 times the ${small} ms for 2000 (quadratic?)" >&2
-		echo "  (timing is a diagnostic: the work is checked by the specs in $here/specs)" >&2
+		echo "  (timing is a diagnostic: the work is checked by the specs in $here/tests/specs)" >&2
 	fi
 }
 

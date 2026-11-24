@@ -20,7 +20,7 @@ import Package
 ## roc macos.roc dev           # start it with hot reloading
 ## roc macos.roc build         # build my-app.app, on any system
 ## roc macos.roc test          # run its expect tests and specs
-## roc macos.roc fuzz          # run its roc-fuzz targets, fuzz/main.roc
+## roc macos.roc fuzz          # run its roc-fuzz targets, tests/fuzz/main.roc
 ## roc macos.roc package       # dist/my-app-<version>.zip, to share
 ## ```
 ##
@@ -124,8 +124,8 @@ MacOS :: [].{
 		\\  roc macos.roc build            Build the app, a universal <name>.app, on any system.
 		\\  roc macos.roc run              Build it and start it, its output in this terminal.
 		\\  roc macos.roc dev              Start it with roc src/main.roc, which reloads it as you save.
-		\\  roc macos.roc test [--update]  Run its expect tests, then its specs, specs/*.scm.
-		\\  roc macos.roc fuzz [--check]   Build its roc-fuzz targets, fuzz/main.roc, and run them.
+		\\  roc macos.roc test [--update]  Run its expect tests, then its specs, tests/specs/*.scm.
+		\\  roc macos.roc fuzz [--check]   Build its roc-fuzz targets, tests/fuzz/main.roc, and run them.
 		\\  roc macos.roc package          Build it, sign it and zip it, as dist/<name>-<version>.zip.
 		\\  roc macos.roc ci package       Package it in CI, signing it as the secrets allow.
 		\\  roc macos.roc ci release       Attach dist/*.zip to the pushed tag's GitHub release.
@@ -156,12 +156,13 @@ MacOS :: [].{
 				\\
 				\\DIR defaults to the current directory. init writes the app in src/ (its
 				\\store, window, widgets and a worker), its business logic as a package of
-				\\pure Roc in logic/, roc-fuzz targets for that logic in fuzz/, its icon in
-				\\assets/, specs of it in specs/, AGENTS.md (how the project is laid
-				\\out and worked on), macos.json (the app's name, identifier and version),
-				\\.gitignore, and .github/workflows/release.yml, which packages the app on
-				\\GitHub when you push a tag such as v1.0.0. It never overwrites a file. Keep
-				\\macos.roc in the directory you run init from; a new app gets a copy.
+				\\pure Roc in logic/, its icon in assets/, its tests in tests/ (specs of it
+				\\in tests/specs/, the files they use in tests/fixtures/, and roc-fuzz
+				\\targets for its logic in tests/fuzz/), macos.json (the app's name,
+				\\identifier and version), .gitignore, and .github/workflows/release.yml,
+				\\which packages the app on GitHub when you push a tag such as v1.0.0. It
+				\\never overwrites a file. Keep macos.roc in the directory you run init
+				\\from; a new app gets a copy.
 			"build" =>
 				\\Build the app as <name>.app, where <name> is the app's directory.
 				\\
@@ -272,7 +273,7 @@ MacOS :: [].{
 				\\the expects of every module of the app and of the packages it names by
 				\\path, such as logic/; that works on any system. Then, on a Mac, it builds
 				\\the app for that Mac and runs its specs.
-				\\Each specs/<name>.scm holds one spec, (test "name" (steps ...)): steps such as
+				\\Each tests/specs/<name>.scm holds one spec, (test "name" (steps ...)): steps such as
 				\\(click (button "+")), which drive the app's real controls without taking
 				\\focus, and expectations such as (expect-text (text "1") "1") or a whole
 				\\(expect-dump (window ...)), the window's view tree, compared node by node.
@@ -282,14 +283,16 @@ MacOS :: [].{
 				\\it never raises one, and changes nothing else: review the change before you
 				\\commit it. --metrics runs every spec and prints what it measured
 				\\(allocations, bytes, the engine's work) without judging it, to set first
-				\\bounds from. --check only parses the specs, on any system.
+				\\bounds from. --check only parses the specs, on any system. A spec written
+				\\(demo "name" ...) is a recording with real effects and waits: --check
+				\\parses it, and test never runs it.
 			"fuzz" =>
 				\\Build the app's fuzz targets and run them.
 				\\
 				\\Usage: roc macos.roc fuzz [--check] [--time SECONDS] [TARGET...]
 				\\
 				\\Run from the app's directory, on an Apple silicon Mac or on Linux x64.
-				\\fuzz/main.roc is an app on roc-fuzz's platform that declares properties of
+				\\tests/fuzz/main.roc is an app on roc-fuzz's platform that declares properties of
 				\\the app's logic package; it builds it with `roc build --fuzz` into
 				\\.macos/fuzz, then runs each target (or the TARGETs named) in turn: it
 				\\explores inputs for SECONDS each (10 by default), keeping those worth
@@ -378,9 +381,9 @@ MacOS :: [].{
 			RocMissing => { code: 1, text: "The Roc compiler is not on your PATH as `roc`, so the app cannot be built. Install Roc ${Bundle.roc_version} (or a later nightly) and put it on your PATH as `roc`." }
 			NoMainRoc => { code: 1, text: "There is no src/main.roc here, so there is no app to build. Run this from your app's directory, or create an app with `roc macos.roc init my-app`." }
 			ExpectsFailed(entry) => { code: 1, text: "roc test ${entry} failed, so the specs did not run: its report is above. Fix the expect, or the code it checks, and run test again." }
-			NoFuzzTargets => { code: 1, text: "There is no fuzz/main.roc here, so there is nothing to fuzz: it is an app on roc-fuzz's platform that checks the app's logic package, as `roc macos.roc init` writes one, and `roc macos.roc fuzz --help` describes it." }
+			NoFuzzTargets => { code: 1, text: "There is no tests/fuzz/main.roc here, so there is nothing to fuzz: it is an app on roc-fuzz's platform that checks the app's logic package, as `roc macos.roc init` writes one, and `roc macos.roc fuzz --help` describes it." }
 			FuzzNotHere(system) => { code: 1, text: "roc-fuzz runs on Apple silicon Macs and on Linux x64, and this is ${system}, so fuzz cannot run here. `roc macos.roc test` runs the expect tests on any system." }
-			UnknownFuzzTargets({ unknown, known }) => { code: 2, text: "fuzz/main.roc has no target named ${Str.join_with(unknown, " or ")}: its targets are ${Str.join_with(known, ", ")}." }
+			UnknownFuzzTargets({ unknown, known }) => { code: 2, text: "tests/fuzz/main.roc has no target named ${Str.join_with(unknown, " or ")}: its targets are ${Str.join_with(known, ", ")}." }
 			FuzzFailed({ failed, total }) => { code: 1, text: "${failed.len().to_str()} of ${total.to_str()} fuzz targets failed: ${Str.join_with(failed, ", ")}. Each report is above, and the input that failed is under .roc-fuzz/: `.macos/fuzz --target=NAME replay INPUT` runs it again." }
 			BuildFailed => { code: 1, text: "The build failed: the compiler's report is above." }
 			NotAMac({ command, system, bundle }) =>
@@ -394,7 +397,7 @@ MacOS :: [].{
 			NotThisMac({ bundle, mac, built }) => { code: 1, text: "Built ${bundle} for ${built}, which this Mac, one of the ${mac}, cannot run: build it with --target x64mac, or without --target for a universal app." }
 			NotUniversal(_) => { code: 1, text: "roc build did not write one Mac program for Apple silicon and one for Intel in .macos/, so they cannot be joined into the app's universal program: build again, and report it if it recurs." }
 			DevFailed({ how, code, entry }) => { code, text: "roc ${entry} ${how}: its output is above." }
-			NoCases => { code: 1, text: "There is nothing to test: specs/ holds no .scm files. `roc macos.roc init` writes specs/presets.scm as an example, and `roc macos.roc test --help` describes them." }
+			NoCases => { code: 1, text: "There is nothing to test: tests/specs/ holds no (test ...) spec. `roc macos.roc init` writes tests/specs/presets.scm as an example, and `roc macos.roc test --help` describes them." }
 			CasesFailed({ failed, total }) => { code: 1, text: "${failed.len().to_str()} of ${total.to_str()} specs failed: ${Str.join_with(failed, ", ")}. If the app changed on purpose, rewrite their dumps with `roc macos.roc test --update`." }
 			SpecsInvalid({ invalid, total }) => { code: 1, text: "${invalid.to_str()} of ${total.to_str()} specs could not be parsed, at the places above; `roc macos.roc test --help` describes the form." }
 			AppFailed(how) => { code: 1, text: "The app ${how}: its output is above." }

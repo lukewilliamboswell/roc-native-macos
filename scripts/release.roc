@@ -202,10 +202,13 @@ archive! = |root, version, dir| {
 		write!("${top}/${path}", released)?
 	}
 	# Every other file of each example, byte for byte (images are not
-	# text): its modules, logic package and fuzz targets, assets/, and the
-	# specs with the files they use. A demo's steps stay here.
-	for path in files.drop_if(|path| entries.contains(path) or path.ends_with("/demo.scm")) {
-		copy!(path, "${top}/${path}")?
+	# text): its modules, logic package, assets/, and its tests: the specs
+	# with the files they use, and the fuzz targets. A demo, `(demo …)`,
+	# stays here.
+	for path in files.drop_if(|path| entries.contains(path)) {
+		if !(path.ends_with(".scm") and SpecRun.is_demo!(path)) {
+			copy!(path, "${top}/${path}")?
+		}
 	}
 	write!("${top}/README.md", readme(version, url, examples.len()))?
 	zip = "${dir}/${name}.zip"
@@ -241,7 +244,7 @@ readme = |version, url, count|
 			"    roc build src/main.roc --target=arm64mac   # Apple silicon",
 			"    roc build src/main.roc --target=x64mac     # Intel",
 			"",
-			"Each example's `specs/<name>.scm` holds a spec of what it does: steps that",
+			"Each example's `tests/specs/<name>.scm` holds a spec of what it does: steps that",
 			"drive its controls and what it should then show. Run them from the",
 			"example's directory:",
 			"",
@@ -290,7 +293,8 @@ test! = |root, dir, binaries| {
 		# A bare program is run away from its assets, so ROC_ASSETS names
 		# them; a bundled one finds its own in Contents/Resources.
 		bundled = if (Path.exists!(Path.utf8(in_app)) ?? Bool.False) [{ exe: in_app, label: "${example}.app", assets: "" }] else []
-		cases = SpecRun.names(names_in!("${top}/examples/${example}/specs") ?? [])
+		example_dir = "${top}/examples/${example}"
+		cases = SpecRun.tests!(example_dir, SpecRun.names(names_in!("${example_dir}/tests/specs") ?? []).map(|file| "tests/specs/${file}"))
 		if cases.is_empty() {
 			$failed = $failed.append("${example} has no spec")
 		}
@@ -397,14 +401,14 @@ served! = |server|
 		Err(error) => Err("the local server did not start: ${Str.inspect(error)}")
 	}
 
-## One spec, `specs/<name>` of the example in `app_dir`, run from that
+## One spec, `tests/specs/<name>` of the example in `app_dir`, run from that
 ## directory as `macos.roc test` and `blueprint run examples` run it.
 run_case! : Str, { exe : Str, assets : Str }, Str => Try({}, Str)
 run_case! = |app_dir, { exe, assets }, name| {
 	if !(Path.exists!(Path.utf8(exe)) ?? Bool.False) {
 		return Err("${exe} does not exist")
 	}
-	spec = "specs/${name}"
+	spec = name
 	env = if (assets.is_empty()) [] else [("ROC_ASSETS", assets)]
 	match SpecRun.run!({ program: exe, dir: app_dir, spec, update: Bool.False, metrics: Bool.False, args: [], env }) {
 		Ok(Passed) | Ok(Updated) | Ok(Measured(_)) => Ok({})

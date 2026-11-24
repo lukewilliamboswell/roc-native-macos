@@ -27,7 +27,7 @@ App := [].{
 	work = ".macos"
 
 	## The app's root module, where `init` puts it. Everything else the tool
-	## reads (`assets/`, `macos.json`, `tests/`, `fuzz/`) is at the top of the
+	## reads (`assets/`, `macos.json`, `tests/`) is at the top of the
 	## app's directory.
 	nested_entry : Str
 	nested_entry = "src/main.roc"
@@ -118,12 +118,12 @@ App := [].{
 	## This is a workaround, not a choice. Roc's lambda-set specialization,
 	## which `--opt=speed` runs, grows superlinearly with a store's cells
 	## times its handlers: the starter takes 10–15 minutes and 22 GB to build
-	## that way, and 23 s with `--opt=size` (reproducer:
-	## https://gist.github.com/lukewilliamboswell/8f80530bc6bfd7306a80f6682212a4d1,
-	## `patches/roc-compiler/handler-lambda-sets/`). When a Roc nightly builds
-	## that reproducer at N = 64 in about the `--specialize=no` time, delete
-	## this and build with the default again, here and in `scripts/` (grep
-	## for `slow-lambda-sets`).
+	## that way, and 23 s with `--opt=size` (reproducer, not yet filed
+	## upstream:
+	## https://gist.github.com/lukewilliamboswell/8f80530bc6bfd7306a80f6682212a4d1).
+	## When a Roc nightly builds that reproducer at N = 64 in about the
+	## `--specialize=no` time, delete this and build with the default again,
+	## here and in `scripts/` (grep for `slow-lambda-sets`).
 	build_opt : Str
 	build_opt = "--opt=size"
 

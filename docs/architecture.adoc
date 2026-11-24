@@ -1054,7 +1054,7 @@ through the visualizer's Sync Test:
 The window lag is how long after its window's centre was heard each frame
 was seen: half a window, 21 ms, is the least the window-end choice allows.
 Frame pacing holds with the shaded presets too: the visualizer's
-`specs/av-pacing.scm` plays the starter's song through each of the twelve
+`tests/specs/av-pacing.scm` plays the starter's song through each of the twelve
 for three seconds in a 1400 × 860-point window at the display's backing
 scale (2), and on that Mac every one drew 191–195 frames with no refresh
 missed and none skipped, frame time 16.7 ms at the 50th and 99th

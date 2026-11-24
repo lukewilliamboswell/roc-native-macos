@@ -94,10 +94,10 @@ Init :: [].{
 			"",
 			"  src/         the app: its program, store, window, panels, widgets and a worker",
 			"  logic/       its logic (lyrics, the queue, presets), pure Roc with its expect tests",
-			"  fuzz/        roc-fuzz targets for that logic, which `roc macos.roc fuzz` runs",
 			"  assets/      its images; assets/icon.png is its icon",
-			"  specs/       specs of what it does, which `roc macos.roc test` checks",
-			"  AGENTS.md    how the project is laid out and worked on",
+			"  tests/       specs of what it does (tests/specs/, which `roc macos.roc test` checks),",
+			"               the files they use (tests/fixtures/) and roc-fuzz targets for the",
+			"               logic (tests/fuzz/, which `roc macos.roc fuzz` runs)",
 			"  macos.json   its name, bundle identifier and version",
 			"  macos.roc    the tool, which builds, runs, tests and packages it",
 			"  .gitignore   keeps build output out of version control",
@@ -138,8 +138,8 @@ expect {
 	here = Init.plan(".", "my-app").map(|step| step.path)
 	new.first() == Ok("macos.roc")
 		and new.drop_first(1) == here
-		and ["src/main.roc", "logic/main.roc", "fuzz/main.roc", "assets/icon.png", "AGENTS.md", ".gitignore", "macos.json", ".github/workflows/release.yml"].all(|path| here.contains(path))
-		and here.any(|path| path.starts_with("specs/") and path.ends_with(".scm"))
+		and ["src/main.roc", "logic/main.roc", "tests/fuzz/main.roc", "assets/icon.png", ".gitignore", "macos.json", ".github/workflows/release.yml"].all(|path| here.contains(path))
+		and here.any(|path| path.starts_with("tests/specs/") and path.ends_with(".scm"))
 }
 
 ## The app's root module names the release's platform; the fuzz targets keep
@@ -151,7 +151,7 @@ expect {
 		Ok(Text(text)) => text.contains("pf: platform \"${Bundle.platform_url}\"")
 		_ => Bool.False
 	}
-	fuzz = match contents("fuzz/main.roc") {
+	fuzz = match contents("tests/fuzz/main.roc") {
 		Ok(Text(text)) => text.contains("roc-fuzz/releases/download/")
 		_ => Bool.False
 	}
@@ -168,4 +168,4 @@ expect {
 	starter == Ok(Text(Meta.starter("my-app"))) and Meta.starter("my-app").contains("\"id\": \"com.example.my-app\"")
 }
 
-expect [Init.place("my-app/", "main.roc"), Init.place(".", "specs/a.scm")] == ["my-app/main.roc", "specs/a.scm"]
+expect [Init.place("my-app/", "main.roc"), Init.place(".", "tests/specs/a.scm")] == ["my-app/main.roc", "tests/specs/a.scm"]

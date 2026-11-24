@@ -121,6 +121,30 @@ SpecRun := [].{
 	## The specs among a directory's file names, sorted.
 	names : List(Str) -> List(Str)
 	names = |files| files.keep_if(|name| name.ends_with(".scm")).sort_with(compare)
+
+	## Whether the spec at `path` is a demo, `(demo …)`: a recording with
+	## real effects and real waits, which `test` and the check parse but never
+	## run. A spec that cannot be read or parsed is not a demo, so running it
+	## reports why.
+	is_demo! : Str => Bool
+	is_demo! = |path|
+		match Path.read_utf8!(Path.utf8(path)) {
+			Ok(source) => Spec.parse(source).map_ok(|parsed| parsed.demo) ?? Bool.False
+			Err(_) => Bool.False
+		}
+
+	## The tests among `specs`, paths relative to `dir`, in order: every one but
+	## the demos.
+	tests! : Str, List(Str) => List(Str)
+	tests! = |dir, specs| {
+		var $kept = []
+		for spec in specs {
+			if !SpecRun.is_demo!("${dir}/${spec}") {
+				$kept = $kept.append(spec)
+			}
+		}
+		$kept
+	}
 }
 
 ## A word without its leading digits: `351)` is `)`.
@@ -147,4 +171,4 @@ expect SpecRun.portable("@2 obs\n|(window :width 570 :height 351\n|  (text \"fil
 ## Output that never printed the path is left as it was.
 expect SpecRun.portable("|(window :width 360 :height 145)\n", "/home/ci", "<app>") == "|(window :width 360 :height 145)\n"
 
-expect SpecRun.located("specs/a.scm", { pos: { line: 3, column: 5 }, message: "expected one (button \"+\"), saw none" }) == "specs/a.scm:3:5: expected one (button \"+\"), saw none"
+expect SpecRun.located("tests/specs/a.scm", { pos: { line: 3, column: 5 }, message: "expected one (button \"+\"), saw none" }) == "tests/specs/a.scm:3:5: expected one (button \"+\"), saw none"

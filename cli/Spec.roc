@@ -1,5 +1,8 @@
-## Behaviour specs: `specs/<name>.scm`, one `(test "name" (setup …) (steps …))`
-## form each, the surface roc-signals' specs use with native locators.
+## Behaviour specs: `tests/specs/<name>.scm`, one `(test "name" (setup …)
+## (steps …))` form each, the surface roc-signals' specs use with native
+## locators. A `(demo "name" …)` form is the same grammar for a recording:
+## real effects and real waits, so it is parsed with the rest but never run
+## as a test (`Parsed.demo`).
 ##
 ## Everything here is pure, so a spec is parsed and checked on any system
 ## (`macos.roc test --check`). Running one drives AppKit and so needs a
@@ -121,8 +124,9 @@ Spec := [].{
 	## manual clock, offline and never to a speaker (`(audio-clock manual)`).
 	Setup : { pool : U64, time : I64, storage : List((Str, Str)), live : Bool, audio_manual : Bool }
 
-	## A parsed spec.
-	Parsed : { name : Str, setup : Setup, steps : List(Step) }
+	## A parsed spec, and whether it is a demo, `(demo …)`, rather than a
+	## test, `(test …)`.
+	Parsed : { name : Str, demo : Bool, setup : Setup, steps : List(Step) }
 
 	## Parse a spec file's text.
 	parse : Str -> Try(Parsed, Problem)
@@ -132,8 +136,14 @@ Spec := [].{
 			List(xs, p) => (xs, p)
 			other => return Err({ pos: pos_of(other), message: "a spec is one (test \"name\" (steps …)) form" })
 		}
-		match items {
-			[Sym("test", _), Text(name, _), .. as sections] => {
+		(demo, rest) = match items {
+			[Sym("test", _), .. as after] => (Bool.False, after)
+			[Sym("demo", _), .. as after] => (Bool.True, after)
+			_ => return Err({ pos, message: "a spec starts with test: (test \"name\" (steps …)), or a demo with demo: (demo \"name\" (steps …))" })
+		}
+		kind = if (demo) "demo" else "test"
+		match rest {
+			[Text(name, _), .. as sections] => {
 				var $setup = { pool: 0, time: 0, storage: [], live: Bool.False, audio_manual: Bool.False }
 				var $steps = []
 				var $saw_setup = Bool.False
@@ -165,12 +175,12 @@ Spec := [].{
 					}
 				}
 				if !$saw_steps {
-					return Err({ pos, message: "the test has no (steps …) section" })
+					return Err({ pos, message: "the ${kind} has no (steps …) section" })
 				}
-				Ok({ name, setup: $setup, steps: $steps })
+				Ok({ name, demo, setup: $setup, steps: $steps })
 			}
-			[Sym("test", _), other, ..] => Err({ pos: pos_of(other), message: "the test's name is a string" })
-			_ => Err({ pos, message: "a spec starts with test: (test \"name\" (steps …))" })
+			[other, ..] => Err({ pos: pos_of(other), message: "the ${kind}'s name is a string" })
+			[] => Err({ pos, message: "the ${kind} has no name: (${kind} \"name\" (steps …))" })
 		}
 	}
 
@@ -1997,6 +2007,14 @@ expect {
 	run = Spec.read_run("@2 obs\n|mean -12.5\n|p95 40.0\n|lead 20.0\n|offsets -20.0 5.0\n@3 obs\n|dropped 1\n|frames 99\n@done\n")
 	Spec.parse(text).map_ok(|p| (Spec.lower(p), Spec.judge(p, run).map(|x| x.message)))
 		== Ok(("roc-spec 1\n0\ttime\t0\n1\trequire-av-timing\n2\tav-timing\n3\tav-timing\n", ["expected the audio/visual offsets' :lead-at-most 15, saw lead 20.0 (offsets -20.0 5.0)", "expected the frame pacing's :frames-at-least 100, saw frames 99"]))
+}
+
+## A demo is the same grammar under `demo`, marked so runners skip it.
+expect {
+	demo = Spec.parse("(demo \"d\" (setup (live-effects)) (steps (window) (wait 900)))")
+	test = Spec.parse("(test \"t\" (steps (window)))")
+	(demo.map_ok(|p| (p.demo, p.setup.live)), test.map_ok(|p| p.demo), Spec.parse("(demo 1 (steps (window)))").map_err(|p| p.message))
+		== (Ok((Bool.True, Bool.True)), Ok(Bool.False), Err("the demo's name is a string"))
 }
 
 ## A probe matches each channel exactly unless it names a tolerance, in

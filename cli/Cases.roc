@@ -14,23 +14,26 @@ import SpecRun
 ## the app has, its local packages' (such as `logic/`) included. Those run
 ## on any system; the specs need a Mac, Apple silicon or Intel.
 ##
-## `specs/<name>.scm` holds one behaviour spec (`Spec.roc`): steps that drive
-## the real controls without taking focus, and expectations of what the app
-## then shows. `--update` rewrites each spec's `expect-dump` trees with what
-## the run showed and lowers its allocation bounds, and nothing else;
+## `tests/specs/<name>.scm` holds one behaviour spec (`Spec.roc`): steps
+## that drive the real controls without taking focus, and expectations of
+## what the app then shows. A `(demo …)` spec is a recording, with real
+## effects and waits: `--check` parses it, and a run skips it. `--update`
+## rewrites each spec's `expect-dump` trees with what the run showed and
+## lowers its allocation bounds, and nothing else;
 ## `--metrics` prints what each spec measured without judging it; `--check`
 ## only parses every spec, on any system.
 Cases := [].{
 
 	## Where an app keeps its specs.
 	specs : Str
-	specs = "specs"
+	specs = "tests/specs"
 
 	run! : { update : Bool, check : Bool, metrics : Bool } => Try({}, _)
 	run! = |{ update, check, metrics }| {
 		entry = App.entry!()?
 		checked = SpecRun.names(files!(Cases.specs)).map(|name| "${Cases.specs}/${name}")
-		if checked.is_empty() {
+		cases = SpecRun.tests!(".", checked)
+		if cases.is_empty() and !(check and !checked.is_empty()) {
 			return Err(NoCases)
 		}
 		if check {
@@ -61,10 +64,10 @@ Cases := [].{
 		# The specs run this Mac's own program: one build, not two.
 		{ program, .. } = App.compile!(Native(target))?
 		root = Env.cwd!()?.display()
-		total = checked.len()
+		total = cases.len()
 		Stdout.line!("Running ${total.to_str()} specs${if (update) ", rewriting their dumps and allocation bounds" else ""}...")?
 		var $failed = []
-		for spec in checked {
+		for spec in cases {
 			ran = SpecRun.run!({ program: "${root}/${program}", dir: root, spec, update, metrics, args: [], env: [] })?
 			match ran {
 				Measured(lines) => {
@@ -89,7 +92,7 @@ Cases := [].{
 			return Ok({})
 		}
 		if $failed.is_empty() {
-			Stdout.line!(if (update) "Ran ${total.to_str()}, rewriting what they showed: review the change to specs/ before you commit it." else "All ${total.to_str()} passed.")?
+			Stdout.line!(if (update) "Ran ${total.to_str()}, rewriting what they showed: review the change to tests/specs/ before you commit it." else "All ${total.to_str()} passed.")?
 			Ok({})
 		} else {
 			Err(CasesFailed({ failed: $failed, total }))

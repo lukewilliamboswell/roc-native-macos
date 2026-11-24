@@ -1,7 +1,7 @@
 import Spec
 
 ## The pure parts of `scripts/record_demos.roc`: an example's demo, a spec
-## (`demo.scm`), as the `ROC_SPEC` steps the host performs, the window
+## written `(demo …)` in its `tests/specs/`, as the `ROC_SPEC` steps the host performs, the window
 ## number a run prints, the frames' sizes and timings, and the ffmpeg
 ## filters that turn the frames into a tile.
 Demo := [].{
@@ -17,7 +17,7 @@ Demo := [].{
 	## A demo's steps as `ROC_SPEC`: a spec whose first step is `(window)`,
 	## so the recorder learns the window's number, and which ends, as every
 	## spec does, after its last step. A demo is a spec in the same grammar
-	## as `specs/`, usually with `(live-effects)`, so its timers tick and its
+	## as the tests, usually with `(live-effects)`, so its timers tick and its
 	## requests go out in real time while it is recorded.
 	steps : Str -> Try(Str, [Unparsed(Str), NoWindowFirst])
 	steps = |text|

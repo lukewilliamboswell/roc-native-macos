@@ -65,18 +65,18 @@ my-app/
   src/Media.roc      the audio session: commands out, events in
   src/Visual.roc     the drawing surface: a scene in, a picture out
   logic/             lyrics, the queue, presets and scenes: pure Roc, no platform
-  fuzz/main.roc      roc-fuzz targets for the logic package
   assets/            its icon, the default song and its lyrics, and their credits
-  specs/             specs of the app: what its controls do, run by `test`
-  AGENTS.md          how the project is laid out and worked on
+  tests/specs/       specs of the app: what its controls do, run by `test`
+  tests/fixtures/    the songs, lyrics and preset files the specs use
+  tests/fuzz/main.roc  roc-fuzz targets for the logic package, run by `fuzz`
   macos.json         the app's name, bundle identifier and version
 ----
 
-Every module opens with a comment saying what belongs in it, and
-`AGENTS.md` (which `CLAUDE.md` points to) says what Roc owns and what the
-host owns, how state flows, how to add a preset layer type, a widget, a
-panel, a worker or a fuzz target, and the mistakes to avoid, for whoever
-works on the project next, a person or an agent.
+Every module opens with a `##` comment saying what belongs in it and how to
+extend it (a panel, a widget, a worker, a layer kind, a fuzz target): read
+it before changing the module. xref:apps.adoc#work-on-the-starter[Work on
+the starter] says how its state flows, how presets and shaders work, and
+how to ship it without the default song.
 
 [#starter-seams]
 ==== Where the starter meets the platform
@@ -112,10 +112,77 @@ app [main] {
 `logic/main.roc` is a package header, `package [Lyrics, Preset, Queue, ...] {}`,
 so the app imports `logic.Lyrics`; the logic cannot import the platform, which keeps
 it testable with `expect` and fuzzable on any system. `macos.json`,
-`assets/`, `specs/` and `fuzz/` stay at the top of the app's directory; the
+`assets/` and `tests/` stay at the top of the app's directory; the
 tool reads the root module from `src/main.roc` alone. Each release's notes give the platform's URL, so an app
 can also be written and built without the tool (see
 xref:apps.adoc#without-the-tool[Without the tool]).
+
+[#work-on-the-starter]
+==== Work on the starter
+
+How state flows:: A view runs once, when the window opens. An event runs a
+handler, which returns writes; the engine applies them and wakes only the
+views that read what changed.
++
+* State more than one part of the window shares lives in the store
+  (`src/Store.roc`): the queue, the player, the EQ, the preset library, the
+  editor's draft and the lyrics choice. It changes only through decisions,
+  pure functions that return writes, tested with
+  `Store.store.after(writes).read(cell)`.
+* State one piece of the view cares about is local to it, in
+  `Engine.state(initial, |s| ...)`, as a folding section's is; it starts
+  again when that piece is rebuilt.
+* A value that follows from state is not state: `signal.map(...)`, or
+  `Engine.derive` when it is costly or read in several places.
+* Effects (reading a lyric file, saving, a worker job, a player command) are
+  asked for by sites that watch a signal (`Engine.watch_latest`,
+  `Engine.watch_changes`, `Engine.on_post`), and their answers come back as
+  writes (`Engine.react`). Decisions post player commands to the `media`
+  outbox with `Store.send`, at most once a turn; `Media.session` sends them.
+* Rules that need no window go in `logic/`, tested with `expect` and
+  fuzzed. `src/` imports `logic`, never the other way round.
+
+The rules the player keeps:: Each lives in one place. The lyrics choice
+belongs to the player, and survives changing song or preset and a relaunch
+(`logic/Prefs.roc`). A lyric file is read for one queue entry, so a read
+that finishes after the listener moved on never shows on another song. The
+line shown follows the playback position alone (`Store.overlay`), and
+`Media.boundary` sets a timer for the next one. The editor's draft is always
+a valid preset: text that is not lists the fields that need attention, and
+the picture keeps the last valid draft. The picture's sync offset belongs to
+the audio output: the EQ panel's Picture sync sets it for the output
+playing, and Sync Test plays `assets/sync-test.wav` under a ring that
+flashes on each click, to set it by (a flash before its click wants a
+positive offset). The queue holds at most 60 songs, leaving 4 of the
+platform's 64 file handles for lyric and preset files being read.
+
+Presets and shaders:: A preset (`logic/Preset.roc`) is a versioned JSON
+document: a background, ordered layers each with mappings from a sound
+feature to a property, feedback, and optionally its own Metal shaders. A
+layer kind or a mapping target is added in `Preset.roc` and drawn in
+`logic/Scene.roc`, as `Preset.roc`'s opening comment lists; the editor
+offers whatever `Preset.kinds` and `Preset.properties` list. A shader is a
+warp, a composite or both, each one Metal function, `float4 warp(Frame f,
+Params p)` or `float4 composite(Frame f, Params p)`, with up to 16 params it
+reads as `p.NAME`, each fixed or following a sound feature
+(xref:ui.adoc#shaders[Shaders] has the `Frame`, the helpers and the limits).
+Write one in the editor's Warp or Composite area: it draws as you type, and
+a stage that does not compile is named with its line while the surface keeps
+the last good one. Where shaders do not run, the preset's layers and
+feedback are the whole picture, and the window says "Simple visuals". A
+built-in preset is a value in `logic/Library.roc` (or `logic/Gallery.roc`,
+which holds twelve shaded ones to read) added to `Library.builtins`;
+`Library.default` is the one a first launch shows.
+
+The default song:: _Polymorphic Defunctionalization Through Lambda Set
+Specialization_ by Luke Boswell, a song about the PLDI 2023 paper
+https://doi.org/10.1145/3591260[Better Defunctionalization through Lambda
+Set Specialization], is licensed under CC BY 4.0, not under the app's own
+licence: keep `assets/CREDITS.md` with it. Its lyrics and liner notes are at
+https://gist.github.com/lukewilliamboswell/be88b49154f602495f2821a01f995d1f.
+To ship without it, follow `Store.default`'s comment in `src/Store.roc`:
+delete the two `assets/polymorphic-defunctionalization.*` files, their
+credit, and `Store.default`, and start the queue empty.
 
 [#the-tool]
 == The tool's commands
@@ -131,8 +198,8 @@ and `macos.json`:
 | `roc macos.roc build` | build `<name>.app`, universal, on any system; `--target arm64mac` or `--target x64mac` builds it for that Mac alone
 | `roc macos.roc run` | build the app and start it, on a Mac; it takes `--target` as `build` does
 | `roc macos.roc dev` | start the app with `roc src/main.roc`, which reloads it as you save, on a Mac; no `.app`, so `macos.json` and the icon do not apply (xref:apps.adoc#hot-reloading[Hot reloading])
-| `roc macos.roc test` | run the app's `expect` tests (`roc test src/main.roc`, on any system), then build the app for this Mac and run its specs, `specs/*.scm`, on a Mac; `--update` rewrites their dumps with what the app shows now and lowers their allocation bounds, `--metrics` prints what each measured, and `--check` parses them on any system
-| `roc macos.roc fuzz` | build the app's roc-fuzz targets, `fuzz/main.roc`, and run each for 10 seconds, on an Apple silicon Mac or Linux x64 (roc-fuzz has no Intel Mac target); `--check` runs only their declared examples, `--time SECONDS` longer, and target names only those (xref:apps.adoc#fuzz-the-logic[Fuzz the logic])
+| `roc macos.roc test` | run the app's `expect` tests (`roc test src/main.roc`, on any system), then build the app for this Mac and run its specs, `tests/specs/*.scm` but its demos, on a Mac; `--update` rewrites their dumps with what the app shows now and lowers their allocation bounds, `--metrics` prints what each measured, and `--check` parses them on any system
+| `roc macos.roc fuzz` | build the app's roc-fuzz targets, `tests/fuzz/main.roc`, and run each for 10 seconds, on an Apple silicon Mac or Linux x64 (roc-fuzz has no Intel Mac target); `--check` runs only their declared examples, `--time SECONDS` longer, and target names only those (xref:apps.adoc#fuzz-the-logic[Fuzz the logic])
 | `roc macos.roc package` | build the app, sign it and zip it as `dist/<name>-<version>.zip`, on any system; `--sign` and `--notarize` sign it with a Developer ID, and `--target` packages one Mac's build as `dist/<name>-<version>-<target>.zip` (see xref:apps.adoc#ship-your-app[Ship your app])
 | `roc macos.roc ci package`, `ci release` | what the release workflow runs: package the app as the secrets allow, and attach the zip to the pushed tag's GitHub release (see xref:apps.adoc#automate[Let GitHub release it])
 |===
@@ -286,6 +353,39 @@ each panel in one (`Player.scrolled`), as its preset list is, and its
 `small-screen` spec runs it on a 760 by 560 screen with
 `(screen-size W H)`.
 
+[#gotchas]
+=== Things to know
+
+* A store needs at least two cells: a single-field record builder,
+  `{ a: Engine.cell(0) }.Engine.Cells`, builds but fails at run time.
+  `roc test` reports it.
+* Post to an outbox at most once a turn: a decision that sends several
+  commands sends one list.
+* `Engine.watch` and `Engine.watch_changes` never cancel what they asked
+  for. Anything that must stop or restart when its value changes (an
+  interval, a timer, a file read a newer one supersedes) belongs under
+  `Engine.watch_latest`.
+* A builder's text is a signal. A literal works as one; a `Str` value needs
+  `Engine.const(value)`, and state needs `.signal()` or `.map`. A signal
+  from outside a local state or a row enters it with `.lift()`.
+* A dropdown's `choices` and a slider's `range` are fixed when it is built:
+  a list that changes is an `Engine.each` of buttons.
+* An `Engine.each` row's template builds a single element: a widget with
+  local state, an `Engine.when` or a `switch` is not one, so wrap it in a
+  stack.
+* A helper whose parameter is a signal used at two types needs a type
+  annotation; without one the compiler reports two incompatible `map`
+  methods.
+* Roc does not allow shadowing, and a type module's own functions are in
+  scope throughout it, so a local cannot reuse one's name. A type module
+  cannot hold a type of its own name (`Preset.Preset`), nor be named after
+  a builtin. `app` and `where` are keywords. A function with no arguments
+  is `() -> T` in annotations and `|| ...` in definitions.
+* A local package such as `logic/` cannot import the platform: code that
+  needs `pf.` belongs in `src/`.
+* Hot reloading keeps the state the old code built until Command-R: after
+  changing a cell's or a state's type, press Command-R before anything else.
+
 [#assets]
 == Assets and the icon
 
@@ -299,7 +399,7 @@ my-app/
     icon.png        the app's icon
     logo.png
     icons/star.pdf
-  specs/
+  tests/
 ----
 
 Images:: `Ui.asset_image(name, props)` draws `assets/<name>`: a PNG, JPEG,
@@ -375,9 +475,8 @@ The README shows each example running. What each one uses:
 |===
 | Example | Shows
 
-| `starter` | What `init` writes: a music player with a visualizer and lyrics, laid out as a project, with modules in `src/` (a store with decisions and an outbox of player commands, a window composing it, queue, EQ and preset-editor panels, `section`, `confirm_button` and `labelled_slider` widgets with local state, each used more than once), lyric files paired with songs by name and read through the bounded file API, timed lyrics following the position, presets saved to local storage, imported with a bounded read and exported by a worker's file builder and the save panel, an icon, a pure logic package in `logic/` (LRC parsing, the queue, a versioned preset format in JSON with field-level checks, scenes) with `expect` tests, roc-fuzz targets for it in `fuzz/`, the `Audio` session with a default song (`LoadAsset`), and a `Ui.surface` visualizer under a `Ui.overlay` of lyrics, whose presets carry Metal shaders (the visualizer example's twelve among its built-ins) with a Core Graphics fallback
+| `starter` | What `init` writes: a music player with a visualizer and lyrics, laid out as a project, with modules in `src/` (a store with decisions and an outbox of player commands, a window composing it, queue, EQ and preset-editor panels, `section`, `confirm_button` and `labelled_slider` widgets with local state, each used more than once), lyric files paired with songs by name and read through the bounded file API, timed lyrics following the position, presets saved to local storage, imported with a bounded read and exported by a worker's file builder and the save panel, an icon, a pure logic package in `logic/` (LRC parsing, the queue, a versioned preset format in JSON with field-level checks, scenes) with `expect` tests, roc-fuzz targets for it in `tests/fuzz/`, the `Audio` session with a default song (`LoadAsset`), and a `Ui.surface` visualizer under a `Ui.overlay` of lyrics, whose presets carry Metal shaders (the visualizer example's twelve among its built-ins) with a Core Graphics fallback
 | `counter` | Local state (`Engine.state`), icon buttons, a large monospaced readout
-| `arith` | Rows of numbers recomputed from a count on each click: `U128` and `I128` multiplication, division, remainder, shifts, bit counts and powers, `Dec` arithmetic and rounding, `F64` and `F32` maths, and conversions between them and strings; the platform's checks build it every way `roc build` can
 | `todos` | A store with a table, `table_view` rows (row templates) in a `Ui.scroll` inside a `box`, a form with Return-to-submit, a segmented filter, a Command-N shortcut, done rows greyed by `text_s`, an empty state, a shared `Theme`, saving to local storage and reading it back at boot, and `expect` tests
 | `gallery` | `tabs` over labelled sections: a dropdown, a slider and progress bar, a text area, text styles, semantic and adaptive colours, SF Symbols, Command-N/Command-K shortcuts
 | `contacts` | 10,000 generated rows in a sidebar `Ui.table_list` (`NSTableView`, drawing only the rows near those in sight), a search field filtering through the list's query, a detail pane for the selected row
@@ -412,7 +511,7 @@ roc macos.roc dev
 
 `dev` runs it from the build directory, `.macos/`, because Roc's watcher
 makes a `.zig-cache/` directory in the directory it runs in, for the list of
-files it watches; run yourself, `roc src/main.roc` makes it where you run it,
+files it watches (https://github.com/roc-lang/roc/issues/13420[roc-lang/roc#13420]); run yourself, `roc src/main.roc` makes it where you run it,
 and the `.gitignore` `init` writes leaves it out. The bare program finds its
 images in `assets/` of the app's directory, as the `.app` does: `dev` sets
 `ROC_ASSETS` to it, unless you have. `macos.json` and the icon belong to the
@@ -456,8 +555,14 @@ pure, and test them there: `Store.store.after(writes).read(cell)` is the
 state after the writes, with no window.
 
 `roc macos.roc test` runs those `expect` tests, then the app's specs: each
-`specs/<name>.scm` holds one behaviour spec, steps a person could take and
-what the app should then show.
+`tests/specs/<name>.scm` holds one behaviour spec, steps a person could take
+and what the app should then show. Files a spec opens or drops live in
+`tests/fixtures/`, and its steps name them relative to the app's directory,
+as `(files "tests/fixtures/song.wav")`. A spec written `(demo "name" …)` in
+place of `(test "name" …)` is a demo: the same grammar, usually with
+`(live-effects)` and real `wait`s, to show the app or record it. `test
+--check` parses a demo, and `test` never runs one, since its timing is
+real.
 
 [source,scheme]
 ----
@@ -489,8 +594,8 @@ or showing the crash alert, and prints what each expectation looks at; the
 tool compares, and a failure names the spec's file, line and column:
 
 ----
-FAIL specs/increment.scm
-  specs/increment.scm:9:5: expected one (text "3"), saw none; the nearest are "2", "+", "−"
+FAIL tests/specs/increment.scm
+  tests/specs/increment.scm:9:5: expected one (text "3"), saw none; the nearest are "2", "+", "−"
 ----
 
 A spec is one `(test "name" …)` form: an optional `(setup …)`, then
@@ -530,7 +635,7 @@ mismatch names the first node that differs by its path, its kind and place
 among its parent's nodes from 1:
 
 ----
-specs/increment.scm:11:5: at window/vstack#1/vstack#1/hstack#3/button#2: expected "Rest", saw "Reset"
+tests/specs/increment.scm:11:5: at window/vstack#1/vstack#1/hstack#3/button#2: expected "Rest", saw "Reset"
 ----
 
 `roc macos.roc test --update` rewrites each `expect-dump` with what the app
@@ -812,7 +917,7 @@ units, each transform, save and restore, as `(surface "Visualizer" :width
 With `(audio-clock manual)` in the setup, the playback session (`Audio`)
 renders offline at 48 kHz, never to a speaker, and only `render` moves it,
 so its reports are the same on every run. Its fixtures, such as the player
-example's `specs/fixtures/*.wav`, are generated by
+example's `tests/fixtures/*.wav`, are generated by
 `scripts/audio_fixtures.roc`.
 
 [cols="1,3",options="header"]
@@ -869,7 +974,7 @@ orange pen, or draw with an explicit colour.
 
 A visualization should move with what the listener hears. The platform
 measures it end to end: play a click track (the visualizer's
-`specs/fixtures/sync-clicks.wav`, a 5 ms burst every 500 ms, made by
+`tests/fixtures/sync-clicks.wav`, a 5 ms burst every 500 ms, made by
 `scripts/audio_fixtures.roc`) through a preset that flashes with the level
 (the visualizer's Sync Test, or the starter's), and the host times each click
 as it is heard and each flash as it reaches the screen:
@@ -899,7 +1004,7 @@ otherwise:
     (frame-clock display)
     (choose "Gallery")
     (choose "Sync Test")
-    (files "specs/fixtures/sync-clicks.wav")
+    (files "tests/fixtures/sync-clicks.wav")
     (wait 500)
     (mark-av-timing)
     (wait 6000)
@@ -960,7 +1065,7 @@ as in `ROC_APPEARANCE=dark roc macos.roc run`.
 
 https://github.com/lukewilliamboswell/roc-fuzz[roc-fuzz] checks a property
 of pure Roc code against inputs it generates and mutates, with coverage
-feedback. `fuzz/main.roc` is an app on roc-fuzz's platform that imports the
+feedback. `tests/fuzz/main.roc` is an app on roc-fuzz's platform that imports the
 logic package as `src/main.roc` does, and declares its targets:
 
 [source,roc]
@@ -980,7 +1085,7 @@ json_round_trip = Fuzz.target_with({
 })
 ----
 
-`roc macos.roc fuzz` builds it with `roc build --fuzz fuzz/main.roc` into
+`roc macos.roc fuzz` builds it with `roc build --fuzz tests/fuzz/main.roc` into
 `.macos/fuzz` and runs each target in turn for 10 seconds, keeping the
 inputs worth revisiting in `.roc-fuzz/corpus/<target>`;
 `roc macos.roc fuzz lrc-parse --time 300` runs one target for longer, and
@@ -1107,7 +1212,7 @@ git push origin v1.0.0
 
 Each of its steps is one command: the workflow runs the app's `expect`
 tests and specs on a macOS runner (`roc macos.roc test`) and, when
-it has `fuzz/main.roc`, its fuzz targets' examples
+it has `tests/fuzz/main.roc`, its fuzz targets' examples
 (`roc macos.roc fuzz --check`), then packages the app on
 Linux (`roc macos.roc ci package`), and attaches `<name>-1.0.0.zip` to the
 tag's GitHub release, creating the release if there is none

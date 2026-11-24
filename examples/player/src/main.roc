@@ -57,7 +57,7 @@ view = || {
 					Ui.text("Player", { style: Title2, weight: Semibold }),
 					Ui.spacer(),
 					Ui.button("Play Sample", { on_press: Engine.handle_by(cells.track.signal(), |track, _| sample(track + 1, "sample.wav")), icon: Symbol("music.note.list") }),
-					Ui.button("Escape Assets", { on_press: Engine.handle_by(cells.track.signal(), |track, _| sample(track + 1, "../specs/fixtures/clicks.wav")), size: Small }),
+					Ui.button("Escape Assets", { on_press: Engine.handle_by(cells.track.signal(), |track, _| sample(track + 1, "../tests/fixtures/clicks.wav")), size: Small }),
 					Ui.file_button("Choose Audio…", { on_files: Engine.handle_by(cells.track.signal(), received), icon: Symbol("waveform") }),
 				],
 			),

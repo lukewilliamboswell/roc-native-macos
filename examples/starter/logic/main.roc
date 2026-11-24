@@ -1,7 +1,7 @@
 ## The player's logic, as a package of its own: pure Roc, with no
 ## platform. The app names it in its header (`logic: "../logic/main.roc"`
 ## in `src/main.roc`) and imports its modules as `logic.Lyrics` and
-## `logic.Queue`; the fuzz targets in `fuzz/main.roc` import it the same
+## `logic.Queue`; the fuzz targets in `tests/fuzz/main.roc` import it the same
 ## way, under roc-fuzz's platform instead of this one.
 ##
 ## - `Lyrics`: LRC and plain-text lyrics, and the line at a position.

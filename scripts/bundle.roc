@@ -232,7 +232,7 @@ package_app! = |dir| {
 			return Err("the packaged my-app.app's Info.plist does not hold ${line}, for the tag v1.0.0-rc.1")
 		}
 	}
-	spec = "specs/${Bundle.package_case}.scm"
+	spec = "tests/specs/${Bundle.package_case}.scm"
 	note!("RUN the extracted my-app.app/Contents/MacOS/my-app with ${spec}")
 	passes!({ program: "${extracted_app}/Contents/MacOS/my-app", dir: app_dir, spec, update: Bool.False, metrics: Bool.False, args: [], env: [] }, "the extracted my-app.app's program")?
 	workflow = "${app_dir}/.github/workflows/release.yml"
@@ -246,7 +246,7 @@ package_app! = |dir| {
 
 ## The repository's example with assets, as an author would have it beside
 ## the tool: `src/main.roc` naming the served bundle, `assets/` and
-## `specs/`.
+## `tests/specs/`.
 ## `macos.roc build` and `test` it, check the bundle it made, and run its
 ## spec on the program inside the bundle, then under `macos.roc dev`.
 assets_app! : Str, Str, Str => Try({}, Str)
@@ -256,12 +256,12 @@ assets_app! = |root, dir, url| {
 	cache = "${dir}/cache"
 	source = Path.read_utf8!(Path.utf8("${root}/examples/${name}/src/main.roc")) ? |error| "could not read examples/${name}/src/main.roc: ${Str.inspect(error)}"
 	served = Bundle.released_main(source, url) ? |_| "examples/${name}/src/main.roc does not name ../../../platform/main.roc"
-	for sub in ["specs", "src"] {
+	for sub in ["tests/specs", "src"] {
 		Path.create_all!(Path.utf8("${app_dir}/${sub}")) ? |error| "could not create ${app_dir}/${sub}: ${Str.inspect(error)}"
 	}
 	Path.write_utf8!(Path.utf8("${app_dir}/src/main.roc"), served) ? |error| "could not write ${app_dir}/src/main.roc: ${Str.inspect(error)}"
 	Path.copy_dir!(Path.utf8("${root}/examples/${name}/assets"), Path.utf8("${app_dir}/assets")) ? |error| "could not copy examples/${name}/assets: ${Str.inspect(error)}"
-	spec = "specs/${Bundle.assets_case}.scm"
+	spec = "tests/specs/${Bundle.assets_case}.scm"
 	Path.copy!(Path.utf8("${root}/examples/${name}/${spec}"), Path.utf8("${app_dir}/${spec}")) ? |error| "could not copy ${spec}: ${Str.inspect(error)}"
 	Path.copy!(Path.utf8("${dir}/macos.roc"), Path.utf8("${app_dir}/macos.roc")) ? |error| "could not copy macos.roc: ${Str.inspect(error)}"
 	for command in ["build", "test"] {

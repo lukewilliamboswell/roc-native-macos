@@ -21,7 +21,7 @@ It is a harness, not an example. The gate's `bench` stage builds it and runs
 `run.sh --smoke`: a 4×4 grid and a 12-move sweep, which fails unless the
 cells were hovered and every trail timer has cooled. That keeps it from going
 stale without putting any load on the gate. The specs beside it,
-`specs/grid-20.scm` and `specs/grid-60.scm`, then count the work with the
+`tests/specs/grid-20.scm` and `tests/specs/grid-60.scm`, then count the work with the
 same bounds at 400 and 3,600 cells: three hovers emit three commands and
 create no element, and their three cooling timers cool three cells, so a
 turn whose work grows with the cells fails. `--smoke` also reports how
@@ -179,8 +179,8 @@ at 250,000). The `--smoke` mount-scaling check guards it.
 
 The engine's turn was linear in the grid (fixed):: Each turn copied the
 root site's child list (a 2.4 MB `memcpy` at 10,000 cells, 2.5 ms a hover),
-because an erased call borrowed the site's captures. roc-signals#307
-(`patches/roc-compiler` "erased-captures") fixed it:
+because an erased call borrowed the site's captures
+(https://github.com/roc-lang/roc/issues/13374[roc-lang/roc#13374]). roc-signals#307 fixed it:
 a hover's engine time is 0.1 ms (p50) at every size measured, up to
 250,000 cells, and the `--smoke` turn-scaling check guards it.
 

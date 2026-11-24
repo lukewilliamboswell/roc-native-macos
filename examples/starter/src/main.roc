@@ -20,7 +20,7 @@ import Store
 ## `src/Media.roc` and `src/Visual.roc` are the only modules that speak to
 ## them, through the platform's `Audio` session and `Ui.surface`.
 ##
-## Where things are (`AGENTS.md` says more):
+## Where things are (the platform manual's "Build an app" says more):
 ##
 ## - `src/main.roc`: this file, the program: its store, its view and its
 ##   workers. The header names the platform (`pf`) and the logic package.
@@ -34,9 +34,10 @@ import Store
 ##   surface.
 ## - `logic/`: lyrics, the queue, presets and scenes, a package of pure Roc
 ##   with no platform.
-## - `fuzz/main.roc`: roc-fuzz targets for the logic package.
 ## - `assets/`: images the app draws; `assets/icon.png` is its icon.
-## - `specs/`: specs of the app (`roc macos.roc test`).
+## - `tests/`: specs of the app in `tests/specs/` (`roc macos.roc test`),
+##   the files they use in `tests/fixtures/`, and roc-fuzz targets for the
+##   logic package in `tests/fuzz/main.roc` (`roc macos.roc fuzz`).
 ##
 ## State flows one way: an event runs a handler, which returns writes
 ## (decisions in `Store`, or a local state's update); the engine applies
