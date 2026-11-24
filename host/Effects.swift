@@ -31,6 +31,10 @@ extension Host {
             }
         case 5, 6, 7, 20, 22: // subscriptions this host never fires
             break
+        case 9: // a port call (Ports.swift)
+            ports.call(id: id, &r)
+        case 10: // a port subscription (Ports.swift)
+            ports.subscribe(id: id, &r)
         case 8: // a worker task's job (Workers.swift)
             startWork(id: id, &r)
         case 11, 13, 14: // file read, digest and URL (Files.swift)
@@ -48,6 +52,7 @@ extension Host {
         if let timer = timers.removeValue(forKey: id) { timer.invalidate(); return }
         if cancelFileJob(id) { return }
         if cancelWork(id) { return }
+        if ports.cancel(id) { return }
         _ = cancelHttp(id: id)
     }
 
@@ -58,6 +63,8 @@ extension Host {
         cancelAllHttp()
         for id in Array(files.jobs.keys) { cancelFileJob(id) }
         teardownWorkers()
+        ports.teardown()
+        AudioSurfaceSources.unregister()
     }
 
     func makeHttpTransport() -> HttpTransport {

@@ -34,6 +34,10 @@ final class Host: NSObject, NSTextFieldDelegate {
     let files = Files()
     /// Worker threads and the jobs they run (Workers.swift).
     let work = WorkPool()
+    /// The program's ports and the native services behind them (Ports.swift).
+    let ports = PortHost()
+    /// The playback session behind `Audio` (Audio.swift).
+    lazy var audio = AudioService(host: self)
     var byView: [ObjectIdentifier: Node] = [:]
     /// Nodes whose view needs its children or text refreshed after a batch.
     var dirty: [Node] = []
@@ -81,13 +85,22 @@ final class Host: NSObject, NSTextFieldDelegate {
             content.widthAnchor.constraint(greaterThanOrEqualToConstant: 320),
         ])
         window.contentView = content
+        ports.deliver = { [weak self] id, payload in self?.send(EngineInstance.effectNode, id, payload) }
+        ports.serve(audio)
+        AudioSurfaceSources.register(audio)
     }
 
     func start() {
         let v = engine.version
         if v != 23 { fatal("engine speaks protocol \(v), this host speaks 23") }
         bench?.begin(.mount)
-        timed(.mount) { engine.mount() }
+        timed(.mount) {
+            let batch = engine.mount()
+            // The ports are checked before the mount batch, which may
+            // already subscribe to them, is applied.
+            ports.declare(engine.declaredPorts)
+            return batch
+        }
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .keyUp]) { [weak self] event in
             guard let self, event.window === self.window else { return event }
             return self.key(event) ? nil : event
@@ -330,6 +343,8 @@ final class Host: NSObject, NSTextFieldDelegate {
                 default: break
                 }
                 if [1, 3, 5].contains(op), let view = target?.view { window.makeFirstResponder(view) }
+            case 19: // PORT port message (Ports.swift)
+                ports.command(&r)
             case 20: // SAVE token start len name
                 let token = r.u64(), start = r.u64(), len = r.u64(), name = r.str()
                 save(token: token, start: start, len: len, name: name)
@@ -358,6 +373,9 @@ final class Host: NSObject, NSTextFieldDelegate {
                 n.id = id
                 nodes[id] = n
                 insert(n, parent: parent, before: before)
+            case 27: // UNSENT port reason: a command nested past the port format's bound
+                let port = r.str(), reason = r.u8()
+                say("port \(port): a command was not sent (reason \(reason): its value nests more than 512 deep)")
             case 28: // STARTUP mode entry
                 _ = r.u8(); _ = r.u32()
             case 29: // STARTUP_ACK

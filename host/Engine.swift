@@ -21,7 +21,14 @@ final class EngineInstance {
 
     /// Mount with the boot facts the declarations ask for; returns the
     /// mount batch.
-    func mount() -> [UInt8] { take(Roc.initForHost(.ownedBytes(bootBytes(declarations())))) }
+    func mount() -> [UInt8] {
+        let d = declarations()
+        declaredPorts = d.ports
+        return take(Roc.initForHost(.ownedBytes(bootBytes(d))))
+    }
+
+    /// The ports the program declared, read at mount.
+    private(set) var declaredPorts: [PortDeclaration] = []
 
     /// Teardown (`roc_engine_drop`), once: the state and both buffers move
     /// into Roc. Later calls do nothing.

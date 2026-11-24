@@ -32,7 +32,8 @@ It provides `roc_engine_keys`, `roc_engine_init`, `roc_engine_event`,
 `roc_engine_version` for the page's instance, and `roc_engine_work`,
 `roc_engine_prepare`, `roc_engine_ask` and `roc_engine_forget` for worker
 instances (xref:architecture.adoc#workers[Workers]), with the `roc_task_*`
-hosted functions a job calls. It has no ports or crypto.
+hosted functions a job calls. It has no crypto, and its ports are the ones
+`platform/Audio.roc` declares (xref:architecture.adoc#ports[Ports]).
 `roc_engine_keys` returns the engine's declarations without roc-signals'
 section 12 (protocol facts): that CBOR item needs the cbor package and
 `ProtocolFacts`, and this host binds no roles from it.
@@ -56,7 +57,9 @@ vocabulary produces:
 * local storage, via `UserDefaults`, and session storage, in memory for the
   life of the process;
 * files: handles, reads (`FX` 11), digests (13), URLs (14) and `SAVE` (see
-  xref:architecture.adoc#files[Files]).
+  xref:architecture.adoc#files[Files]);
+* ports: `PORT` commands and `FX` subscriptions (kind 10), served by native
+  services (xref:architecture.adoc#ports[Ports]).
 +
 It keeps a node tree mirroring what the engine built and gives each `ui-*`
 element one AppKit view (`ui-hover` lends its place to its child's). It routes AppKit actions back as turns: `click`,
@@ -513,6 +516,129 @@ browser, Roc learns nothing of the outcome; it is reported on stderr.
 
 Not built: uploads (`FX` 12), fetched files (`FX` 15) and pasted files.
 
+[#ports]
+== Ports
+
+A typed port (roc-signals' `Port`) is the engine's supported bridge for a
+service the platform does not model itself: in a browser the page's
+JavaScript supplies it, here a native service in the host. The engine does
+the typing: a port's values cross as JSON in roc-signals' `PortJson` format,
+derived from the app's types, with an `Engine.File` as a marker
+(`{"$file":N}`) that names a file token carried beside the text. Nothing in
+the engine is changed for it.
+
+Declarations:: `Program.with_ports` puts the ports in declaration section 5
+(`n:u32 (name:str kind:u8 delivery:u8 bound:u32)*`). At mount, before the
+mount batch is applied, the host checks every declared port against the
+services it has (`PortHost.declare`, `host/Ports.swift`): a port it does not
+serve, or serves in another shape, is a fatal error, as the browser runtime
+refuses to mount a page whose handlers do not match.
+Commands:: `PORT` (opcode 19, `port:str message`) reaches the service while
+the batch is applied, on the main thread, in stream order with the batch's
+other commands. A message is `json:str nblobs:u32 (len:u32 bytes)* nfiles:u32
+(token:u64 start:u64 len:u64)*`; the service resolves a file token through
+the handle table then and there and keeps its own copy of the `FileEntry`.
+`UNSENT` (27), a command nested past the format's bound, is reported on
+stderr, as the browser reports it to the console.
+Subscriptions:: `FX` kind 10 (`port:str message`) opens one under the
+effect's id, and `CANCEL` (the site disposed, or a `watch_latest` moving on)
+ends it: the service is told, and nothing more is delivered to it. A service
+emits a message as JSON (`PortHost.emit`); it waits in the host by the
+port's declared delivery, `Latest` keeping only the newest, `Every(n)` up to
+`n` and refusing more, and each is delivered as result tag 14 (`json:str
+nblobs:u32 nfiles:u32`, no files), one turn each, from the main queue: never
+inside a batch, and never to a subscription that ended while it waited.
+`PortFailed(Closed)` (tag 15, class 3) ends one from the host's side.
+Calls:: `FX` kind 9 is a fatal error: no service is a call.
+Teardown:: quit and reload call every service's `teardown`, after the open
+subscriptions are forgotten.
+
+[#audio]
+== Audio
+
+The playback session (`host/Audio.swift`) serves `platform/Audio.roc`'s four
+ports: `roc-native-macos/audio/command` (a command), `…/events` (a
+subscription, `Every(64)`), `…/status` and `…/analysis` (subscriptions,
+`Latest`). The API is in xref:ui.adoc#audio[the Ui reference].
+
+[mermaid]
+....
+flowchart LR
+    F["AVAudioFile"] --> P["AVAudioPlayerNode"] --> E["AVAudioUnitEQ (10 bands)"] --> M["main mixer: volume"] --> O["output"]
+    E -- "installTap, after the EQ, before the volume" --> T["preallocated chunk ring"] --> W["analysis worker: vDSP FFT"] --> H["snapshot history"]
+    H --> R["Audio.analysis (Latest)"]
+    H --> S["SurfaceSource: audio.*"]
+....
+
+Graph:: One `AVAudioEngine` with an `AVAudioPlayerNode`, an `AVAudioUnitEQ`
+and the main mixer, connected at the source's own format, so the EQ and the
+measurements run at the source's rate and the mixer converts to the
+output's. A source of another format gets a fresh engine, player and EQ
+(with the same settings), so node times start at zero again and nothing the
+old graph scheduled can reach the new one.
+Loading:: `Load` copies the file's entry and opens it as an `AVAudioFile` on
+the file jobs' queue, off the main thread; the result hops back with
+`DispatchQueue.main.async` and is kept only if no later command superseded
+it. Core Audio's status codes name the error (`typ?` and `fmt?` are
+`Unsupported`, anything else `Corrupt`).
+Generations:: Every load, seek, stop and restart is a new generation. Each
+scheduled segment's `.dataPlayedBack` completion captures its generation and
+hops to the main thread, where it ends the source only if that generation is
+still current and has not ended: an old completion, such as the one
+`AVAudioPlayerNode.stop` fires for the segment a seek replaces, is dropped,
+and `Ended` is sent once.
+The timeline:: The position is the player's own timeline (`playerTime(forNodeTime:
+lastRenderTime)`, which a pause holds) after the segment's start frame; while
+paused or stopped it is the cursor the host keeps. A seek stops the player,
+schedules the segment from the target frame, and starts it again only if it
+was playing. The player always starts at an explicit node time (the last
+render time plus 2048 frames under a real output, about 46 ms at 44.1 kHz),
+so the tap knows where every rendered frame sits on the source timeline
+without asking the player.
+Analysis:: An opt-in `installTap` on the EQ's output while a consumer holds
+it: an `Audio.analysis` subscription, or a native source sampled within the
+last second. The tap block copies each buffer into a ring of 4 preallocated
+chunks of up to 8192 frames and 2 channels and returns: it tries the ring's
+`os_unfair_lock` a bounded number of times and never blocks (a buffer that
+finds it held is dropped), calls nothing of AVFAudio's (asking the player
+from the tap deadlocks against `AVAudioPlayerNode.stop` on the main thread,
+which waits for the tap), and overwrites the oldest chunk when the worker
+is behind. A worker `Thread` takes chunks, keeps a rolling 2048-sample
+window, and every 512 samples measures it with Accelerate (`vDSP_measqv`,
+`vDSP_maxmgv`, `vDSP_hann_window`, `vDSP_ctoz`, `vDSP_fft_zrip`,
+`vDSP_zvmags`): levels, 24 band energies (each band takes the share of
+every FFT bin its range overlaps, so the bands narrower than a bin below
+about 160 Hz still read the energy there) and the waveform. A snapshot
+(generation, window-centre frame, levels, bands, a 32-point envelope and a
+1024-point waveform) goes into a history of 32 under its own lock, which
+readers copy. A new generation clears the ring and the history. The last
+consumer's going removes the tap and stops the worker.
+Publication:: The status and the snapshot nearest the playhead are emitted
+on timers at the smallest interval their subscribers asked for, only while
+playing, and on every transport change. A native consumer samples the
+history directly (`AudioSurfaceSources`): `latest(at:)` picks the snapshot
+nearest the audible playhead (the position, extrapolated to the frame time
+when within 100 ms of now, less the output's presentation latency), and
+every transport change calls `SurfaceSources.changed` for the `audio.*`
+names. None of this runs Roc off the main thread or waits on a consumer.
+Timing:: On an Apple silicon Mac with its built-in output, the tap delivers
+100 ms chunks (2205 frames at 22.05 kHz, 4410 at 44.1 kHz, 4800 at 48 kHz)
+whatever buffer size is asked for, so the newest snapshot trails the render
+position by up to about 100 ms; the output's presentation latency was 2 ms.
+Drawing the snapshot nearest the audible playhead therefore lags the sound
+by up to one chunk.
+The manual clock:: A scripted `audio:manual` enables
+`enableManualRenderingMode(.offline)` at 48 kHz stereo: nothing plays to a
+device, and only `audio:render:<ms>` advances the clock, in 1024-frame
+renders, after which the host waits (at most 2 s) for the tap to deliver
+every whole chunk rendered and the worker to measure it, then publishes.
+`.dataPlayedBack` completions do not fire in this mode, so a render that
+reaches the end ends the source itself, through the same generation check.
+The node times follow from the frames rendered, so every recorded case
+prints the same on every run.
+Teardown:: quit and reload stop the player, remove the tap, stop the worker
+and the engine, and forget the file.
+
 [#workers]
 == Workers
 
@@ -765,8 +891,11 @@ through `roc main.roc`, so a run mode the stubs cannot link fails the gate.
 Swift is compiled with `-disable-autolink-frameworks` and
 `-disable-force-load-symbols`, so the frameworks linked are exactly the
 catalog's. Roc then links each `X.framework/X.tbd` it finds. The resulting
-binaries load only `AppKit`, `Foundation`, `CoreGraphics`, `libSystem`,
-`libobjc` and the Swift runtime and overlays in `/usr/lib/swift`.
+binaries load only `AppKit`, `Foundation`, `CoreGraphics`, `AVFAudio`,
+`Accelerate`, `libSystem`, `libobjc` and the Swift runtime and overlays in
+`/usr/lib/swift`. `Accelerate`'s stub lists the vDSP functions under the
+umbrella's install name, which re-exports vecLib's `libvDSP` where they are
+defined.
 
 A Swift symbol's evidence is the declaration it mangles (Swift's
 `docs/ABI/Mangling.rst`), named by the open-source demangler, in the module

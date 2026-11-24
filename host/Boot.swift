@@ -15,6 +15,8 @@ struct Declarations {
     /// The whole section 14 body: profile 0 is `[0]`; profile 1 carries the
     /// declared mount root, which the boot's section 13 must then match.
     var startup: [UInt8] = [0]
+    /// Section 5: the ports the program declares (Ports.swift).
+    var ports: [PortDeclaration] = []
 
     init(_ bytes: [UInt8]) {
         var r = Reader(bytes)
@@ -25,7 +27,7 @@ struct Declarations {
             seen.append(tag)
             switch tag {
             case 2: localKeys = (0..<body.u32()).map { _ in body.str() }
-            case 5: continue  // ports: this host has none
+            case 5: ports = (0..<body.u32()).map { _ in PortDeclaration(name: body.str(), kind: body.u8(), delivery: body.u8(), bound: body.u32()) }
             case 6: mediaQueries = (0..<body.u32()).map { _ in body.str() }
             case 10: zoneDays = body.u16()
             case 11: sessionKeys = (0..<body.u32()).map { _ in body.str() }
