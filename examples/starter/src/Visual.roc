@@ -24,7 +24,7 @@ Visual := [].{
 
 	## How tall the visualization is when the window opens.
 	height : U32
-	height = 280
+	height = 332
 
 	## The picture with the words over it, filling the width. `reset` is the
 	## session's generation: a new one clears the trail.
