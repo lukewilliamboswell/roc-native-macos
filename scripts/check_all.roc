@@ -24,10 +24,11 @@ import src/Repo
 ## - `engine`: the engine facades in platform/ are what the roc-signals
 ##   engine package `platform/main.roc` names gives
 ##   (`scripts/build.roc -- engine --check`).
-## - `fmt`: `roc fmt --check` over the platform, glue, examples and the
-##   `macos.roc` tool (`cli/`), and `roc-stable fmt --check` over the scripts.
+## - `fmt`: `roc fmt --check` over the platform, glue, examples, the matrix
+##   fixtures (`tests/matrix/`) and the `macos.roc` tool (`cli/`), and
+##   `roc-stable fmt --check` over the scripts.
 ## - `scripts`: the scripts' `expect` tests.
-## - `specs`: every spec under `examples/` and `bench/` parses
+## - `specs`: every spec under `examples/`, `bench/` and `tests/matrix/` parses
 ##   (`Spec.parse`), on any system, demos (`(demo …)`) included.
 ## - `tool`: `cli/Bundle.roc` is what `scripts/src/Release.roc` generates for
 ##   a checkout (`tool --update` writes it), `scripts/src/Spec.roc` and
@@ -55,13 +56,15 @@ import src/Repo
 ##   (`bench/<name>/tests/specs/*.scm`): the work a turn does, counted, at two
 ##   sizes. Its timings are only reported.
 ## - `matrix`: every build an author can ask `roc build` for. Each of
-##   `Repo.matrix_examples` (`arith` and `workers`) built with every `--opt`
-##   (`speed`, `size`, `dev`, `interpreter`) and `--specialize` for this
-##   Mac's own target, each build running the example's one spec, then
-##   `arith` with every `--opt` but `interpreter` (which builds only for the
-##   native target) for the other Mac targets, `x64v1mac` among them:
-##   linked, and run too where this Mac runs them (`x64v1mac` under
-##   Rosetta, or on an Intel Mac). Its programs go to `build/matrix/`.
+##   `Repo.matrix_apps` (the fixture `tests/matrix/arith` and the example
+##   `workers`) built with every `--opt` (`speed`, `size`, `dev`,
+##   `interpreter`) and `--specialize` for this Mac's own target, each
+##   build running the app's specs, then `arith` with every `--opt` but
+##   `interpreter` (which builds only for the native target) for the other
+##   Mac targets, `x64v1mac` among them: linked, and run too where this Mac
+##   runs them (`x64v1mac` under Rosetta, or on an Intel Mac). Its programs
+##   go to `build/matrix/`. `matrix --update` rewrites the apps' dumps from
+##   each one's first build that runs.
 ## - `bundle`: the platform bundle from the inputs `build` made, and an
 ##   author's first steps against it with the `macos.roc` tool: `init`,
 ##   `build`, `test` and (but on an Intel Mac) `fuzz --check` the starter app
@@ -135,7 +138,7 @@ run_stage! = |stage, update, colour|
 		"test" => test!()
 		"examples" => examples!(update, colour)
 		"bench" => bench!(update)
-		"matrix" => matrix!(colour)
+		"matrix" => matrix!(update, colour)
 		"bundle" => run!("roc-stable", ["scripts/bundle.roc", "--", "--prebuilt", "--test"])
 		_ => Ok(["no such stage"])
 	}
@@ -164,7 +167,7 @@ pins! = || {
 
 fmt! : Bool => Try(List(Str), _)
 fmt! = |colour| {
-	sources = tracked!(["platform", "glue", "examples", "bench", "cli"])?.keep_if(|path| path.ends_with(".roc"))
+	sources = tracked!(["platform", "glue", "examples", "bench", "cli", Repo.matrix_fixtures])?.keep_if(|path| path.ends_with(".roc"))
 	var $checked = []
 	for path in sources {
 		match Repo.fmt_skip(path) {
@@ -176,7 +179,7 @@ fmt! = |colour| {
 	}
 	sources_fmt = run!("roc", ["fmt", "--check"].concat($checked))?
 	scripts = run!("roc-stable", ["fmt", "--check"].concat(tracked!(["scripts"])?.keep_if(|path| path.ends_with(".roc"))))?
-	note!("${$checked.len().to_str()} of ${sources.len().to_str()} platform, glue, example and tool sources checked")
+	note!("${$checked.len().to_str()} of ${sources.len().to_str()} platform, glue, example, fixture and tool sources checked")
 	Ok(sources_fmt.concat(scripts))
 }
 
@@ -202,11 +205,11 @@ tool! = |update| {
 	Ok($problems.concat(run!("roc", ["test", "cli/main.roc"])?))
 }
 
-## Every spec under `examples/` and `bench/` parses, with its problem at
-## its file, line and column when it does not.
+## Every spec under `examples/`, `bench/` and `tests/matrix/` parses, with
+## its problem at its file, line and column when it does not.
 specs! : () => Try(List(Str), _)
 specs! = || {
-	found = tracked!(["examples", "bench"])?.keep_if(|path| path.ends_with(".scm"))
+	found = tracked!(["examples", "bench", Repo.matrix_fixtures])?.keep_if(|path| path.ends_with(".scm"))
 	var $problems = []
 	for path in found {
 		match SpecRun.check!(".", path) {
@@ -379,14 +382,15 @@ examples! = |update, colour| {
 }
 
 ## Every build an app author can ask `roc build` for: each of
-## `Repo.matrix_examples` built with every `--opt` and `--specialize` for
-## every Mac target, or for this Mac's own (`Repo.matrix`), into
-## `build/matrix/`. A build for a target this Mac runs (natively, or
-## `x64v1mac` under Rosetta) also runs the example's one spec; the others
-## are linked only. A link is where a library call the catalog does not own
-## fails.
-matrix! : Bool => Try(List(Str), _)
-matrix! = |colour| {
+## `Repo.matrix_apps` built with every `--opt` and `--specialize` for every
+## Mac target, or for this Mac's own (`Repo.matrix`), into `build/matrix/`.
+## A build for a target this Mac runs (natively, or `x64v1mac` under
+## Rosetta) also runs the app's specs; the others are linked only. A link
+## is where a library call the catalog does not own fails. With `update`,
+## an app's first build that runs rewrites its specs' dumps, and every
+## later build is judged against them.
+matrix! : Bool, Bool => Try(List(Str), _)
+matrix! = |update, colour| {
 	root = Env.cwd!()?.display()
 	intel = intel!()
 	# Rosetta runs x86-64 programs on Apple silicon when it is installed.
@@ -398,28 +402,40 @@ matrix! = |colour| {
 	builds = Repo.matrix(machine)
 	native = machine.native
 	Path.create_all!(Path.utf8("build/matrix"))?
-	planned = Repo.matrix_examples.map(|example| (example, if (example.every_target) builds else builds.keep_if(|build| build.target == native)))
+	planned = Repo.matrix_apps.map(|subject| (subject, if (subject.every_target) builds else builds.keep_if(|build| build.target == native)))
 	total = planned.fold(0, |sum, (_, each)| sum + each.len())
-	note!("Building ${Repo.matrix_examples.len().to_str()} examples ${total.to_str()} ways")
+	note!("Building ${Repo.matrix_apps.len().to_str()} apps ${total.to_str()} ways")
 	start = Monotonic.now!()
 	var $index = 0
 	var $problems = []
-	for (example, each) in planned {
-		dir = "${root}/examples/${example.name}"
+	for (subject, each) in planned {
+		dir = "${root}/${subject.dir}"
+		var $recording = update
 		for build in each {
 			$index = $index + 1
 			flags = Repo.matrix_flags(build)
-			program = "${root}/build/matrix/${Repo.matrix_name(example.name, build)}"
-			shown = "${example.name} ${Str.join_with(flags, " ")}"
+			program = "${root}/build/matrix/${Repo.matrix_name(subject.name, build)}"
+			shown = "${subject.name} ${Str.join_with(flags, " ")}"
 			build_start = Monotonic.now!()
 			built = Cmd.new("roc").args(["build", "src/main.roc", "--output=${program}"].concat(flags).map(OsStr.from_str)).cwd(Path.utf8(dir)).stdin(Null).run!()?
 			outcome = if built.status != Exited(0) {
 				Err("roc build ${Str.join_with(flags, " ")} failed (${Str.inspect(built.status)}):\n${Str.from_utf8_lossy(built.stdout_bytes)}${Str.from_utf8_lossy(built.stderr_bytes)}")
 			} else if build.run {
-				match SpecRun.run!({ program, dir, spec: example.spec, update: Bool.False, metrics: Bool.False, args: [], env: [] })? {
-					Failed(problems) => Err(Str.join_with(problems, "\n  "))
-					_ => Ok("PASS")
+				var $failed = []
+				var $recorded = Bool.False
+				for spec in subject.specs {
+					match SpecRun.run!({ program, dir, spec, update: $recording, metrics: Bool.False, args: [], env: [] })? {
+						Failed(problems) => {
+							$failed = $failed.append("${spec}: ${Str.join_with(problems, "\n  ")}")
+						}
+						Updated => {
+							$recorded = Bool.True
+						}
+						_ => {}
+					}
 				}
+				$recording = Bool.False
+				if ($failed.is_empty()) Ok(if ($recorded) "SAVE" else "PASS") else Err(Str.join_with($failed, "\n  "))
 			} else {
 				Ok("LINK")
 			}

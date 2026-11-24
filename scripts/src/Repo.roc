@@ -7,7 +7,8 @@ Repo := [].{
 	stages = ["pins", "engine", "fmt", "scripts", "specs", "tool", "glue", "build", "test", "examples", "bench", "matrix", "bundle"]
 
 	## The stages named on the command line, or every stage when none is.
-	## `--update` is an option of the tool and examples stages, not a stage.
+	## `--update` is an option of the tool, examples and matrix stages, not a
+	## stage.
 	selection : List(Str) -> Try({ stages : List(Str), update : Bool }, [Unknown(Str)])
 	selection = |args| {
 		update = args.contains("--update")
@@ -29,16 +30,25 @@ Repo := [].{
 	specs : Str
 	specs = "tests/specs"
 
-	## The examples the matrix stage builds every way, the one spec it runs
-	## against each build, and whether it builds them for every Mac target or
-	## only for this Mac's own: `arith`, for every target, for the library
-	## calls 128-bit, `Dec` and float arithmetic lower to, which differ by
-	## target; `workers`, for this Mac's alone, for the worker threads' entry
-	## points and a crashed job's unwind out of a guarded call, which do not.
+	## The apps the matrix stage builds every way, by directory, the specs it
+	## runs against each build, and whether it builds them for every Mac
+	## target or only for this Mac's own: the fixture `tests/matrix/arith`,
+	## for every target, for the library calls 128-bit, `Dec` and float
+	## arithmetic lower to, which differ by target; the example `workers`,
+	## for this Mac's alone, for the worker threads' entry points and a
+	## crashed job's unwind out of a guarded call, which do not.
 	## TODO(slow-lambda-sets): `workers` takes 80 to 140 s a build with
 	## `--specialize=yes`; build it for every target too once that is fast.
-	matrix_examples : List({ name : Str, spec : Str, every_target : Bool })
-	matrix_examples = [{ name: "arith", spec: "${Repo.specs}/rows.scm", every_target: Bool.True }, { name: "workers", spec: "${Repo.specs}/crash.scm", every_target: Bool.False }]
+	matrix_apps : List({ name : Str, dir : Str, specs : List(Str), every_target : Bool })
+	matrix_apps = [
+		{ name: "arith", dir: "${Repo.matrix_fixtures}/arith", specs: ["${Repo.specs}/rows.scm", "${Repo.specs}/highest.scm"], every_target: Bool.True },
+		{ name: "workers", dir: "examples/workers", specs: ["${Repo.specs}/crash.scm"], every_target: Bool.False },
+	]
+
+	## Where the apps that exist only for the matrix stage live, each laid
+	## out as an example is, but never built, shipped or recorded as one.
+	matrix_fixtures : Str
+	matrix_fixtures = "tests/matrix"
 
 	## One build of the matrix: a target, an `--opt` and a `--specialize`,
 	## and whether this Mac runs what it builds.
@@ -81,7 +91,7 @@ Repo := [].{
 	matrix_flags : MatrixBuild -> List(Str)
 	matrix_flags = |{ target, opt, specialize, .. }| ["--target=${target}", "--opt=${opt}", "--specialize=${specialize}"]
 
-	## The program one build of an example writes, under `build/matrix/`.
+	## The program one build of an app writes, under `build/matrix/`.
 	matrix_name : Str, MatrixBuild -> Str
 	matrix_name = |example, { target, opt, specialize, .. }| "${example}-${target}-${opt}-specialize-${specialize}"
 

@@ -1,4 +1,4 @@
-app [main] { pf: platform "../../../platform/main.roc" }
+app [main] { pf: platform "../../../../platform/main.roc" }
 
 import pf.Engine exposing [Elem, In, Root, State]
 import pf.Ui
@@ -7,10 +7,17 @@ import pf.Ui
 ## multiplication, division, remainder and shifts, `Dec` arithmetic,
 ## `F64` and `F32` maths, and the conversions between them and strings.
 ## Each row is computed from a count the button changes at run time, so no
-## build can fold it away. `blueprint run check -- matrix` builds this app
-## with every `--opt` and `--specialize` and runs its spec.
+## build can fold it away. `blueprint run check -- matrix` builds this
+## fixture with every `--opt` and `--specialize` and runs its specs.
 main : Engine.Program
 main = Engine.program(|| Engine.state(7, view))
+
+## The highest count: Next stops here, so every row's operations stay in
+## range for every count the app can reach. `I128.pow` crashes on overflow
+## (`(n + 10)^30` would from n = 9), so its base is bounded, and `pow_try`
+## shows the overflow instead.
+highest : I64
+highest = 12
 
 view : State(In(Root, I64), I64) -> Elem(In(Root, I64))
 view = |count| {
@@ -24,7 +31,7 @@ view = |count| {
 					Ui.text("Arithmetic", { style: Title2, weight: Semibold }),
 					Ui.spacer(),
 					Ui.text(n.map(|k| "n ${k.to_str()}"), { style: Headline, design: MonospacedDigits }),
-					Ui.button("Next", { on_press: count.update(|k| k + 1) }),
+					Ui.button("Next", { on_press: count.update(|k| if (k < highest) k + 1 else k), enabled: n.map(|k| k < highest) }),
 				],
 			),
 			Ui.scroll(
@@ -84,7 +91,7 @@ groups = [
 			|k| "rounded ${(x64(k).floor_to_i64_try() ?? 0).to_str()} ${(x64(k).ceiling_to_i64_try() ?? 0).to_str()} ${(x64(k).round_to_i128_try() ?? 0).to_str()} ${(x32(k).round_to_i64_try() ?? 0).to_str()} ${(-x32(k)).floor_to_i32_try().map_ok(|v| v.to_str()) ?? ""}",
 			|k| "dec rounded ${third(k).floor().to_str()} ${third(k).ceiling().to_str()} ${(-third(k)).trunc().to_str()}",
 			|k| "bits ${wide(k).count_one_bits().to_str()} ${wide(k).count_leading_zero_bits().to_str()} ${negative(k).count_trailing_zero_bits().to_str()}",
-			|k| "pow ${(k.to_i128() + 10).pow(30).to_str()} ${(I128.times_try(negative(k), negative(k)) ?? 0).to_str()}",
+			|k| "pow ${(k.to_i128() + 4).pow(30).to_str()} ${(k.to_i128() + 10).pow_try(30).map_ok(|v| v.to_str()) ?? "overflow"} ${(I128.times_try(negative(k), negative(k)) ?? 0).to_str()}",
 			list_row,
 		],
 	),

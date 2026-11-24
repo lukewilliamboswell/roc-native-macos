@@ -21,7 +21,8 @@ name: CI
 #            generates, the stub audit of the hosts and of the Intel `roc`'s
 #            own run shims, every example built natively for Intel and its
 #            specs run (and the counter's through `roc src/main.roc`), the
-#            matrix (arith and workers built with every --opt and
+#            matrix (the tests/matrix/arith fixture and the workers example
+#            built with every --opt and
 #            --specialize and run as x64mac, arith also run as x64v1mac and
 #            linked as arm64mac),
 #            and the bundle's consumer test, whose macos.roc builds a universal app

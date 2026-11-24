@@ -38,13 +38,14 @@ roc_stable_program = Fetch("roc-stable", Recipes.roc_nightly(tooling.compiler))
 # The compiler-pin rules `check`'s `pins` stage enforces with roc-policy,
 # roc-automation's source-policy utility: every script under scripts/ pins
 # `roc-stable`, nothing the package compiler builds pins a compiler, and every
-# example names the platform by its checkout path, which the examples archive
-# rewrites to the release URL. The rules that name no value of this file are
+# example and matrix fixture (tests/matrix/) names the platform by its
+# checkout path, which the examples archive rewrites to the release URL. The
+# rules that name no value of this file are
 # in the profile, which roc-policy reads only at the digest recorded here.
 repository_policy = {
 	schema_version: 2,
-	roots: ["platform", "examples", "bench", "glue", "cli", "scripts"],
-	profiles: [{ name: "repository", path: "scripts/repository-policy.roc.txt", definition: "profile", sha256: "a834fb49df4957387c697cb7018826f3fbdcdb3969a9ce328886dd176d1370a9" }],
+	roots: ["platform", "examples", "bench", "glue", "cli", "scripts", "tests"],
+	profiles: [{ name: "repository", path: "scripts/repository-policy.roc.txt", definition: "profile", sha256: "810e45b8dec7a54ff638563f98eb3efc53dd1b78987358f346c3e6430fa3b8b8" }],
 	rules: [{ id: "tooling/pin", kind: CompilerPin, include: ["scripts/**/*.roc"], value: tooling.compiler }],
 	overrides: [],
 }
@@ -105,8 +106,9 @@ config = [
 	Shell("default", [Use("dev")]),
 	# The per-pull-request gate: compiler pins, formatting, the scripts'
 	# tests, the macos.roc tool's tests, the build, `roc test`, every
-	# example's specs, the build matrix (two examples built and run with
-	# every `--opt` and `--specialize`, one for every Mac target) and the
+	# example's specs, the build matrix (the arith fixture and the workers
+	# example built and run with every `--opt` and `--specialize`, arith for
+	# every Mac target) and the
 	# bundle with its consumer test.
 	# `check -- STAGE...` runs only the named stages, in order.
 	Task("check", [Use("dev"), Run(["scripts/check_all.roc", "--"])]),
