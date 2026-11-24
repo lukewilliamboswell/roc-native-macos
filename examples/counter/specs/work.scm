@@ -11,8 +11,10 @@
     (expect-metric-delta create_element 0)
     (expect-metric-delta scopes_created 0)
     (expect-metric-delta-at-most derived_calls_into_roc 2)
-    (expect-allocations-at-most 7)
-    (expect-allocated-bytes-at-most 3450)
+    ; TODO(slow-lambda-sets): 7 with --opt=speed; restore it when the default build returns (cli/App.roc build_opt).
+    (expect-allocations-at-most 22)
+    ; TODO(slow-lambda-sets): 3450 with --opt=speed; restore it when the default build returns (cli/App.roc build_opt).
+    (expect-allocated-bytes-at-most 5552)
     (mark-metrics)
     (click (button "+"))
     (click (button "−"))

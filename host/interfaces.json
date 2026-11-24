@@ -89,6 +89,10 @@
           "evidence": "the stack probe Swift-compiled x86-64 code calls for a frame larger than a page on Apple platforms, the global `____chkstk_darwin` that libpthread defines for x86_64, i386 and arm64 beside `thread_chkstk_darwin` (apple-oss-distributions/libpthread, src/pthread_asm.s), in libSystem's libsystem_pthread"
         },
         {
+          "name": "___ashlti3",
+          "evidence": "__ashlti3, the 128-bit left shift compiler-rt provides (llvm-project compiler-rt/lib/builtins/ashlti3.c), in libSystem's libcompiler_rt: LLVM lowers an i128 shift to this libcall (llvm/lib/CodeGen/TargetLoweringBase.cpp, RTLIB SHL_I128) instead of inline code when optimising for size, so a Roc app built with `--opt=size` for x64mac calls it"
+        },
+        {
           "name": "___bzero",
           "evidence": "__bzero, the zeroing entry point LLVM's x86 backend calls on macOS in place of memset with zero (apple-oss-distributions/llvmCore, lib/Target/X86/X86Subtarget.cpp, getBZeroEntry), defined by libplatform (apple-oss-distributions/libplatform, src/string/generic/bzero.c; xcodeconfig/libplatform.aliases, `__platform_bzero ___bzero`), in libSystem's libsystem_platform: the x86-64 host and Roc's x86-64 run shims (roc-lang/roc src/machine_code_shim, src/interpreter_shim) call it"
         },
@@ -100,6 +104,10 @@
         {
           "name": "___error",
           "evidence": "__error, the function errno names (`#define errno (*__error())`, apple-oss-distributions/xnu, bsd/sys/errno.h), in libSystem's libsystem_kernel: Roc's run-mode shims (roc-lang/roc src/machine_code_shim, src/interpreter_shim) read errno through it (Zig's lib/std/c/darwin.zig)"
+        },
+        {
+          "name": "___lshrti3",
+          "evidence": "__lshrti3, the 128-bit logical right shift compiler-rt provides (llvm-project compiler-rt/lib/builtins/lshrti3.c), in libSystem's libcompiler_rt: LLVM lowers an i128 shift to this libcall (llvm/lib/CodeGen/TargetLoweringBase.cpp, RTLIB SRL_I128) instead of inline code when optimising for size, so a Roc app built with `--opt=size` for x64mac calls it"
         },
         {
           "name": "___sincos_stret",
