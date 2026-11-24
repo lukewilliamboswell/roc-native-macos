@@ -1,1 +1,0 @@
-click:Start;wait:200;click:Lap;reload;wait:300;dump;click:Start;wait:200;click:Stop;click:Reset;dump;quit

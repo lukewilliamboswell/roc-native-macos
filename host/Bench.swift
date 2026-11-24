@@ -5,7 +5,7 @@
 // turns, a timer's turn) is one sample of four phases: the engine call(s),
 // applying their commands to the views, laying the window out (`sync`), and
 // a forced `displayIfNeeded`, so drawing is counted where it happens rather
-// than on the next runloop pass. The scripted `stats` step prints them to
+// than on the next runloop pass. A spec's `(stats)` step prints them to
 // stdout with the view count and peak RSS.
 
 import AppKit
@@ -52,7 +52,7 @@ final class Bench: NSObject {
     /// a phase (`phase:NAME`), `KIND/NAME`, in the order first seen.
     private var samples: [String: [Sample]] = [:]
     private var order: [String] = []
-    /// The scripted phase the samples belong to ("" for none).
+    /// The spec's phase the samples belong to ("" for none).
     var phase = ""
     private var current = Sample()
     private var kind = Kind.event

@@ -209,8 +209,8 @@ native code that registers that name (xref:architecture.adoc#surface-sources[Sur
 A source that is not registered, or has nothing to show yet, draws nothing,
 and its number reads as `offset`. Every app has two test sources:
 `synthetic.wave`, nine values of one sine cycle, and `synthetic.level`, a
-number from 0 up to 1. They move on with time, and a scripted run steps
-them (xref:apps.adoc#steps[Steps]).
+number from 0 up to 1. They move on with time, and a spec steps
+them (xref:apps.adoc#surfaces-and-audio[Drawing surfaces and audio]).
 
 *Pacing.* `pacing: OnDemand` (the default) draws a new frame when the
 scene, its look or its size changes. `Display` also draws one at every
@@ -673,6 +673,6 @@ Run it: it also reports the single-field record builder
 (`{ a: Engine.cell(…) }.Engine.Cells`) that builds but fails at run time with
 current compilers. Give a store at least two cells.
 
-`roc macos.roc test` runs an app's recorded cases, which drive its real
-controls and compare the view trees they print. See
-xref:apps.adoc#test-an-app[Test an app] for the cases and their steps.
+`roc macos.roc test` runs an app's specs, which drive its real controls and
+expect what they then show. See xref:apps.adoc#test-an-app[Test an app] for
+their steps and expectations.

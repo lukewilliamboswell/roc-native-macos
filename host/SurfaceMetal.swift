@@ -3,7 +3,7 @@
 // A display-paced surface draws with Metal when the Mac has a Metal device
 // (`MTLCreateSystemDefaultDevice`) and the renderer is not forced to Core
 // Graphics (`SurfaceRenderer`); an on-demand surface, a Mac without a device
-// and, by default, a scripted run draw with Core Graphics, the reference.
+// and, by default, a spec draw with Core Graphics, the reference.
 //
 // Each frame renders into one of two textures at the full backing
 // resolution, in the order the Core Graphics renderer draws: clear to the
@@ -38,8 +38,8 @@ enum SurfaceRenderer {
     case metal
     case cg
 
-    /// `ROC_SURFACE_RENDERER` (`auto`, `metal` or `cg`), or the scripted
-    /// `renderer:` step; a scripted run draws with Core Graphics unless told.
+    /// `ROC_SURFACE_RENDERER` (`auto`, `metal` or `cg`), or a spec's
+    /// `(renderer …)` step; a spec draws with Core Graphics unless told.
     static var choice: SurfaceRenderer = {
         if let word = ProcessInfo.processInfo.environment["ROC_SURFACE_RENDERER"] {
             guard let chosen = named(word) else { fatal("ROC_SURFACE_RENDERER=\(word) is not auto, metal or cg") }
@@ -561,7 +561,7 @@ final class MetalSurface {
     }
 }
 
-// MARK: - Measuring (the scripted `bench` step)
+// MARK: - Measuring (a spec's `bench-surfaces` step)
 
 extension Host {
     /// One trail frame (the previous frame turned, zoomed and faded, a

@@ -1,1 +1,0 @@
-audio:manual;files:tests/fixtures/clicks.wav;wait:300;click:Play;audio:render:950;audio:status;files:tests/fixtures/tones-44100.wav;wait:300;audio:status;click:Play;audio:render:200;wait:200;audio:status;dump;quit

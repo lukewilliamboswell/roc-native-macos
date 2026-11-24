@@ -834,7 +834,7 @@ final class WorkPool {
     /// How many worker threads run jobs at once: one per core but the
     /// main thread's (the UI keeps a core), at least one and at most eight
     /// (roc-signals' default `maxWorkers`). `ROC_WORKERS` sets it, as does
-    /// the scripted step `pool:N` before the first job.
+    /// a spec's `(worker-pool N)` before the first job.
     var limit: Int = {
         if let given = ProcessInfo.processInfo.environment["ROC_WORKERS"].flatMap({ Int($0) }), given >= 1 { return min(given, 64) }
         return max(1, min(8, ProcessInfo.processInfo.activeProcessorCount - 1))
@@ -848,7 +848,7 @@ final class WorkPool {
     var pumpQueued = false
     var serial = 0
 
-    /// For the scripted `workers` step and ROC_TRACE.
+    /// For a spec's `expect-workers` and ROC_TRACE.
     var spawned = 0, answered = 0, stopped = 0, lost = 0, dropped = 0, timedOut = 0
 
     var summary: String {

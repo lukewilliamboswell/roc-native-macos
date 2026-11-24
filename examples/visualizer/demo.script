@@ -1,5 +1,0 @@
-clock:display;wait:2500
-choose:Echo;wait:3000
-toggle:Caption;wait:3000
-click:Clear trail;wait:1500
-quit

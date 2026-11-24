@@ -28,7 +28,7 @@ final class ContentView: NSView {
 
     required init?(coder: NSCoder) { fatal("ContentView is not archived") }
 
-    // A scripted run is driven by its steps alone (`move`, `hover`, `leave`),
+    // A spec run is driven by its steps alone (`move`, `hover`, `leave`),
     // never by wherever the person's pointer happens to be.
     private var live: Bool { !Host.scripted }
 
@@ -38,10 +38,10 @@ final class ContentView: NSView {
 }
 
 extension Host {
-    static let scripted = ProcessInfo.processInfo.environment["ROC_SCRIPT"] != nil
+    static let scripted = driven
 
     /// The pointer is at `point`, in window coordinates, moved by an event
-    /// at `time` (`systemUptime`; a scripted move is now).
+    /// at `time` (`systemUptime`; a driven move is now).
     func pointer(at point: NSPoint, time: Double = Bench.now()) {
         bench?.moved(time)
         guard let content = window.contentView, let frame = content.superview else { return }

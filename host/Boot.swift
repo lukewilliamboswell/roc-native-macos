@@ -42,18 +42,23 @@ struct Declarations {
 
 // MARK: - Local and session storage
 
-/// Local storage persists in `UserDefaults`. A scripted run (`ROC_SCRIPT`)
-/// keeps it in memory instead, so a recorded case never sees what an
-/// earlier run saved; `ROC_STORAGE_SUITE=<name>` gives a scripted run a
+/// Local storage persists in `UserDefaults`. A spec run (`ROC_SPEC`)
+/// keeps it in memory instead, so a spec never sees what an
+/// earlier run saved; `ROC_STORAGE_SUITE=<name>` gives a spec run a
 /// named `UserDefaults` suite, to check persistence across runs.
 enum LocalStorage {
     private static let environment = ProcessInfo.processInfo.environment
     private static let defaults: UserDefaults? =
         environment["ROC_STORAGE_SUITE"].flatMap { UserDefaults(suiteName: $0) }
-        ?? (environment["ROC_SCRIPT"] == nil ? UserDefaults.standard : nil)
+        ?? (driven ? nil : UserDefaults.standard)
     private static var memory: [String: String] = [:]
 
     static func get(_ key: String) -> String? { defaults.map { $0.string(forKey: key) } ?? memory[key] }
+
+    /// A spec's `(local-storage KEY VALUE)`, before mount.
+    static func seed(_ key: String, _ value: String) {
+        if let defaults { defaults.set(value, forKey: key) } else { memory[key] = value }
+    }
 
     static func set(_ key: String, _ value: String) {
         if let defaults { defaults.set(value, forKey: key) } else { memory[key] = value }

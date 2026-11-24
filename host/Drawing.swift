@@ -552,7 +552,7 @@ final class DrawingSurface: NSView {
 
     // MARK: Frames
 
-    /// A display refresh (or a scripted `frame`): one new frame now.
+    /// A display refresh (or a spec's `frame`): one new frame now.
     func tick(at time: Double) {
         produce(at: time)
         needsDisplay = true
@@ -799,7 +799,7 @@ final class DrawingSurface: NSView {
         }
     }
 
-    // MARK: Probes (scripted runs)
+    // MARK: Probes (specs)
 
     /// What the surface shows, drawn at twice its size in points into an
     /// sRGB bitmap; the colour at the point (`x`, `y`) from its top-left, as
@@ -846,22 +846,25 @@ final class DrawingSurface: NSView {
         return [channel(r), channel(g), channel(b), Int((Double(a) / 255 * 100).rounded())]
     }
 
-    /// The dump's line: size, frames, pacing and trail.
-    var summary: String {
-        let pacing = displayPaced ? (ticking ? "display-paced, ticking" : "display-paced, suspended") : "on demand"
+    /// The surface's head in a spec's dump: its label, size, pacing and
+    /// trail (`:trail held` once its trail has a bitmap, `empty` before).
+    var dumpHead: String {
+        let pacing = displayPaced ? "display" : "on-demand"
         let held = metal.map { $0.target?.hasHistory ?? false } ?? (current != nil)
-        let history = trail == nil ? "" : (held ? ", trail of 2 bitmaps" : ", trail empty")
-        return "\"\(label)\" [\(Int(bounds.width))pt wide, \(Int(bounds.height))pt high, \(pacing)\(history)]"
+        let history = trail == nil ? "" : " :trail \(held ? "held" : "empty")"
+        return "\(Host.quote(label)) :width \(Int(bounds.width)) :height \(Int(bounds.height)) :pacing \(pacing)\(displayPaced ? " :ticking \(ticking ? "#t" : "#f")" : "")\(history)"
     }
 
-    /// The last frame's steps, for the scripted `scene` step.
-    func describe() -> [String] {
+    /// The last frame's scene, one form a line, for a spec's dump: the
+    /// space it maps from, then each step in the order it drew.
+    func sceneForms() -> [String] {
+        guard !last.isEmpty || space != nil else { return [] }
         var lines: [String] = []
         let m = mapping()
         if let space {
-            lines.append("space fit \(Host.decimal(space.width))x\(Host.decimal(space.height)) in \(Int(bounds.width))pt wide, \(Int(bounds.height))pt high: scale \(Host.decimal(m.scale, 3)), offset \(Host.decimal(m.dx)),\(Host.decimal(m.dy))")
+            lines.append("(space :fit \(Host.decimal(space.width)) \(Host.decimal(space.height)) :scale \(Host.decimal(m.scale, 3)) :offset \(Host.decimal(m.dx)) \(Host.decimal(m.dy)))")
         } else {
-            lines.append("space points in \(Int(bounds.width))pt wide, \(Int(bounds.height))pt high")
+            lines.append("(space :points)")
         }
         for step in last {
             switch step {
@@ -874,13 +877,13 @@ final class DrawingSurface: NSView {
                     case .close: ends.append("close")
                     }
                 }
-                let paint = fill ? "fill \(word)" : "stroke \(word) \(Host.decimal(width))"
-                lines.append("\(paint): \(ends.joined(separator: " "))")
-            case .save: lines.append("save")
-            case .restore: lines.append("restore")
+                let paint = fill ? "fill \(Host.atom(word))" : "stroke \(Host.atom(word)) \(Host.decimal(width))"
+                lines.append("(\(paint) \(ends.joined(separator: " ")))")
+            case .save: lines.append("(save)")
+            case .restore: lines.append("(restore)")
             case let .transform(a, b, c, d, tx, ty):
-                lines.append("transform \([a, b, c, d, tx, ty].map { Host.decimal($0, 3) }.joined(separator: " "))")
-            case let .opacity(amount): lines.append("opacity \(Host.decimal(amount, 3))")
+                lines.append("(transform \([a, b, c, d, tx, ty].map { Host.decimal($0, 3) }.joined(separator: " ")))")
+            case let .opacity(amount): lines.append("(opacity \(Host.decimal(amount, 3)))")
             }
         }
         return lines
@@ -891,8 +894,8 @@ final class DrawingSurface: NSView {
 
 /// Each display-paced surface's frames: at its display's refresh
 /// (`NSView.displayLink`, on the main run loop in its common modes), or,
-/// under a scripted run, only when a `frame` step advances the controlled
-/// clock, so a recorded case runs the same everywhere.
+/// under a spec, only when a `frame` step advances the controlled clock,
+/// so a spec runs the same everywhere.
 final class FrameClock {
     static let shared = FrameClock()
 
@@ -1061,77 +1064,73 @@ final class Overlay: NSView {
     }
 }
 
-// MARK: - Scripted steps
+// MARK: - Spec steps
 
 extension Host {
-    /// The drawing steps of a scripted run (docs/apps.adoc); false for a
-    /// verb that is not one of them.
-    func surfaceStep(_ verb: String, _ arg: String) -> Bool {
+    /// A spec's drawing steps and expectations (cli/Spec.roc, docs/apps.adoc);
+    /// nil for a verb that is not one of them.
+    func drawingStep(_ line: SpecSteps.Line) -> Performed? {
         let clock = FrameClock.shared
-        switch verb {
+        let f = line.fields
+        switch line.verb {
         case "frame":
-            // `frame:MS` (default 16.667): the controlled clock on by MS,
-            // and one frame for each display-paced surface on it.
-            guard clock.manual else { fatal("script: frame needs the controlled clock, not clock:display") }
+            // `(frame MS)` (a 60 Hz refresh, 16.667, if none): the manual
+            // clock on by MS, and one frame for each display-paced surface on it.
+            guard clock.manual else { return .failed("frame needs the manual frame clock, not (frame-clock display)", nil) }
+            let arg = f.first ?? ""
             let ms = arg.isEmpty ? 1000.0 / 60 : (Double(arg) ?? -1)
-            guard ms >= 0, ms.isFinite else { fatal("script: frame:\(arg) is not a number of milliseconds") }
-            let count = clock.tickingCount
+            guard ms >= 0, ms.isFinite else { return .failed("frame takes milliseconds, not \(arg)", nil) }
             clock.advance(ms / 1000)
-            say("frame at \(Host.decimal(clock.manualTime * 1000)) ms: \(count == 1 ? "1 surface" : "\(count) surfaces")")
-        case "clock":
-            switch arg {
+        case "frame-clock":
+            switch f.first ?? "" {
             case "display": clock.use(manual: false)
             case "manual": clock.use(manual: true)
-            default: fatal("script: clock:\(arg) is not clock:display or clock:manual")
+            default: return .failed("frame-clock is manual or display, not \(f.first ?? "")", nil)
             }
-        case "step":
-            // `step:NAME` or `step:NAME,COUNT`: a synthetic source on.
-            let parts = arg.split(separator: ",").map(String.init)
-            guard let name = parts.first, let source = SyntheticSource.named[name],
-                  parts.count <= 2, let count = parts.count == 2 ? Int(parts[1]) : 1
-            else { fatal("script: step:\(arg) names no synthetic source (\(SurfaceSources.shared.names.joined(separator: ", ")))") }
+        case "step-source":
+            // `(step-source "NAME" N)`: a synthetic source on by N steps.
+            guard let name = f.first, let source = SyntheticSource.named[name], let count = Int(f.count > 1 ? f[1] : "1"), count >= 1
+            else { return .failed("step-source names no synthetic source; they are \(SurfaceSources.shared.names.joined(separator: ", "))", nil) }
             source.step(count)
             for s in allSurfaces() where !s.ticking && s.reads(name) { s.wantFrame() }
-        case "probe":
-            // `probe:x,y`: the first surface's colour at a point, from its top-left.
-            guard let p = Host.point(arg) else { fatal("script: probe needs x,y, not \(arg)") }
-            let v = firstSurface().probe(Double(p.x), Double(p.y))
-            say("probe \(arg): r\(v[0]) g\(v[1]) b\(v[2]) a\(v[3])")
-        case "scene":
-            let s = firstSurface()
-            s.produceIfDue()
-            say("scene of \"\(s.label)\":")
-            for line in s.describe() { say("  \(line)") }
         case "repaint":
             // Redraw every surface now, as AppKit may at any time.
             for s in allSurfaces() { s.display() }
-            say("repaint")
-        case "size":
-            // `size:W,H`: the window's content size, in points.
-            guard let p = Host.point(arg), p.x > 0, p.y > 0 else { fatal("script: size needs W,H, not \(arg)") }
-            window.setContentSize(NSSize(width: p.x, height: p.y))
+        case "window-size":
+            guard f.count == 2, let w = Double(f[0]), let h = Double(f[1]), w > 0, h > 0 else { return .failed("window-size needs a width and a height", nil) }
+            window.setContentSize(NSSize(width: w, height: h))
             window.contentView?.layoutSubtreeIfNeeded()
-        case "bench":
-            // `bench:N`: N frames of a trail at three sizes, with each renderer.
-            benchSurfaces(frames: Int(arg) ?? 100)
         case "renderer":
-            // `renderer:metal`, `renderer:cg` or `renderer:auto` for display-paced
-            // surfaces from here on (`metal` without a device is Core Graphics);
-            // `renderer` alone prints each surface's.
-            if arg.isEmpty {
-                for s in allSurfaces() { say("renderer of \"\(s.label)\": \(s.rendererName)") }
-            } else {
-                guard let chosen = SurfaceRenderer.named(arg) else { fatal("script: renderer:\(arg) is not metal, cg or auto") }
-                SurfaceRenderer.choice = chosen
-                for s in allSurfaces() { s.updateRenderer() }
+            // Display-paced surfaces from here on draw with this renderer
+            // (`metal` without a device is Core Graphics).
+            guard let chosen = SurfaceRenderer.named(f.first ?? "") else { return .failed("renderer is metal, cg or auto, not \(f.first ?? "")", nil) }
+            SurfaceRenderer.choice = chosen
+            for s in allSurfaces() { s.updateRenderer() }
+        case "bench-surfaces":
+            // N frames of a trail at three sizes with each renderer,
+            // reported on standard error and never judged.
+            benchSurfaces(frames: Int(f.first ?? "") ?? 100)
+        case "probe":
+            // The colour a surface shows at a point, from its top-left, in
+            // percent of red, green, blue and opacity.
+            let (parts, rest) = Host.locator(f)
+            let found = locate(parts)
+            guard found.nodes.count == 1, let s = found.nodes[0].view as? DrawingSurface else {
+                return .failed("found \(found.nodes.isEmpty ? "no" : "\(found.nodes.count) of") \(Host.describe(parts)), looking for a drawing surface; a step acts on exactly one", found)
             }
+            guard rest.count == 2, let x = Double(rest[0]), let y = Double(rest[1]) else { return .failed("probe needs x and y", nil) }
+            let v = s.probe(x, y)
+            emit("@\(line.k) obs")
+            for (name, value) in zip(["r", "g", "b", "a"], v) { emit("|\(name) \(value)") }
         case "surfaces":
-            let all = allSurfaces()
-            say("surfaces: \(all.count) shown, \(clock.tickingCount) on the frame clock")
+            emit("@\(line.k) obs")
+            emit("|shown \(allSurfaces().count)")
+            emit("|ticking \(clock.tickingCount)")
+            emit("|time \(Host.decimal(clock.manualTime * 1000))")
         default:
-            return false
+            return nil
         }
-        return true
+        return .next
     }
 
     /// A surface's or an overlay's own attribute, applied; false for any
@@ -1161,11 +1160,6 @@ extension Host {
         var found: [DrawingSurface] = []
         root.walk { if let s = $0.view as? DrawingSurface { found.append(s) } }
         return found
-    }
-
-    func firstSurface() -> DrawingSurface {
-        guard let s = allSurfaces().first else { fatal("script: no drawing surface") }
-        return s
     }
 
     /// `value` to `places` decimal places, without a negative zero.

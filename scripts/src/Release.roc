@@ -108,6 +108,10 @@ Release := [].{
 	binary : Str -> Bool
 	binary = |path| [".png", ".jpg", ".jpeg", ".pdf", ".icns"].any(|ext| path.ends_with(ext))
 
+	## Where an app keeps its specs.
+	specs : Str
+	specs = "specs"
+
 	## The checked-in `cli/Bundle.roc`: the tool in a checkout, importing the
 	## scaffold from the working tree.
 	development_bundle : List(Str) -> Str
@@ -156,7 +160,7 @@ Release := [].{
 			\\	roc_version = "${roc_version}"
 			\\
 			\\	## The files `init` writes: the starter example (`examples/starter`),
-			\\	## with its logic package, fuzz targets, assets and recorded cases.
+			\\	## with its logic package, fuzz targets, assets and specs.
 			\\	scaffold : List(File)
 			\\	scaffold = [
 		Str.join_with([header].concat(import_lines).concat(["", body]).concat(entries).concat(["\t]", "}", ""]), "\n")
@@ -197,7 +201,7 @@ Release := [].{
 		\\#     roc macos.roc run            build it and start it
 		\\#     roc macos.roc dev            start it, reloading it as you save
 		\\#     roc macos.roc build          build my-app.app, on any system
-		\\#     roc macos.roc test           run its expect tests and recorded cases
+		\\#     roc macos.roc test           run its expect tests and specs, specs/*.scm
 		\\#     roc macos.roc fuzz           run its roc-fuzz targets, fuzz/main.roc
 		\\#
 		\\# To move to another release, download that release's macos.roc over
@@ -413,19 +417,19 @@ expect
 
 ## The scaffold is every file of the starter example, in order.
 expect
-	Release.scaffold(["src/main.roc", "assets/icon.png", "tests/add.script"])
+	Release.scaffold(["src/main.roc", "assets/icon.png", "specs/add.scm"])
 		== [
 			{ path: "assets/icon.png", source: "examples/starter/assets/icon.png" },
+			{ path: "specs/add.scm", source: "examples/starter/specs/add.scm" },
 			{ path: "src/main.roc", source: "examples/starter/src/main.roc" },
-			{ path: "tests/add.script", source: "examples/starter/tests/add.script" },
 		]
 
 ## A checkout's Bundle.roc imports the working tree; a release's, its
 ## copies. An image is imported as bytes.
 expect {
-	dev = Release.development_bundle(["tests/a.script", "assets/icon.png"])
+	dev = Release.development_bundle(["specs/a.scm", "assets/icon.png"])
 	rel = Release.release_bundle({ version: "0.0.1", platform_url: "https://u/B.tar.zst", roc_version: "r" }, ["src/main.roc"])
-	dev.contains("import \"../examples/starter/tests/a.script\" as scaffold_tests_a_script : Str\n")
+	dev.contains("import \"../examples/starter/specs/a.scm\" as scaffold_specs_a_scm : Str\n")
 		and dev.contains("import \"../examples/starter/assets/icon.png\" as scaffold_assets_icon_png : List(U8)\n")
 		and dev.contains("\t\t{ path: \"assets/icon.png\", contents: Bytes(scaffold_assets_icon_png) },\n")
 		and dev.contains("\tversion = \"development\"\n")

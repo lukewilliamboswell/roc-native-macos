@@ -83,7 +83,7 @@ final class AudioAnalysis {
     private let slotData: UnsafeMutablePointer<Float>
     private var head = 0, count = 0
     private var stalled = false
-    /// Counters the scripted steps report.
+    /// Counters a spec's `expect-history` reports.
     private(set) var tapped: Int64 = 0, skipped: Int64 = 0, busy: Int64 = 0, consumed: Int64 = 0, chunkFrames = 0
     /// The newest render time a tap delivered, in the tapped node's frames.
     private var tappedTo: Int64 = .min

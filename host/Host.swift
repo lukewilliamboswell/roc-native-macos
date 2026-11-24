@@ -46,6 +46,10 @@ final class Host: NSObject, NSTextFieldDelegate {
     /// The nodes under the pointer that listen for `hover`, outermost first
     /// (Hover.swift).
     var hovered: [Node] = []
+    /// The spec this run performs (`ROC_SPEC`, Spec.swift); nil otherwise.
+    var specSteps: SpecSteps?
+    /// The effects a spec holds for its steps to answer (Simulated.swift).
+    var held: HeldEffects?
     /// `ROC_BENCH=1` timings (Bench.swift); nil when off.
     let bench: Bench? = Bench.on ? Bench() : nil
     /// Live document key declarations, in the order they were mounted.
@@ -94,8 +98,10 @@ final class Host: NSObject, NSTextFieldDelegate {
         let v = engine.version
         if v != 23 { fatal("engine speaks protocol \(v), this host speaks 23") }
         bench?.begin(.mount)
+        // A spec mounts at its virtual clock's time.
+        let now = specSteps.map { Date(timeIntervalSince1970: Double($0.clock) / 1000) } ?? Date()
         timed(.mount) {
-            let batch = engine.mount()
+            let batch = engine.mount(now: now)
             // The ports are checked before the mount batch, which may
             // already subscribe to them, is applied.
             ports.declare(engine.declaredPorts)

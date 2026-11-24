@@ -38,12 +38,12 @@ roc macos.roc run
 `init` writes a project to build on: a small expense tracker with its app
 in `src/`, its business logic as a package of pure Roc in `logic/`,
 [roc-fuzz](https://github.com/lukewilliamboswell/roc-fuzz) targets for that
-logic in `fuzz/`, an icon, recorded runs in `tests/`, and an `AGENTS.md`
-saying how it is laid out and worked on. `run` builds `my-app.app` and
-starts it. While you edit it, `roc macos.roc dev` runs the app with hot
-reloading: it rebuilds as you save, and Command-R shows the new code.
-`roc macos.roc build` builds the app on any system, `roc macos.roc test`
-runs its `expect` tests and recorded runs, and `roc macos.roc fuzz` its fuzz
+logic in `fuzz/`, an icon, specs of what it does in `specs/`, and an
+`AGENTS.md` saying how it is laid out and worked on. `run` builds
+`my-app.app` and starts it. While you edit it, `roc macos.roc dev` runs the
+app with hot reloading: it rebuilds as you save, and Command-R shows the new
+code. `roc macos.roc build` builds the app on any system, `roc macos.roc
+test` runs its `expect` tests and specs, and `roc macos.roc fuzz` its fuzz
 targets. `roc macos.roc package` zips the app for people to
 download, signed and notarized with a Developer ID if you have one, and the
 workflow `init` writes does that on GitHub when you push a tag ([Ship your app](https://lukewilliamboswell.github.io/roc-native-macos/apps.html#ship-your-app)).
@@ -80,7 +80,7 @@ view = |count|
 ```
 
 [Build an app](https://lukewilliamboswell.github.io/roc-native-macos/apps.html) covers the tool, writing an app, testing it
-with recorded runs, and shipping it. [The `Ui` reference](https://lukewilliamboswell.github.io/roc-native-macos/ui.html) lists
+with specs, and shipping it. [The `Ui` reference](https://lukewilliamboswell.github.io/roc-native-macos/ui.html) lists
 every builder with its signature, what it draws and the events it sends.
 Both are chapters of [the manual](https://lukewilliamboswell.github.io/roc-native-macos/)
 ([PDF](https://lukewilliamboswell.github.io/roc-native-macos/roc-native-macos.pdf)).

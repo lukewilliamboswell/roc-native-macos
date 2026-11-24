@@ -8,9 +8,9 @@ import Workflow
 
 ## `init [DIR]`: create an app in `DIR` (by default, this directory): the
 ## starter example, an expense tracker with a logic package, fuzz targets,
-## an icon and recorded cases. It writes only files that are not there yet,
-## and copies this directory's `macos.roc` into a new directory so the app
-## can run the tool from its own.
+## an icon and specs. It writes only files that are not there yet, and
+## copies this directory's `macos.roc` into a new directory so the app can
+## run the tool from its own.
 Init :: [].{
 
 	## What `init` writes: a file's path in the app, and its text, its bytes
@@ -96,7 +96,7 @@ Init :: [].{
 			"  logic/       its business logic, a package of pure Roc with its expect tests",
 			"  fuzz/        roc-fuzz targets for that logic, which `roc macos.roc fuzz` runs",
 			"  assets/      its images; assets/icon.png is its icon",
-			"  tests/       recorded runs of it, which `roc macos.roc test` checks",
+			"  specs/       specs of what it does, which `roc macos.roc test` checks",
 			"  AGENTS.md    how the project is laid out and worked on",
 			"  macos.json   its name, bundle identifier and version",
 			"  macos.roc    the tool, which builds, runs, tests and packages it",
@@ -132,14 +132,14 @@ expect {
 
 ## A new directory gets a copy of the tool; this directory already has it.
 ## Every plan writes the app in src/, its logic package, fuzz targets, icon,
-## recorded cases and the `.gitignore`.
+## specs and the `.gitignore`.
 expect {
 	new = Init.plan("my-app", "my-app").map(|step| step.path)
 	here = Init.plan(".", "my-app").map(|step| step.path)
 	new.first() == Ok("macos.roc")
 		and new.drop_first(1) == here
 		and ["src/main.roc", "logic/main.roc", "fuzz/main.roc", "assets/icon.png", "AGENTS.md", ".gitignore", "macos.json", ".github/workflows/release.yml"].all(|path| here.contains(path))
-		and here.any(|path| path.starts_with("tests/") and path.ends_with(".script"))
+		and here.any(|path| path.starts_with("specs/") and path.ends_with(".scm"))
 }
 
 ## The app's root module names the release's platform; the fuzz targets keep
@@ -168,4 +168,4 @@ expect {
 	starter == Ok(Text(Meta.starter("my-app"))) and Meta.starter("my-app").contains("\"id\": \"com.example.my-app\"")
 }
 
-expect [Init.place("my-app/", "main.roc"), Init.place(".", "tests/a.script")] == ["my-app/main.roc", "tests/a.script"]
+expect [Init.place("my-app/", "main.roc"), Init.place(".", "specs/a.scm")] == ["my-app/main.roc", "specs/a.scm"]

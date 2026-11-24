@@ -1,6 +1,0 @@
-audio:manual;toggle:Measure levels;wait:400
-files:tests/fixtures/tones-44100.wav;wait:900
-click:Play;audio:render:150;wait:1200
-slide:6,-12;audio:render:100;wait:1200
-toggle:Bypass;audio:render:100;wait:1200
-quit

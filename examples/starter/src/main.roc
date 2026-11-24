@@ -23,7 +23,7 @@ import Store
 ## - `logic/`: the business logic, a package of pure Roc with no platform.
 ## - `fuzz/main.roc`: roc-fuzz targets for the logic package.
 ## - `assets/`: images the app draws; `assets/icon.png` is its icon.
-## - `tests/`: recorded runs of the app (`roc macos.roc test`).
+## - `specs/`: specs of what the app does (`roc macos.roc test`).
 ##
 ## State flows one way: an event runs a handler, which returns writes
 ## (decisions in `Store`, or a local state's update); the engine applies

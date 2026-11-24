@@ -30,7 +30,15 @@ rebuilds the view in the size of the table, 12–21 ms at a million). See
 It is a harness, not an example. The gate's `bench` stage builds it and runs
 `run.sh --smoke`: 200 rows through every phase below, which fails unless
 each phase ran and the list holds all 200 rows again once the filter is
-cleared. Then three guards, each comparing two sizes in fresh processes:
+cleared. Then the specs beside it, `specs/rows-2000.scm` and
+`specs/rows-200000.scm`, count the work with the same bounds at both
+sizes (docs/apps.adoc, "Work metrics"): the mount
+creates at most 150 rows (one window), five ticks of the interval, each
+writing three rows, update at most 15 rows and emit at most 15 commands,
+and selecting a row does one turn and one command. A table that drew every
+row, or a write whose cost grew with the table, fails them. The timings
+that follow are diagnostics, reported and never failing, each comparing
+two sizes in fresh processes:
 the windowing guard (`window_guard`): the list mounted over 2,000 rows and
 over 200,000 must draw the same window (at most 300 rows, from the `stats`
 line `bench: list rows N drawn D`) and apply its mount in about the same
@@ -59,12 +67,12 @@ Each N is a fresh process. N reaches the app as the local storage key
 `rows-n` (`-rows-n 1000000`, as `bench/grid` passes `grid-n`), so the mount
 itself builds the table (keyed once from a list; `-rows-build insert`
 inserts the rows one at a time instead). `ROC_BENCH=1` turns on the host's timings, and a
-script runs one phase after another, each named with `phase:NAME` so
+session of spec steps runs one phase after another, each named with `(phase "NAME")` so
 `stats` reports its operations apart (`event/select`, `scroll/scroll`, …):
 
-select:: `select:#1`, `#2`, `#3`, `#10`, `#4`: the user selecting rows (an
+select:: `(select (list-row 1))`, then rows 2, 3, 10 and 4: the user selecting rows (an
 event turn each: the selection cell and the text below the list).
-scroll:: `scroll:k` eight times a screenful down from the top, then to the
+scroll:: `(scroll K)` eight times a screenful down from the top, then to the
 middle, near the end and back to the top. A scroll is not an engine turn:
 it is the table tiling, making the new rows' views from their nodes, and
 drawing, timed as one `scroll` operation.

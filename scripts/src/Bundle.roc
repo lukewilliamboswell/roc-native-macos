@@ -94,7 +94,7 @@ Bundle := [].{
 		"<key>CFBundleVersion</key><string>1.0.0</string>",
 	]
 
-	## The recorded case run on the program extracted from the zip.
+	## The spec run on the program extracted from the zip.
 	package_case : Str
 	package_case = "add"
 

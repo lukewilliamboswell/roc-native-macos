@@ -6,6 +6,9 @@ extension Host {
     // MARK: Effects
 
     func effect(id: UInt32, kind: UInt8, _ r: inout Reader) {
+        // A spec holds HTTP requests, timers and intervals for its steps
+        // to answer (Simulated.swift).
+        if hold(id: id, kind: kind, &r) { return }
         switch kind {
         case 1: // HTTP, performed off the main thread (host/Http.swift)
             startHttp(id: id, &r)
@@ -49,6 +52,7 @@ extension Host {
     /// CANCEL: stop whatever the id names. Nothing it would have answered
     /// reaches the engine afterwards.
     func cancelEffect(id: UInt32) {
+        if cancelHeld(id: id) { return }
         if let timer = timers.removeValue(forKey: id) { timer.invalidate(); return }
         if cancelFileJob(id) { return }
         if cancelWork(id) { return }

@@ -5,8 +5,8 @@ name: CI
 # Apple silicon (arm64mac), and again on an Intel Mac (x64mac), since the
 # platform supports both and the maintainer has no Intel Mac. The examples are
 # run for real: hosted macOS runners have a logged-in GUI session, so each
-# recorded ROC_SCRIPT case drives real AppKit controls. A scripted run never
-# takes keyboard focus.
+# spec (ROC_SPEC) drives real AppKit controls. A spec's run never takes
+# keyboard focus.
 #
 #   nightly  the latest Roc nightly, resolved once for every job
 #   host     the Swift hosts for both targets, cross-compiled on Apple silicon
@@ -20,7 +20,7 @@ name: CI
 #            (macos-15-intel) with the same hosts: the glue the Intel `roc`
 #            generates, the stub audit of the hosts and of the Intel `roc`'s
 #            own run shims, every example built natively for Intel and its
-#            recorded cases run (and the counter's through `roc src/main.roc`), and
+#            specs run (and the counter's through `roc src/main.roc`), and
 #            the bundle's consumer test, whose macos.roc builds a universal app
 #            and runs its Intel half. roc-fuzz has no Intel Mac target, so the
 #            starter's fuzz targets are checked on Apple silicon only.

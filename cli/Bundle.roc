@@ -9,20 +9,16 @@ import "../examples/starter/fuzz/main.roc" as scaffold_fuzz_main_roc : Str
 import "../examples/starter/logic/Ledger.roc" as scaffold_logic_ledger_roc : Str
 import "../examples/starter/logic/Money.roc" as scaffold_logic_money_roc : Str
 import "../examples/starter/logic/main.roc" as scaffold_logic_main_roc : Str
+import "../examples/starter/specs/add.scm" as scaffold_specs_add_scm : Str
+import "../examples/starter/specs/cards.scm" as scaffold_specs_cards_scm : Str
+import "../examples/starter/specs/fixtures/expenses.csv" as scaffold_specs_fixtures_expenses_csv : Str
+import "../examples/starter/specs/import.scm" as scaffold_specs_import_scm : Str
+import "../examples/starter/specs/problem.scm" as scaffold_specs_problem_scm : Str
 import "../examples/starter/src/Home.roc" as scaffold_src_home_roc : Str
 import "../examples/starter/src/Import.roc" as scaffold_src_import_roc : Str
 import "../examples/starter/src/Store.roc" as scaffold_src_store_roc : Str
 import "../examples/starter/src/Widgets.roc" as scaffold_src_widgets_roc : Str
 import "../examples/starter/src/main.roc" as scaffold_src_main_roc : Str
-import "../examples/starter/tests/add.expected" as scaffold_tests_add_expected : Str
-import "../examples/starter/tests/add.script" as scaffold_tests_add_script : Str
-import "../examples/starter/tests/cards.expected" as scaffold_tests_cards_expected : Str
-import "../examples/starter/tests/cards.script" as scaffold_tests_cards_script : Str
-import "../examples/starter/tests/fixtures/expenses.csv" as scaffold_tests_fixtures_expenses_csv : Str
-import "../examples/starter/tests/import.expected" as scaffold_tests_import_expected : Str
-import "../examples/starter/tests/import.script" as scaffold_tests_import_script : Str
-import "../examples/starter/tests/problem.expected" as scaffold_tests_problem_expected : Str
-import "../examples/starter/tests/problem.script" as scaffold_tests_problem_script : Str
 
 ## What this copy of the tool ships with: the release it belongs to, that
 ## release's platform, the Roc it was tested with, and the app `init` writes.
@@ -46,7 +42,7 @@ Bundle := [].{
 	roc_version = "development"
 
 	## The files `init` writes: the starter example (`examples/starter`),
-	## with its logic package, fuzz targets, assets and recorded cases.
+	## with its logic package, fuzz targets, assets and specs.
 	scaffold : List(File)
 	scaffold = [
 		{ path: "AGENTS.md", contents: Text(scaffold_agents_md) },
@@ -56,19 +52,15 @@ Bundle := [].{
 		{ path: "logic/Ledger.roc", contents: Text(scaffold_logic_ledger_roc) },
 		{ path: "logic/Money.roc", contents: Text(scaffold_logic_money_roc) },
 		{ path: "logic/main.roc", contents: Text(scaffold_logic_main_roc) },
+		{ path: "specs/add.scm", contents: Text(scaffold_specs_add_scm) },
+		{ path: "specs/cards.scm", contents: Text(scaffold_specs_cards_scm) },
+		{ path: "specs/fixtures/expenses.csv", contents: Text(scaffold_specs_fixtures_expenses_csv) },
+		{ path: "specs/import.scm", contents: Text(scaffold_specs_import_scm) },
+		{ path: "specs/problem.scm", contents: Text(scaffold_specs_problem_scm) },
 		{ path: "src/Home.roc", contents: Text(scaffold_src_home_roc) },
 		{ path: "src/Import.roc", contents: Text(scaffold_src_import_roc) },
 		{ path: "src/Store.roc", contents: Text(scaffold_src_store_roc) },
 		{ path: "src/Widgets.roc", contents: Text(scaffold_src_widgets_roc) },
 		{ path: "src/main.roc", contents: Text(scaffold_src_main_roc) },
-		{ path: "tests/add.expected", contents: Text(scaffold_tests_add_expected) },
-		{ path: "tests/add.script", contents: Text(scaffold_tests_add_script) },
-		{ path: "tests/cards.expected", contents: Text(scaffold_tests_cards_expected) },
-		{ path: "tests/cards.script", contents: Text(scaffold_tests_cards_script) },
-		{ path: "tests/fixtures/expenses.csv", contents: Text(scaffold_tests_fixtures_expenses_csv) },
-		{ path: "tests/import.expected", contents: Text(scaffold_tests_import_expected) },
-		{ path: "tests/import.script", contents: Text(scaffold_tests_import_script) },
-		{ path: "tests/problem.expected", contents: Text(scaffold_tests_problem_expected) },
-		{ path: "tests/problem.script", contents: Text(scaffold_tests_problem_script) },
 	]
 }

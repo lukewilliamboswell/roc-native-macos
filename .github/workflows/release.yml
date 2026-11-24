@@ -26,7 +26,7 @@ name: Release
 #              the bundle, an app created and built with macos.roc into a
 #              universal .app, and each example with assets/ built with it
 #   cross-run  macos-15 and macos-15-intel: those cross-compiled apps run
-#              their recorded cases, each Mac its own programs and the
+#              their specs, each Mac its own programs and the
 #              universal .apps
 #   attest     build provenance for every published file
 #   publish    actions/publish-release: draft, verify every asset, publish
@@ -372,7 +372,7 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
-  # The cross-compiled apps on the Macs they are for: every recorded case of
+  # The cross-compiled apps on the Macs they are for: every spec of
   # every example, against the binaries built elsewhere, each Mac running its
   # own programs and its half of the universal .apps. Both run the scripts
   # with roc-stable directly, since Blueprint's environment is Apple silicon
@@ -405,7 +405,7 @@ jobs:
         with:
           pattern: cross-*
           path: build/cross
-      - name: Run every recorded case against each system's apps
+      - name: Run every spec against each system's apps
         env:
           TARGET: ${{ matrix.target }}
         run: roc-stable scripts/release.roc -- cross-run build/release build/cross "$TARGET"

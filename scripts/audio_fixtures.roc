@@ -8,7 +8,7 @@ import cli.Path
 import cli.Stdout
 
 ## Write the audio player's recorded-case fixtures,
-## `examples/player/tests/fixtures/*.wav`, which are committed:
+## `examples/player/specs/fixtures/*.wav`, which are committed:
 ##
 ##     roc-stable scripts/audio_fixtures.roc
 ##
@@ -25,7 +25,7 @@ import cli.Stdout
 ## - `silence-44100.wav` and `silence-48000.wav`: 0.25 s of digital silence.
 ## - `invalid.wav`: a RIFF header over bytes that are not audio.
 main! = |_args| {
-	dir = "examples/player/tests/fixtures"
+	dir = "examples/player/specs/fixtures"
 	Path.create_all!(Path.utf8(dir))?
 	for { name, bytes } in fixtures {
 		Path.write_bytes!(Path.utf8("${dir}/${name}"), bytes)?

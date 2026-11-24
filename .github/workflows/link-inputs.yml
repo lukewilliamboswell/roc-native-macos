@@ -11,10 +11,10 @@ name: Linker inputs
 #   build     macos-15: the archive twice (identical bytes required), then the
 #             hosts built from the same commit (Apple silicon and Intel) linked
 #             against it: every example built for Apple silicon and its
-#             recorded cases run (the final link and the run)
+#             specs run (the final link and the run)
 #   intel     macos-15-intel: the same candidate, the stubs' x86_64 slice,
 #             with the hosts that job built: the audit of the Intel `roc`'s
-#             run shims, every example built for Intel and its recorded cases
+#             run shims, every example built for Intel and its specs
 #             run, the counter's also through `roc src/main.roc`
 #   assemble  the manifest and the archive, attested for a release candidate,
 #             uploaded as the one artifact the publisher admits, once both
@@ -89,7 +89,7 @@ jobs:
         run: blueprint run link-inputs -- candidate build/link-inputs
       - name: Build the host and every example against the candidate
         run: blueprint run build -- --link-inputs build/link-inputs
-      - name: Run every example's recorded cases against it
+      - name: Run every example's specs against it
         run: blueprint run examples
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
@@ -138,7 +138,7 @@ jobs:
           path: platform/targets
       - name: Build every example for Intel against the candidate
         run: roc-stable scripts/build.roc -- --link-inputs build/link-inputs
-      - name: Run every example's recorded cases against it
+      - name: Run every example's specs against it
         run: roc-stable scripts/check_all.roc -- examples
 
   assemble:

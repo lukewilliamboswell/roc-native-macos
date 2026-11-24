@@ -4,7 +4,7 @@
 #     blueprint run build                  # glue, Swift host, linker stubs, every example
 #     blueprint run build -- counter       # one example, after the platform is built
 #     blueprint run test                   # roc test on the platform root and the examples
-#     blueprint run examples               # every example's recorded scripted runs
+#     blueprint run examples               # every example's specs
 #     blueprint run examples -- --update   # record what they print now, as a reviewable diff
 #     blueprint run bundle                 # the platform bundle, in build/platform/<hash>.tar.zst
 #     blueprint run bundle -- --test       # and a counter made with macos.roc against it
@@ -105,7 +105,7 @@ config = [
 	Shell("default", [Use("dev")]),
 	# The per-pull-request gate: compiler pins, formatting, the scripts'
 	# tests, the macos.roc tool's tests, the build, `roc test`, every
-	# example's recorded runs and the bundle with its consumer test.
+	# example's specs and the bundle with its consumer test.
 	# `check -- STAGE...` runs only the named stages, in order.
 	Task("check", [Use("dev"), Run(["scripts/check_all.roc", "--"])]),
 	# The host, the linker inputs and every example (scripts/build.roc):

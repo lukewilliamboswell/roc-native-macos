@@ -32,7 +32,7 @@ enum SurfaceSample {
 /// storage `latest` reads under its own short lock). `frameTime` is the
 /// frame's time in seconds on a monotonic clock: `ProcessInfo.systemUptime`
 /// (`mach_absolute_time`, which does not advance while the Mac sleeps), or
-/// under a scripted run's controlled clock, the seconds its `frame` steps
+/// under a spec's controlled clock, the seconds its `frame` steps
 /// have advanced. Return nil when there is nothing to show yet; the mark then
 /// draws nothing, and a number reads as 0.
 protocol SurfaceSource: AnyObject {
@@ -86,7 +86,7 @@ final class SurfaceSources {
 /// The platform's test signals, registered in every app: `synthetic.wave`,
 /// nine values of one sine cycle, and `synthetic.level`, a scalar from 0 up
 /// to just under 1. Each moves on by one step (an eighth of a cycle) for a
-/// scripted `step:NAME`; with the display clock it also moves with time, two
+/// spec's `(step-source NAME)`; with the display clock it also moves with time, two
 /// steps a second.
 final class SyntheticSource: SurfaceSource {
     let name: String

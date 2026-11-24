@@ -2,7 +2,7 @@ import Bundle
 
 ## The GitHub Actions workflow `init` writes, `.github/workflows/release.yml`:
 ## on a pushed tag `v1.2.0` it runs the app's tests on a Mac (its `expect`s,
-## its recorded cases and, when it has `fuzz/main.roc`, its fuzz targets'
+## its specs and, when it has `fuzz/main.roc`, its fuzz targets'
 ## examples), then packages the app on Linux, signed and notarized when the
 ## repository has the secrets, and attaches the zip to the tag's release.
 ##
@@ -79,7 +79,7 @@ Workflow := [].{
 		\\  APP_DIR: .
 		\\
 		\\jobs:
-		\\  # The recorded cases run the app, which needs a Mac; roc-fuzz runs on
+		\\  # The specs run the app, which needs a Mac; roc-fuzz runs on
 		\\  # an Apple silicon Mac, as macos-15 is.
 		\\  test:
 		\\    name: Run the tests

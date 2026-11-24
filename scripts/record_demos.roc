@@ -17,10 +17,10 @@ import src/Demo
 ## Record the README's animated tiles, `docs/images/<example>.gif`, from the
 ## built examples (`blueprint run build` first):
 ##
-##     roc-stable scripts/record_demos.roc                  # every example with a demo.script
+##     roc-stable scripts/record_demos.roc                  # every example with a demo.scm
 ##     roc-stable scripts/record_demos.roc -- counter todos # the named ones
 ##
-## Each example runs its `examples/<example>/demo.script` steps, in the light
+## Each example runs its `examples/<example>/demo.scm` spec, in the light
 ## appearance, while `screencapture -l<window> -o -x` takes a frame of its
 ## window every `Demo.frame_ms`. A capture names the window, so the app never
 ## needs focus and other windows never show. ffmpeg then scales the frames
@@ -36,13 +36,13 @@ main! = |raw_args| {
 	listed = Path.list!(Path.utf8("examples"))?.keep_oks(|path| Path.filename(path).map_ok(Path.display))
 	var $names = []
 	for name in listed.sort_with(compare_str) {
-		if Path.exists!(Path.utf8("examples/${name}/demo.script"))? and (named.is_empty() or named.contains(name)) {
+		if Path.exists!(Path.utf8("examples/${name}/demo.scm"))? and (named.is_empty() or named.contains(name)) {
 			$names = $names.append(name)
 		}
 	}
 	for name in named {
 		if !$names.contains(name) {
-			warn!("record_demos: examples/${name}/demo.script does not exist")
+			warn!("record_demos: examples/${name}/demo.scm does not exist")
 			return Err(Exit(2))
 		}
 	}
@@ -78,14 +78,14 @@ record! = |name| {
 	if !(Path.exists!(Path.utf8(exe)) ?? Bool.False) {
 		return Err("${exe} is not built: run `blueprint run build` first")
 	}
-	text = Path.read_utf8!(Path.utf8("examples/${name}/demo.script")) ? |error| "could not read its demo.script: ${Str.inspect(error)}"
-	steps = Demo.steps(text) ? |problem| "its demo.script is not usable: ${Str.inspect(problem)} (it must end with quit)"
+	text = Path.read_utf8!(Path.utf8("examples/${name}/demo.scm")) ? |error| "could not read its demo.scm: ${Str.inspect(error)}"
+	steps = Demo.steps(text) ? |problem| "its demo.scm is not usable: ${Str.inspect(problem)} (it is a spec whose first step is (window))"
 	dir = "build/demos/${name}"
 	Path.delete_all!(Path.utf8(dir)) ?? {}
 	Path.create_all!(Path.utf8(dir)) ? |error| "could not create ${dir}: ${Str.inspect(error)}"
 	note!("record_demos: ${name}")
 	demo = Cmd.new(OsStr.from_str(exe))
-		.env("ROC_SCRIPT", OsStr.from_str(steps))
+		.env("ROC_SPEC", OsStr.from_str(steps))
 		.env("ROC_APPEARANCE", "light")
 		.stdin(Null)
 		.stdout(Null)

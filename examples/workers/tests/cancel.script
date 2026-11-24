@@ -1,1 +1,0 @@
-pool:2;choose:Fast;click:Zoom In;wait:300;click:Zoom In;wait:300;choose:Extreme;click:Draw;wait:250;workers;click:Cancel;wait:300;workers;dump;quit

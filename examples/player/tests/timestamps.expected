@@ -1,9 +1,0 @@
-audio: history 9 of 32 (46.4–232.2 ms), current generation only, in order; ring 0 of 4 chunks waiting, none skipped
-audio: history 0 of 32 (empty), current generation only, in order; ring 0 of 4 chunks waiting, none skipped
-audio: history 5 of 32 (746.4–839.3 ms), current generation only, in order; ring 0 of 4 chunks waiting, none skipped
-audio: sources audio.waveform 1024 values in 0.00…0.00, audio.bands 24 values in 0.00…0.00, audio.level 0.00, audio.bass 0.00, audio.mids 0.00, audio.treble 0.00
-audio: sources audio.waveform none, audio.bands none, audio.level none, audio.bass none, audio.mids none, audio.treble none
-audio: history 7 of 32 (346.4–485.8 ms), current generation only, in order; ring 0 of 4 chunks waiting, none skipped
-audio: history 7 of 32 (346.4–485.8 ms), current generation only, in order; ring 0 of 4 chunks waiting, none skipped
-audio: Paused at 550 ms of 1000 ms (track 1, 0 ended, analysis on)
-audio: Paused at 550 ms of 1000 ms (track 1, 0 ended, analysis off)

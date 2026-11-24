@@ -1,1 +1,0 @@
-pool:2;files:tests/fixtures/expenses.csv;wait:800;workers;dump;quit

@@ -11,9 +11,9 @@ examples/*/*
 examples/*/*.app/
 !examples/*/*.roc
 !examples/*/*.md
-!examples/*/demo.script
+!examples/*/demo.scm
 !examples/*/assets/
-!examples/*/tests/
+!examples/*/specs/
 # The starter's app, logic package and fuzz targets (examples/starter)
 !examples/*/src/
 !examples/*/logic/
@@ -23,6 +23,8 @@ bench/*/*
 !bench/*/*.roc
 !bench/*/*.adoc
 !bench/*/*.sh
+!bench/*/src/
+!bench/*/specs/
 
 # Blueprint's generated environment and links
 .blueprint/

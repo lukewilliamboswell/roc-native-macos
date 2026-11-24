@@ -23,13 +23,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         let host = Host(window: window)
         self.host = host
+        let spec = specText.map(SpecSteps.init)
+        if let spec { host.drive(spec) }
         host.start()
         window.center()
-        if let script = ProcessInfo.processInfo.environment["ROC_SCRIPT"] {
-            // A scripted run sets control values directly, so it never takes
-            // keyboard focus: keystrokes meant for another app stay there.
+        if let spec {
+            // As a script does, a spec sets control values directly and
+            // never takes keyboard focus.
             window.orderFrontRegardless()
-            host.run(script: script)
+            host.run(spec: spec)
         } else {
             window.makeKeyAndOrderFront(nil)
             NSApp.activate(ignoringOtherApps: true)
@@ -42,7 +44,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Closing the window or quitting tears the engine down once.
     func applicationWillTerminate(_ note: Notification) { host?.stop() }
 
-    /// Reload (Cmd-R, or the scripted `reload` step): retire the engine and
+    /// Reload (Cmd-R, or a spec's `(reload)` step): retire the engine and
     /// mount a fresh one in the same window, as a browser reloads a page.
     /// Local and session storage carry over; everything else starts again.
     /// Under `roc main.roc` the mount is a Roc entry point, so it runs the
@@ -53,6 +55,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         old.retire()
         let fresh = Host(window: old.window)
         host = fresh
+        if let spec = old.specSteps { fresh.drive(spec) }
         fresh.start()
         fresh.trace("RELOAD")
         return fresh

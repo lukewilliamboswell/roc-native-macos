@@ -1,1 +1,0 @@
-files:tests/fixtures/hello.txt;click:Inspect;wait:500;dump;quit
