@@ -142,10 +142,37 @@ host_fingerprint! = |target| {
 	sha256!(path)
 }
 
+## This Mac's Xcode and Swift against the pin, `Build.toolchain_pin_path`:
+## `Pinned`, or `Differs(found)` when `ROC_HOST_TOOLCHAIN=any` allows another;
+## any other difference fails, before `swiftc` runs.
+toolchain! : () => Try([Pinned, Differs(Str)], Str)
+toolchain! = || {
+	pin = pin!()?
+	xcodebuild = capture!("xcodebuild", ["-version"]) ?? ""
+	swiftc = capture!("swiftc", ["--version"]) ?? ""
+	Build.toolchain_check(pin, Build.toolchain_found(xcodebuild, swiftc), env!("ROC_HOST_TOOLCHAIN", ""))
+}
+
+## The pinned toolchain.
+pin! : () => Try(Build.Toolchain, Str)
+pin! = || Build.toolchain_pin(read!(Build.toolchain_pin_path)?).map_err(|NoPin(input)| "${Build.toolchain_pin_path} gives no default for its `${input}` input, which pins the host's toolchain")
+
+## Fail on a toolchain other than the pinned one, or say that
+## `ROC_HOST_TOOLCHAIN=any` allows it.
+require_toolchain! : () => Try({}, Str)
+require_toolchain! = || {
+	match toolchain!()? {
+		Pinned => {}
+		Differs(found) => warn!("build: ROC_HOST_TOOLCHAIN=any: building the host with ${found}, not the Xcode ${Build.toolchain_pin_path} pins")
+	}
+	Ok({})
+}
+
 ## Build each target's host unless its recorded fingerprint is this
 ## checkout's.
 host! : () => Try({}, Str)
 host! = || {
+	require_toolchain!()?
 	for target in Build.host_targets {
 		fingerprint = host_fingerprint!(target)?
 		library = "platform/${Build.host_library(target)}"
@@ -193,6 +220,7 @@ compile! = |target, dir, library| {
 ## bytes, and install the first as the platform's host with its fingerprint.
 reproduce! : () => Try({}, Str)
 reproduce! = || {
+	require_toolchain!()?
 	for target in Build.host_targets {
 		fingerprint = host_fingerprint!(target)?
 		first_path = "build/host-${target.roc}-first.a"
@@ -327,7 +355,12 @@ audit! = |roc| {
 		exported = LinkInputs.exported(catalog, target.tapi)
 		result = LinkInputs.audit({ undefined, defined, owners: exported, run_shim: catalog.run_shim.symbols })
 		if !result.missing.is_empty() {
-			return Err("${target.roc}: ${LinkInputs.missing_message(result.missing)}")
+			# A host built with another Xcode (ROC_HOST_TOOLCHAIN=any) says so.
+			note = match toolchain!() {
+				Ok(Differs(found)) => Build.toolchain_audit_note(pin!()?, found)
+				_ => ""
+			}
+			return Err("${target.roc}: ${LinkInputs.missing_message(result.missing)}${note}")
 		}
 		note!("build: the ${target.roc} host references only symbols the catalog exports for ${target.tapi} (${exported.len().to_str()} symbols)")
 		here = LinkInputs.audit({ undefined, defined, owners, run_shim: catalog.run_shim.symbols }).unused

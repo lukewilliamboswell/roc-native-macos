@@ -53,9 +53,12 @@ new symbol the host references fails the build's audit until the catalog
 owns it. Add it in a reviewed edit that names its library and the symbol's
 own evidence, and never expand the catalog to silence a link error; a
 catalog change is a new linker-input release. Keep Swift's
-`-disable-autolink-frameworks` and `-disable-force-load-symbols`, and keep
-the host reproducible: every path relative, objects at fixed paths,
-`libtool -D`.
+`-disable-autolink-frameworks`, `-disable-force-load-symbols` and
+`-Xcc -fno-objc-msgsend-selector-stubs`, and keep the host reproducible:
+every path relative, objects at fixed paths, `libtool -D`. The host is built
+with exactly the Xcode `.github/actions/setup-xcode/action.yml` pins, which
+`scripts/build.roc` checks before it compiles; move the pin as
+`docs/contributing.adoc` ("The pinned Xcode") describes.
 
 ## Where Roc runs
 

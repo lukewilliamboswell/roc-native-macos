@@ -11,18 +11,45 @@ explains the design.
 == Build the platform
 
 Building the platform itself (not an app: an app needs only Roc, on any
-system) needs Apple silicon macOS, Xcode, `python3`, and a Roc compiler
-installed as `roc`: a current nightly, or 0.1.0 RC1. An Apple silicon Mac
-cross-compiles the Intel host as well; CI builds and runs everything on an
-Intel Mac too (xref:contributing.adoc#intel-macs[Intel Macs]). The repository follows
+system) needs Apple silicon macOS, exactly Xcode 26.3 (build 17C529, Swift
+6.2.4), `python3`, and a Roc compiler installed as `roc`: a current
+nightly, or 0.1.0 RC1. An Apple silicon Mac cross-compiles the Intel host as
+well; CI builds and runs everything on an Intel Mac too
+(xref:contributing.adoc#intel-macs[Intel Macs]). The repository follows
 https://github.com/lukewilliamboswell/roc-automation[roc-automation], and
 https://github.com/lukewilliamboswell/roc-blueprint[Blueprint] 0.13.0
 provides the rest of the environment.
 
-To try one example from a checkout, run it with Blueprint. It builds the
-host first when it is missing, then runs `roc src/main.roc` in the
-example's directory, so the example finds its `assets/` and reloads as you
-save. Name no example to list them. With Nix, Blueprint needs no install:
+Xcode 26.3 can sit beside another Xcode. Download it from
+https://developer.apple.com/download/all/[Apple's developer downloads],
+install it as `/Applications/Xcode_26.3.app`, and select it for the whole
+machine, or for one shell:
+
+[source,sh]
+----
+sudo xcode-select -s /Applications/Xcode_26.3.app
+export DEVELOPER_DIR=/Applications/Xcode_26.3.app/Contents/Developer
+----
+
+Before it compiles the host, `scripts/build.roc` compares `xcodebuild
+-version` and `swiftc --version` with the pin and stops on any difference,
+naming what it found and what it needs: another Swift compiler references
+other runtime symbols, which the linker-input audit would reject (see
+xref:contributing.adoc#the-pinned-xcode[The pinned Xcode]). To build with
+another Xcode on purpose, when moving the pin, set `ROC_HOST_TOOLCHAIN=any`;
+the build then warns instead, and if the audit fails, its message says the
+host was built with an Xcode other than the pinned one.
+
+To run the examples rather than change the platform, you need none of
+this: use the examples archive a release attaches, as
+xref:apps.adoc#try-an-example[Try an example] describes. It builds against
+the release's prebuilt host, with no checkout and no Xcode.
+
+For contributors building from source, Blueprint runs one example from the
+checkout. It builds the host first when it is missing, then runs `roc
+src/main.roc` in the example's directory, so the example finds its
+`assets/` and reloads as you save. Name no example to list them. With Nix,
+Blueprint needs no install, but the host still needs Xcode 26.3:
 
 [source,sh]
 ----
@@ -74,13 +101,6 @@ build -- glue` rewrites it. Never edit it by hand. A new nightly that changes
 it fails every pull request until the glue, and any host change it needs,
 are updated in one pull request. The outputs of the build are not committed.
 
-CI and releases build the host with Xcode 26.3 (Swift 6.2.4), selected by
-`.github/actions/setup-xcode`. The Swift version decides which Swift runtime
-symbols `libhost.a` references, and so what the stub audit accepts: Xcode
-16.4's Swift 6.1, the runner image's default, references four that Swift 6.2
-inlines. To move to another Xcode, change the action's two defaults, run the
-check gate with that Xcode, and catalog any symbol the audit names.
-
 Each example is built twice over: the bare binary, and a minimal `.app`
 bundle beside it (`Contents/MacOS/<name>` and an `Info.plist` with
 `CFBundleIdentifier` `dev.roc.native.<name>` and `LSMinimumSystemVersion`
@@ -88,6 +108,35 @@ bundle beside it (`Contents/MacOS/<name>` and an `Info.plist` with
 bundle identifier, so it no longer warns that it cannot index window tabs.
 The two keep separate `UserDefaults` domains (`todos` versus
 `dev.roc.native.todos`), so they do not share saved values.
+
+[#the-pinned-xcode]
+=== The pinned Xcode
+
+CI, releases and every local build of the host use Xcode 26.3 (17C529,
+Swift 6.2.4). The pin is written once, as the input defaults of
+`.github/actions/setup-xcode/action.yml`: the action selects and verifies
+that Xcode in CI, and `scripts/build.roc` reads the same defaults
+(`Build.toolchain_pin`) and checks the local Xcode against them. `libtool`
+and `nm` come from the selected Xcode, so the check covers them too. The
+Swift version decides which Swift runtime symbols `libhost.a` references,
+and so what the stub audit accepts: Xcode 16.4's Swift 6.1, the runner
+image's default, references four that Swift 6.2 inlines, and Swift 6.3
+references others (it calls through the `Equatable` dispatch thunk for a
+plain enum's `==`, and through the CoreFoundation overlay's `_CFObject`
+conformance for `!=` on an optional CF type, which the host now avoids).
+
+Swift 6.3 also routes Objective-C calls through Clang's code generation,
+which on arm64 calls `_objc_msgSend$<selector>` stubs for the linker to
+synthesize. The host is compiled with `-Xcc -fno-objc-msgsend-selector-stubs`,
+which every Clang from Xcode 26.3's on takes, so every call is to
+`_objc_msgSend`, as Swift 6.2 emits it.
+
+To move to another Xcode, change the action's four defaults, run the check
+gate with that Xcode and `ROC_HOST_TOOLCHAIN=any` until the pin names it,
+and catalog any symbol the audit names, with its evidence. Built with Xcode
+26.6 (Swift 6.3.3), the host references one symbol the catalog does not
+own yet, `ContiguousArray._allocateBufferUninitialized(minimumCapacity:)`
+of the standard library.
 
 [#run-the-examples]
 === Run the examples

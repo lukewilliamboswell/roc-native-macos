@@ -351,6 +351,12 @@ cd roc-native-macos-examples-<version>/examples/todos
 roc ../../../macos.roc run
 ----
 
+This is the way to run the examples: they build against the release's
+prebuilt host, so they need only Roc, and no Xcode. The examples in a
+checkout of the repository build the platform from source, which needs one
+exact Xcode and is for people changing the platform
+(xref:contributing.adoc#build-the-platform[Build the platform]).
+
 Every example is laid out as `init` writes an app, with its root module in
 `src/main.roc`. To start your own app from a one-module example, copy its
 `src/main.roc` over the one `init` wrote, and delete the `src/` modules it
