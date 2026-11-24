@@ -249,9 +249,12 @@ The trail starts empty when the surface first appears, and empties again
 when its size or backing scale changes, when `trail` is turned on or off,
 and whenever `reset` takes a new value. Bump a counter in `reset` to clear it
 on a seek or a new track. The trail is kept in two bitmaps however long it
-lasts, and they are released when the surface is removed. A large surface
-keeps its trail at below the screen's backing scale, so it looks a little
-softer; see xref:architecture.adoc#drawing-surfaces[Drawing surfaces].
+lasts, and they are released when the surface is removed. A display-paced
+surface draws with Metal when the Mac has a GPU, at the screen's full
+resolution. Otherwise, and for an on-demand surface, it draws with Core
+Graphics, which keeps a large surface's trail at below the screen's backing
+scale, so it looks a little softer. See
+xref:architecture.adoc#drawing-surfaces[Drawing surfaces].
 
 === Overlays
 

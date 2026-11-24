@@ -399,6 +399,8 @@ Steps are separated by `;` and run every 100 ms.
 | `repaint` | redraws every surface now, as AppKit may at any time, without a new frame
 | `size:<w>,<h>` | sets the window's content size, in points (the window then fits its content again on the next turn, as it always does)
 | `surfaces` | prints how many surfaces are shown and how many are on the frame clock
+| `renderer:metal`, `renderer:cg`, `renderer:auto`, `renderer` | draws display-paced surfaces with Metal (Core Graphics on a Mac without a GPU), with Core Graphics (a scripted run's default), or with Metal where there is a GPU, from here on; `renderer` alone prints each surface's renderer
+| `bench:<n>` | draws `n` trail frames offscreen at three sizes with each renderer, and prints the time a frame (it measures this Mac, so keep it out of recorded cases)
 | `clock:display`, `clock:manual` | draws display-paced surfaces at the display's refresh from here on, with the synthetic sources moving with time (for a demo), or back to `frame` steps
 | `wait:<ms>` | waits
 | `dump` | prints the window size (`--- 360x237`), then the view tree; a list shows its visible rows, and a text, box or drop zone the look attributes that differ from the usual (`{color=secondary-label text-style=caption1}`)
@@ -440,6 +442,7 @@ as in `ROC_APPEARANCE=dark roc macos.roc run`.
 | `ROC_WORKERS=<n>` | the worker pool's size (one per core but one, at most eight, otherwise)
 | `ROC_MAX_OUTPUT_BYTES` | lowers what one worker job may append to its builders (256 MiB), to check `TooLarge`
 | `ROC_STORAGE_SUITE=<name>` | a `UserDefaults` suite for local storage; otherwise a scripted run's local storage is in memory
+| `ROC_SURFACE_RENDERER=<auto, metal or cg>` | which renderer draws display-paced surfaces: Metal where there is a GPU (`auto`, the default outside a scripted run), Metal falling back to Core Graphics (`metal`), or Core Graphics (`cg`, a scripted run's default)
 | `ROC_ASSETS=<dir>` | the app's assets directory, for a program run away from its `assets/` (see xref:apps.adoc#assets[Assets and the icon])
 |===
 

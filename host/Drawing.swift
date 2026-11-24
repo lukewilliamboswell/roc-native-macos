@@ -15,7 +15,9 @@
 // engine. A refresh the main thread was too busy for is skipped, not queued:
 // the next frame covers the time since the last one.
 //
-// A surface with a trail keeps two bitmaps: each frame clears one to the
+// A display-paced surface on a Mac with a Metal device draws with Metal
+// instead (SurfaceMetal.swift), in the same order. With Core Graphics, a
+// surface with a trail keeps two bitmaps: each frame clears one to the
 // background, draws the previous frame (the other) into it moved and faded
 // by the time since that frame, then the scene over it, and shows it as the
 // layer's contents. They are at most `historyPixels` pixels each, at the
@@ -455,6 +457,8 @@ final class DrawingSurface: NSView {
     private var current: CGImage?
     private var historyScale = 1.0
     private var historySize = (width: 0, height: 0)
+    /// While display-paced and drawing with Metal (SurfaceMetal.swift).
+    private var metal: MetalSurface?
 
     init() {
         super.init(frame: .zero)
@@ -536,6 +540,7 @@ final class DrawingSurface: NSView {
     /// Forget the trail: the next frame draws over the background alone.
     func clearHistory() {
         current = nil
+        metal?.clear()
         wantFrame()
     }
 
@@ -562,7 +567,11 @@ final class DrawingSurface: NSView {
     /// Draw one logical frame at `time`.
     private func produce(at time: Double) {
         let steps = DrawingSurface.resolve(marks, at: time)
-        if let trail { composite(steps, trail, at: time) }
+        if let metal {
+            render(steps, with: metal, at: time)
+        } else if let trail {
+            composite(steps, trail, at: time)
+        }
         last = steps
         lastTime = time
         frames += 1
@@ -624,6 +633,65 @@ final class DrawingSurface: NSView {
         next = 1 - next
     }
 
+    /// A frame with Metal: the same order as `composite`, at the full
+    /// backing resolution.
+    private func render(_ steps: [DrawStep], with metal: MetalSurface, at time: Double) {
+        layoutMetal()
+        var move: Affine?
+        var fade = 1.0
+        if let trail, let lastTime {
+            let dt = max(0, time - lastTime)
+            let cx = Double(bounds.width) / 2, cy = Double(bounds.height) / 2
+            let angle = trail.turn * dt, zoom = pow(trail.zoom, dt)
+            // Shift, then about the centre: turn, then zoom.
+            let turnAndZoom = Affine(a: cos(angle) * zoom, b: sin(angle) * zoom, c: -sin(angle) * zoom, d: cos(angle) * zoom, tx: 0, ty: 0)
+            move = Affine(tx: trail.shiftX * dt + cx, ty: trail.shiftY * dt + cy).concat(turnAndZoom).concat(Affine(tx: -cx, ty: -cy))
+            fade = pow(0.5, dt * 1000 / trail.halfLifeMs)
+        } else if trail == nil {
+            metal.clear()
+        }
+        let m = mapping()
+        var scene = Tessellation([], base: Affine())
+        var paint: [Float] = [0, 0, 0, 0]
+        effectiveAppearance.performAsCurrentDrawingAppearance {
+            scene = Tessellation(steps, base: Affine(a: m.scale, d: m.scale, tx: m.dx, ty: m.dy))
+            if let c = background.usingColorSpace(.sRGB) {
+                let a = Double(c.alphaComponent)
+                paint = [Float(Double(c.redComponent) * a), Float(Double(c.greenComponent) * a), Float(Double(c.blueComponent) * a), Float(a)]
+            }
+        }
+        metal.frame(scene, background: paint, trail: move, fade: fade)
+    }
+
+    /// The Metal layer to the view's size and backing scale.
+    private func layoutMetal() {
+        metal?.layout(width: Double(bounds.width), height: Double(bounds.height), scale: Double(window?.backingScaleFactor ?? 2))
+    }
+
+    /// Draw with Metal while display-paced, on the frame clock and Metal is
+    /// chosen and there; with Core Graphics otherwise.
+    func updateRenderer() {
+        let wants = ticking && SurfaceRenderer.usesMetal
+        if wants, metal == nil {
+            metal = MetalSurface.make(over: layer)
+            releaseHistory()
+            layoutMetal()
+            needsDisplay = true
+        } else if !wants, let old = metal {
+            old.remove()
+            metal = nil
+            wantFrame()
+        }
+    }
+
+    /// Which renderer draws this surface.
+    var rendererName: String { metal == nil ? "core graphics" : "metal (\(MetalRenderer.device?.name ?? ""))" }
+
+    override func layout() {
+        super.layout()
+        layoutMetal()
+    }
+
     /// The scene's units in this view's points.
     func mapping() -> Mapping {
         guard let space else { return Mapping(scale: 1, dx: 0, dy: 0) }
@@ -636,9 +704,14 @@ final class DrawingSurface: NSView {
 
     /// With a trail the layer shows the latest history bitmap; without one,
     /// `draw(_:)` draws the frame at the backing scale.
-    override var wantsUpdateLayer: Bool { trail != nil }
+    override var wantsUpdateLayer: Bool { trail != nil || metal != nil }
 
     override func updateLayer() {
+        if metal != nil {
+            // The Metal layer above shows the frame.
+            layer?.contents = nil
+            return
+        }
         produceIfDue()
         layer?.contents = current
     }
@@ -659,12 +732,16 @@ final class DrawingSurface: NSView {
     override func setFrameSize(_ newSize: NSSize) {
         let changed = newSize != frame.size
         super.setFrameSize(newSize)
-        if changed { clearHistory() }
+        if changed {
+            clearHistory()
+            layoutMetal()
+        }
     }
 
     override func viewDidChangeBackingProperties() {
         super.viewDidChangeBackingProperties()
         clearHistory()
+        layoutMetal()
     }
 
     override func viewDidChangeEffectiveAppearance() {
@@ -698,6 +775,7 @@ final class DrawingSurface: NSView {
     private func updateTicking() {
         let wants = displayPaced && window != nil && !isHiddenOrHasHiddenAncestor
         if wants { FrameClock.shared.start(self) } else { FrameClock.shared.stop(self) }
+        updateRenderer()
     }
 
     var ticking: Bool { FrameClock.shared.isTicking(self) }
@@ -728,6 +806,12 @@ final class DrawingSurface: NSView {
     /// percentages of red, green, blue (not premultiplied) and opacity.
     func probe(_ x: Double, _ y: Double) -> [Int] {
         produceIfDue()
+        if let metal {
+            // The read follows the frames on the same queue.
+            guard let target = metal.target else { return [0, 0, 0, 0] }
+            let p = target.pixel(Int(x * target.scale), Int(y * target.scale))
+            return DrawingSurface.percentages(p[0], p[1], p[2], p[3])
+        }
         let scale = 2.0
         let width = Double(bounds.width), height = Double(bounds.height)
         let px = max(1, Int((width * scale).rounded(.up))), py = max(1, Int((height * scale).rounded(.up)))
@@ -753,15 +837,20 @@ final class DrawingSurface: NSView {
         let col = Int(x * scale), row = Int(y * scale)
         guard col >= 0, row >= 0, col < px, row < py, let data = c.data else { return [0, 0, 0, 0] }
         let p = data.assumingMemoryBound(to: UInt8.self) + row * px * 4 + col * 4
-        let a = Double(p[3])
-        func channel(_ v: UInt8) -> Int { a == 0 ? 0 : Int((Double(v) / a * 100).rounded()) }
-        return [channel(p[0]), channel(p[1]), channel(p[2]), Int((a / 255 * 100).rounded())]
+        return DrawingSurface.percentages(Int(p[0]), Int(p[1]), Int(p[2]), Int(p[3]))
+    }
+
+    /// A premultiplied 8-bit pixel as percentages, not premultiplied.
+    static func percentages(_ r: Int, _ g: Int, _ b: Int, _ a: Int) -> [Int] {
+        func channel(_ v: Int) -> Int { a == 0 ? 0 : Int((Double(v) / Double(a) * 100).rounded()) }
+        return [channel(r), channel(g), channel(b), Int((Double(a) / 255 * 100).rounded())]
     }
 
     /// The dump's line: size, frames, pacing and trail.
     var summary: String {
         let pacing = displayPaced ? (ticking ? "display-paced, ticking" : "display-paced, suspended") : "on demand"
-        let history = trail == nil ? "" : (current == nil ? ", trail empty" : ", trail of 2 bitmaps")
+        let held = metal.map { $0.target?.hasHistory ?? false } ?? (current != nil)
+        let history = trail == nil ? "" : (held ? ", trail of 2 bitmaps" : ", trail empty")
         return "\"\(label)\" [\(Int(bounds.width))pt wide, \(Int(bounds.height))pt high, \(pacing)\(history)]"
     }
 
@@ -1022,6 +1111,20 @@ extension Host {
             guard let p = Host.point(arg), p.x > 0, p.y > 0 else { fatal("script: size needs W,H, not \(arg)") }
             window.setContentSize(NSSize(width: p.x, height: p.y))
             window.contentView?.layoutSubtreeIfNeeded()
+        case "bench":
+            // `bench:N`: N frames of a trail at three sizes, with each renderer.
+            benchSurfaces(frames: Int(arg) ?? 100)
+        case "renderer":
+            // `renderer:metal`, `renderer:cg` or `renderer:auto` for display-paced
+            // surfaces from here on (`metal` without a device is Core Graphics);
+            // `renderer` alone prints each surface's.
+            if arg.isEmpty {
+                for s in allSurfaces() { say("renderer of \"\(s.label)\": \(s.rendererName)") }
+            } else {
+                guard let chosen = SurfaceRenderer.named(arg) else { fatal("script: renderer:\(arg) is not metal, cg or auto") }
+                SurfaceRenderer.choice = chosen
+                for s in allSurfaces() { s.updateRenderer() }
+            }
         case "surfaces":
             let all = allSurfaces()
             say("surfaces: \(all.count) shown, \(clock.tickingCount) on the frame clock")

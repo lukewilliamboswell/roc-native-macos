@@ -336,7 +336,7 @@ a series may hold at most 4,096 values.
 
 A frame is logical. Drawing one resolves the parsed scene: it reads each
 bound number and each source's series once, at the frame's time, and keeps
-the result. `draw(_:)` draws the kept frame with Core Graphics in the view's
+the result. With Core Graphics (xref:architecture.adoc#drawing-surfaces[Renderers]), `draw(_:)` draws the kept frame in the view's
 own context, at the backing scale, so an AppKit repaint (an expose, a resize
 redraw, a change of key window) draws the same frame again. A new frame is
 due when the scene or a look attribute changes, the size, backing scale or
@@ -359,44 +359,114 @@ Under `ROC_SCRIPT` the clock is controlled instead. It starts at 0, the
 `frame` step moves it and ticks every surface on it, and no display link
 runs, so a recorded case draws the same frames everywhere.
 
+=== Renderers
+
+A surface draws with one of two renderers, and both draw the same frame in
+the same order.
+
+* **Metal** (`host/SurfaceMetal.swift`) draws a display-paced surface while
+  it is on the frame clock, when the Mac has a Metal device
+  (`MTLCreateSystemDefaultDevice`).
+* **Core Graphics** draws everything else: an on-demand surface, any surface
+  on a Mac or virtual machine without a device, and every surface of a
+  scripted run unless the run asks for Metal. It is the reference renderer.
+
+`ROC_SURFACE_RENDERER` (`auto`, `metal` or `cg`) or the scripted
+`renderer:` step chooses the renderer. `auto`, the default outside a
+scripted run, is Metal where there is a device; `metal` falls back to Core
+Graphics without one.
+
+A Metal surface adds one `CAMetalLayer` over its view's layer. It is a
+plain layer rather than an `MTKView`, because the frame clock already paces
+it, and so it costs one QuartzCore class in the linker catalog. Its textures
+and the layer are released when the surface stops ticking: when it is
+removed or hidden, or when its pacing becomes `OnDemand`. The device, queue
+and pipeline states are shared while any surface renders with Metal, and
+released with the last one. The shaders are Metal source in that file,
+compiled when the first surface needs them (`makeLibrary(source:options:)`),
+so the host build has no Metal step.
+
 === Trails and their storage
 
-A surface with a trail keeps two bitmaps (`CGBitmapContext`, 8-bit sRGB,
-premultiplied). Each frame does the following, in the bitmap the latest
-frame is not in:
+Each frame of a surface with a trail is drawn into whichever of its two
+images the latest frame is not in:
 
-. Clear it to transparent, then fill it with the background.
-. If there is a previous frame, draw it with `.sourceOver` through a
-  transform about the surface's centre, at `0.5^(dt / half-life)` of its
-  opacity. The transform is a translation by `shift * dt`, then a rotation
-  by `turn * dt`, then a scale by `zoom^dt`, where `dt` is the time since
-  that frame. Points the moved image does not cover keep the background.
-  Nothing outside the source image is sampled.
+. Clear it to the background.
+. If there is a previous frame, draw it source-over (premultiplied) at
+  `0.5^(dt / half-life)` of its opacity, through a transform. The transform
+  is a translation by `shift * dt`, then a rotation by `turn * dt` and a
+  scale by `zoom^dt` about the surface's centre, where `dt` is the time since
+  that frame. Points the moved image does not cover keep the background, and
+  nothing outside the image is sampled.
 . Draw the scene.
 
-The result (`makeImage`, copy on write) is the layer's `contents`, in
-`updateLayer`, and the next frame's source. A repaint shows that image
-again. History therefore costs two bitmaps however many frames it spans.
-It is emptied when the surface first appears, when its size or backing
-scale changes, when `trail` turns on or off, and when `reset` changes. Both
-bitmaps are released when the surface leaves its window.
+That image is shown, and it is the next frame's source. A repaint shows it
+again without fading it. History therefore costs two images however many
+frames it spans. It is emptied when the surface first appears, when its size
+or backing scale changes, when `trail` turns on or off, when `reset`
+changes, and when the surface changes renderer. Both images are released
+when the surface leaves its window (or, with Metal, stops ticking).
 
-The renderer was measured on Apple silicon, with Core Graphics on the
-CPU. One feedback frame costs:
+*With Core Graphics* the images are bitmaps (`CGBitmapContext`, 8-bit sRGB,
+premultiplied), shown as the layer's `contents` in `updateLayer`. Each holds
+at most 500,000 pixels, so a larger surface keeps its trail below its
+backing scale and its picture is a little softer. A surface without a trail
+has no bitmaps; `draw(_:)` draws its frame at the backing scale.
 
-* about 6 ms at 800 by 500 pixels: compositing the previous frame faded,
-  zoomed and turned, then a 512-point stroke and 24 bars;
-* about 23 ms at 1600 by 1000;
-* about 75 ms at 2880 by 1800.
+*With Metal* the images are two `bgra8Unorm` textures at the full backing
+resolution, with no pixel cap. A trail-less surface uses them too. Each
+frame renders 4x multisampled, with a stencil, and resolves into the
+texture; the texture is then copied into the layer's drawable (sRGB colour
+space) and presented. The previous frame is a textured quad whose corners
+go through the trail's transform; its sampler clamps to transparent. The
+scene is drawn on the GPU by stencil, then cover:
 
-Compositing is most of it, about 14 ms a megapixel; the geometry alone is
-about 3 to 4 ms at 1600 by 1000. A bitmap therefore holds at most 500,000
-pixels. A surface larger than that at its backing scale keeps its trail at
-a lower scale, so its picture is a little softer. A full-window,
-full-resolution feedback picture needs the GPU: a Metal view compositing
-two textures, with the geometry still drawn by Core Graphics into a
-third, is the next step if that matters. A surface without a trail has no
-bitmaps of its own and draws at full resolution.
+* A fill's path is flattened on the CPU (curves to segments within a
+  quarter pixel) and fanned into triangles, which add their winding to the
+  stencil: front faces increment and back faces decrement.
+* A stroke becomes a quad per segment and a disk per point (the round joins
+  and caps), which set the stencil.
+* One quad over the figure's bounds then paints its colour where the
+  stencil is not zero, and clears the stencil for the next figure.
+
+This gives the nonzero rule for any path, and a stroke whose pieces overlap
+is painted once, so its opacity is right. Transforms and opacity are
+applied on the CPU as the vertices are made. Sources are still read once per
+frame, on the main thread, and a frame never calls the engine.
+
+The scripted `probe` reads the Metal texture back at the backing scale
+(`pixel`), and Core Graphics draws at 2 pixels a point. Away from the edges
+of shapes the two agree: `echo-metal`, the visualizer's Metal case, records
+the same output as `echo`, its Core Graphics case, so on a Mac without a
+device it falls back and still passes.
+
+The scripted `bench:N` step draws N trail frames offscreen. Each frame
+composites the previous one faded, zoomed and turned, then draws a
+512-point stroke and 24 bars. Measured on an Apple M2, in milliseconds a
+frame, with Core Graphics at full size (no pixel cap) and Metal (CPU
+tessellation, encoding and the GPU, waited for):
+
+[cols="1,1,1",options="header"]
+|===
+| Pixels | Core Graphics | Metal
+
+| 800 × 500 | 8.1 | 0.2
+| 1600 × 1000 | 32.0 | 0.3
+| 2880 × 1800 | 98 | 0.9
+|===
+
+Core Graphics spends most of its frame compositing the previous image,
+about 14 ms a megapixel on the CPU, which is why it caps its bitmaps.
+
+Deferred:
+
+* Metal for on-demand surfaces.
+* A Metal path for a scene of many separate figures, which now costs two
+  draws each.
+* Dashes and line-join choices.
+* GPU-side transforms of a series that changes every frame.
+* Suspending on window occlusion; a surface suspends only when it is
+  hidden or removed.
 
 [#surface-sources]
 === Surface sources
