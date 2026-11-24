@@ -19,7 +19,7 @@
     (render 700)
     (wait 200)
     (expect-audio-status :state "Ended" :position 1000 :duration 1000 :track 1 :ended 2 :analysis false)
-    (expect-dump (window :width 640 :height 581
+    (expect-dump (window :width 640 :height 595
                    (vstack :views 1
                      (vstack :views 6
                        (hstack :views 6
@@ -101,5 +101,8 @@
                              (checkbox "Measure levels" :checked #f)
                              (spacer)
                              (text "—" :design monospaced-digits))
-                           (progress :value 0 :max 60)))
+                           (overlay :vertical center
+                             (box :fill adaptive:e2ebe8:233330
+                               (spacer))
+                             (progress :value 0 :max 60))))
                        (text "Played to the end (2 in all)" :color secondary-label :text-style caption1)))))))

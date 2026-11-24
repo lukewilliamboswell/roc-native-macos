@@ -118,7 +118,7 @@ view = || {
 								Ui.text(cells.level.signal().map(readout), { design: MonospacedDigits }),
 							],
 						),
-						Ui.progress(cells.level.signal().map(meter), { max: 60, width: Fill }),
+						level_meter(status, cells.measuring.signal(), cells.level.signal().map(meter)),
 					],
 				),
 			),
@@ -152,6 +152,47 @@ view = || {
 		],
 	)
 }
+
+## Keep the native RMS meter readable over either renderer.
+level_meter : Signal(ctx, Audio.Status), Signal(ctx, Bool), Signal(ctx, I64) -> Elem(ctx)
+level_meter = |status, measuring, level|
+	Ui.overlay(
+		{ vertical: Center, padding: Axes({ horizontal: 12, vertical: 0 }), height: Fixed(32) },
+		Engine.when(
+			measuring,
+			|| Engine.when(status.map(|s| s.state == Playing), meter_surface, meter_panel),
+			meter_panel,
+		),
+		Ui.progress(level, { max: 60, width: Fill }),
+	)
+
+meter_surface : () -> Elem(ctx)
+meter_surface = ||
+	Ui.surface(
+		Engine.const([]),
+		{
+			label: "Meter backlight",
+			pacing: Engine.const(Display),
+			background: Engine.const(meter_background),
+			shader: Engine.const(Shaders({ warp: None, composite: Some(meter_glow), params: [] })),
+			height: Fixed(32),
+		},
+	)
+
+meter_panel : () -> Elem(ctx)
+meter_panel = || Ui.box({ fill: meter_background, padding: Zero, width: Fill, height: Fixed(32) }, Ui.spacer())
+
+meter_background : Ui.Color
+meter_background = Adaptive({ light: 0xE2EBE8, dark: 0x233330 })
+
+meter_glow : Str
+meter_glow =
+	\\float4 composite(Frame f, Params p) {
+	\\    float2 from_center = (f.uv - 0.5) * float2(2.0, 1.5);
+	\\    float falloff = saturate(1.0 - length(from_center));
+	\\    float light = saturate(f.level) * falloff * 0.45;
+	\\    return opaque(mix(sample(f, f.uv).rgb, float3(0.25, 0.72, 0.60), light));
+	\\}
 
 ## One row per EQ band and one for the preamp: a label, a slider in whole
 ## dB and the gain the host applies.

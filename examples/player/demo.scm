@@ -8,8 +8,9 @@
     (audio-clock manual))
   (steps
     (window)
+    (frame-clock display)
     (toggle (checkbox "Measure levels")) (wait 400)
-    (files "specs/fixtures/tones-44100.wav") (wait 900)
+    (files "examples/player/specs/fixtures/tones-44100.wav") (wait 900)
     (click (button "Play")) (render 150) (wait 1200)
     (slide (slider 6) -12) (render 100) (wait 1200)
     (toggle (checkbox "Bypass")) (render 100) (wait 1200)))

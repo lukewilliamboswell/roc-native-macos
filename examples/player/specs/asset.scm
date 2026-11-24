@@ -15,7 +15,7 @@
     (click (button "Escape Assets"))
     (wait 300)
     (expect-audio-status :state "Idle" :position 0 :duration 0 :track 2)
-    (expect-dump (window :width 782 :height 581
+    (expect-dump (window :width 782 :height 595
                    (vstack :views 1
                      (vstack :views 6
                        (hstack :views 6
@@ -97,5 +97,8 @@
                              (checkbox "Measure levels" :checked #f)
                              (spacer)
                              (text "—" :design monospaced-digits))
-                           (progress :value 0 :max 60)))
+                           (overlay :vertical center
+                             (box :fill adaptive:e2ebe8:233330
+                               (spacer))
+                             (progress :value 0 :max 60))))
                        (text "Could not play it: unsupported (asset \"../specs/fixtures/clicks.wav\" is not a name inside the app's assets/ directory (such as logo.png or icons/star.pdf))" :color secondary-label :text-style caption1)))))))

@@ -16,7 +16,7 @@
     (render 200)
     (wait 200)
     (expect-audio-status :state "Playing" :position 200 :duration 500 :track 2 :ended 0 :analysis false)
-    (expect-dump (window :width 640 :height 581
+    (expect-dump (window :width 640 :height 595
                    (vstack :views 1
                      (vstack :views 6
                        (hstack :views 6
@@ -98,5 +98,8 @@
                              (checkbox "Measure levels" :checked #f)
                              (spacer)
                              (text "—" :design monospaced-digits))
-                           (progress :value 0 :max 60)))
+                           (overlay :vertical center
+                             (box :fill adaptive:e2ebe8:233330
+                               (spacer))
+                             (progress :value 0 :max 60))))
                        (text "Loaded: 0:00.50, 44100 Hz, 1 channel" :color secondary-label :text-style caption1)))))))
