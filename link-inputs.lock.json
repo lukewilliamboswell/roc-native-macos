@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "kind": "link-inputs",
+  "repository": "lukewilliamboswell/roc-native-macos",
+  "release": "linker-inputs-sha256-97d1bb9e6bd6ea25801e815c62214786c03c68bfa8e15d044b25ee09479df1b0",
+  "manifest": {
+    "asset": "build-input-release.json",
+    "sha256": "97d1bb9e6bd6ea25801e815c62214786c03c68bfa8e15d044b25ee09479df1b0"
+  },
+  "source": {
+    "input_fingerprint": "a19035a904bf91eafa5b2e61c65343d6afbf51ffdbce4ff8fe68bd9602589360",
+    "ref": "refs/heads/integration",
+    "repository": "lukewilliamboswell/roc-native-macos",
+    "sha": "962aee3a4f0fac437a22257b8d3f6213973951d0",
+    "workflow": "lukewilliamboswell/roc-native-macos/.github/workflows/link-inputs.yml"
+  },
+  "targets": {
+    "macos": {
+      "asset": "link-inputs-macos.tar",
+      "sha256": "3687eadae2b43bc4084eac8ee8f8a919ecb758a03cca4119e558c50dd0d749fd",
+      "size": 218624
+    }
+  }
+}
