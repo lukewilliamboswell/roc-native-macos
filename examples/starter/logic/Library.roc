@@ -63,8 +63,12 @@ Library := [].{
 		shaders: NoShaders,
 	}
 
+	## Every built-in, in the order the preset list shows them. To add one,
+	## write a `Preset.Doc` here (or in `Gallery.roc`, for one with shaders)
+	## with an ID starting `builtin.` and add it to this list; the `expect`s
+	## below check every built-in round-trips through its file.
 	builtins : List(Preset.Doc)
-	builtins = [Library.scope, Library.spectrum_bars, Library.echo_rings].concat(Gallery.all).append(Library.sync_test)
+	builtins =[Library.scope, Library.spectrum_bars, Library.echo_rings].concat(Gallery.all).append(Library.sync_test)
 
 	## The preset a first launch shows, and the one chosen when the chosen
 	## preset is gone: one of the shaded built-ins, at its best with the

@@ -157,8 +157,8 @@ MacOS :: [].{
 				\\DIR defaults to the current directory. init writes the app in src/ (its
 				\\store, window, widgets and a worker), its business logic as a package of
 				\\pure Roc in logic/, roc-fuzz targets for that logic in fuzz/, its icon in
-				\\assets/, specs of it in specs/, AGENTS.md (how the project is laid
-				\\out and worked on), macos.json (the app's name, identifier and version),
+				\\assets/, specs of it in specs/, macos.json (the app's name, identifier
+				\\and version),
 				\\.gitignore, and .github/workflows/release.yml, which packages the app on
 				\\GitHub when you push a tag such as v1.0.0. It never overwrites a file. Keep
 				\\macos.roc in the directory you run init from; a new app gets a copy.

@@ -97,7 +97,6 @@ Init :: [].{
 			"  fuzz/        roc-fuzz targets for that logic, which `roc macos.roc fuzz` runs",
 			"  assets/      its images; assets/icon.png is its icon",
 			"  specs/       specs of what it does, which `roc macos.roc test` checks",
-			"  AGENTS.md    how the project is laid out and worked on",
 			"  macos.json   its name, bundle identifier and version",
 			"  macos.roc    the tool, which builds, runs, tests and packages it",
 			"  .gitignore   keeps build output out of version control",
@@ -138,7 +137,7 @@ expect {
 	here = Init.plan(".", "my-app").map(|step| step.path)
 	new.first() == Ok("macos.roc")
 		and new.drop_first(1) == here
-		and ["src/main.roc", "logic/main.roc", "fuzz/main.roc", "assets/icon.png", "AGENTS.md", ".gitignore", "macos.json", ".github/workflows/release.yml"].all(|path| here.contains(path))
+		and ["src/main.roc", "logic/main.roc", "fuzz/main.roc", "assets/icon.png", ".gitignore", "macos.json", ".github/workflows/release.yml"].all(|path| here.contains(path))
 		and here.any(|path| path.starts_with("specs/") and path.ends_with(".scm"))
 }
 

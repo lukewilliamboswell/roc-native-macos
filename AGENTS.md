@@ -120,8 +120,8 @@ call a macOS program to build. Every failure is one sentence from
 What `init` writes is `examples/starter`, every tracked file of it: change
 the scaffold by changing that example (its specs, `expect`s and fuzz
 targets run in `check` like any example's), then regenerate
-`cli/Bundle.roc`. Its `AGENTS.md` is the app author's, and says what an
-agent working on an app must know; keep it accurate when the tool, the
+`cli/Bundle.roc`. Its modules' `##` comments and `docs/apps.adoc` are what
+an app author reads about it; keep them accurate when the tool, the
 platform or the starter change. The tool reads an app's root module from
 `src/main.roc`, as every example keeps it.
 

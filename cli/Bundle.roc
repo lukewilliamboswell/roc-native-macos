@@ -2,8 +2,6 @@
 # copies of the files it imports, and as cli/Bundle.roc for a checkout, where
 # it imports them from the working tree. `check` fails when cli/Bundle.roc
 # differs from what the script generates for a checkout.
-import "../examples/starter/AGENTS.md" as scaffold_agents_md : Str
-import "../examples/starter/CLAUDE.md" as scaffold_claude_md : Str
 import "../examples/starter/assets/CREDITS.md" as scaffold_assets_credits_md : Str
 import "../examples/starter/assets/icon.png" as scaffold_assets_icon_png : List(U8)
 import "../examples/starter/assets/polymorphic-defunctionalization.lrc" as scaffold_assets_polymorphic_defunctionalization_lrc : Str
@@ -74,8 +72,6 @@ Bundle := [].{
 	## with its logic package, fuzz targets, assets and specs.
 	scaffold : List(File)
 	scaffold = [
-		{ path: "AGENTS.md", contents: Text(scaffold_agents_md) },
-		{ path: "CLAUDE.md", contents: Text(scaffold_claude_md) },
 		{ path: "assets/CREDITS.md", contents: Text(scaffold_assets_credits_md) },
 		{ path: "assets/icon.png", contents: Bytes(scaffold_assets_icon_png) },
 		{ path: "assets/polymorphic-defunctionalization.lrc", contents: Text(scaffold_assets_polymorphic_defunctionalization_lrc) },

@@ -145,8 +145,16 @@ Store := [Music].{
 	}
 
 	## The default song: the one the queue starts with, so the app plays
-	## something before the listener gives it a file. It ships in `assets/`
-	## (see `assets/CREDITS.md`), and its timed lyrics are compiled in.
+	## something before the listener gives it a file: *Polymorphic
+	## Defunctionalization Through Lambda Set Specialization* by Luke Boswell,
+	## licensed under CC BY 4.0, not under the app's licence, so
+	## `assets/CREDITS.md` travels with it. The song plays from `assets/`
+	## (`Media.LoadAsset`), and its timed lyrics are compiled in.
+	##
+	## To ship without it, delete `assets/polymorphic-defunctionalization.mp3`
+	## and `.lrc`, their section of `assets/CREDITS.md`, this value,
+	## `default_asset` and the `default_lrc` import, and start the queue
+	## empty (`first_queue`, `opening` and their `expect`s).
 	default : Track
 	default = {
 		file: Bundled(Store.default_asset),

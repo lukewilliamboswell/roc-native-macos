@@ -20,7 +20,7 @@ import Store
 ## `src/Media.roc` and `src/Visual.roc` are the only modules that speak to
 ## them, through the platform's `Audio` session and `Ui.surface`.
 ##
-## Where things are (`AGENTS.md` says more):
+## Where things are (the platform manual's "Build an app" says more):
 ##
 ## - `src/main.roc`: this file, the program: its store, its view and its
 ##   workers. The header names the platform (`pf`) and the logic package.

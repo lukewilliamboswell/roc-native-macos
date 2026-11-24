@@ -68,15 +68,14 @@ my-app/
   fuzz/main.roc      roc-fuzz targets for the logic package
   assets/            its icon, the default song and its lyrics, and their credits
   specs/             specs of the app: what its controls do, run by `test`
-  AGENTS.md          how the project is laid out and worked on
   macos.json         the app's name, bundle identifier and version
 ----
 
-Every module opens with a comment saying what belongs in it, and
-`AGENTS.md` (which `CLAUDE.md` points to) says what Roc owns and what the
-host owns, how state flows, how to add a preset layer type, a widget, a
-panel, a worker or a fuzz target, and the mistakes to avoid, for whoever
-works on the project next, a person or an agent.
+Every module opens with a `##` comment saying what belongs in it and how to
+extend it (a panel, a widget, a worker, a layer kind, a fuzz target): read
+it before changing the module. xref:apps.adoc#work-on-the-starter[Work on
+the starter] says how its state flows, how presets and shaders work, and
+how to ship it without the default song.
 
 [#starter-seams]
 ==== Where the starter meets the platform
@@ -116,6 +115,73 @@ it testable with `expect` and fuzzable on any system. `macos.json`,
 tool reads the root module from `src/main.roc` alone. Each release's notes give the platform's URL, so an app
 can also be written and built without the tool (see
 xref:apps.adoc#without-the-tool[Without the tool]).
+
+[#work-on-the-starter]
+==== Work on the starter
+
+How state flows:: A view runs once, when the window opens. An event runs a
+handler, which returns writes; the engine applies them and wakes only the
+views that read what changed.
++
+* State more than one part of the window shares lives in the store
+  (`src/Store.roc`): the queue, the player, the EQ, the preset library, the
+  editor's draft and the lyrics choice. It changes only through decisions,
+  pure functions that return writes, tested with
+  `Store.store.after(writes).read(cell)`.
+* State one piece of the view cares about is local to it, in
+  `Engine.state(initial, |s| ...)`, as a folding section's is; it starts
+  again when that piece is rebuilt.
+* A value that follows from state is not state: `signal.map(...)`, or
+  `Engine.derive` when it is costly or read in several places.
+* Effects (reading a lyric file, saving, a worker job, a player command) are
+  asked for by sites that watch a signal (`Engine.watch_latest`,
+  `Engine.watch_changes`, `Engine.on_post`), and their answers come back as
+  writes (`Engine.react`). Decisions post player commands to the `media`
+  outbox with `Store.send`, at most once a turn; `Media.session` sends them.
+* Rules that need no window go in `logic/`, tested with `expect` and
+  fuzzed. `src/` imports `logic`, never the other way round.
+
+The rules the player keeps:: Each lives in one place. The lyrics choice
+belongs to the player, and survives changing song or preset and a relaunch
+(`logic/Prefs.roc`). A lyric file is read for one queue entry, so a read
+that finishes after the listener moved on never shows on another song. The
+line shown follows the playback position alone (`Store.overlay`), and
+`Media.boundary` sets a timer for the next one. The editor's draft is always
+a valid preset: text that is not lists the fields that need attention, and
+the picture keeps the last valid draft. The picture's sync offset belongs to
+the audio output: the EQ panel's Picture sync sets it for the output
+playing, and Sync Test plays `assets/sync-test.wav` under a ring that
+flashes on each click, to set it by (a flash before its click wants a
+positive offset). The queue holds at most 60 songs, leaving 4 of the
+platform's 64 file handles for lyric and preset files being read.
+
+Presets and shaders:: A preset (`logic/Preset.roc`) is a versioned JSON
+document: a background, ordered layers each with mappings from a sound
+feature to a property, feedback, and optionally its own Metal shaders. A
+layer kind or a mapping target is added in `Preset.roc` and drawn in
+`logic/Scene.roc`, as `Preset.roc`'s opening comment lists; the editor
+offers whatever `Preset.kinds` and `Preset.properties` list. A shader is a
+warp, a composite or both, each one Metal function, `float4 warp(Frame f,
+Params p)` or `float4 composite(Frame f, Params p)`, with up to 16 params it
+reads as `p.NAME`, each fixed or following a sound feature
+(xref:ui.adoc#shaders[Shaders] has the `Frame`, the helpers and the limits).
+Write one in the editor's Warp or Composite area: it draws as you type, and
+a stage that does not compile is named with its line while the surface keeps
+the last good one. Where shaders do not run, the preset's layers and
+feedback are the whole picture, and the window says "Simple visuals". A
+built-in preset is a value in `logic/Library.roc` (or `logic/Gallery.roc`,
+which holds twelve shaded ones to read) added to `Library.builtins`;
+`Library.default` is the one a first launch shows.
+
+The default song:: _Polymorphic Defunctionalization Through Lambda Set
+Specialization_ by Luke Boswell, a song about the PLDI 2023 paper
+https://doi.org/10.1145/3591260[Better Defunctionalization through Lambda
+Set Specialization], is licensed under CC BY 4.0, not under the app's own
+licence: keep `assets/CREDITS.md` with it. Its lyrics and liner notes are at
+https://gist.github.com/lukewilliamboswell/be88b49154f602495f2821a01f995d1f.
+To ship without it, follow `Store.default`'s comment in `src/Store.roc`:
+delete the two `assets/polymorphic-defunctionalization.*` files, their
+credit, and `Store.default`, and start the queue empty.
 
 [#the-tool]
 == The tool's commands
@@ -277,6 +343,39 @@ xref:ui.adoc#builders[The Ui reference] lists every builder with its
 signature, what it draws and the events it sends. The engine itself
 (`Engine`: signals, stores, tables, watches) is documented in
 https://github.com/lukewilliamboswell/roc-signals[roc-signals].
+
+[#gotchas]
+=== Things to know
+
+* A store needs at least two cells: a single-field record builder,
+  `{ a: Engine.cell(0) }.Engine.Cells`, builds but fails at run time.
+  `roc test` reports it.
+* Post to an outbox at most once a turn: a decision that sends several
+  commands sends one list.
+* `Engine.watch` and `Engine.watch_changes` never cancel what they asked
+  for. Anything that must stop or restart when its value changes (an
+  interval, a timer, a file read a newer one supersedes) belongs under
+  `Engine.watch_latest`.
+* A builder's text is a signal. A literal works as one; a `Str` value needs
+  `Engine.const(value)`, and state needs `.signal()` or `.map`. A signal
+  from outside a local state or a row enters it with `.lift()`.
+* A dropdown's `choices` and a slider's `range` are fixed when it is built:
+  a list that changes is an `Engine.each` of buttons.
+* An `Engine.each` row's template builds a single element: a widget with
+  local state, an `Engine.when` or a `switch` is not one, so wrap it in a
+  stack.
+* A helper whose parameter is a signal used at two types needs a type
+  annotation; without one the compiler reports two incompatible `map`
+  methods.
+* Roc does not allow shadowing, and a type module's own functions are in
+  scope throughout it, so a local cannot reuse one's name. A type module
+  cannot hold a type of its own name (`Preset.Preset`), nor be named after
+  a builtin. `app` and `where` are keywords. A function with no arguments
+  is `() -> T` in annotations and `|| ...` in definitions.
+* A local package such as `logic/` cannot import the platform: code that
+  needs `pf.` belongs in `src/`.
+* Hot reloading keeps the state the old code built until Command-R: after
+  changing a cell's or a state's type, press Command-R before anything else.
 
 [#assets]
 == Assets and the icon
