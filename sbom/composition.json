@@ -45,7 +45,7 @@
     },
     {
       "id": "macos-system-libraries",
-      "name": "macOS system libraries: AppKit, Foundation, CoreGraphics, AVFAudio, Accelerate, libSystem, libobjc and the Swift runtime in /usr/lib/swift",
+      "name": "macOS system libraries: AppKit, Foundation, CoreGraphics, AVFAudio, AudioToolbox, CoreAudio, Accelerate, libSystem, libobjc and the Swift runtime in /usr/lib/swift",
       "version": "11.0",
       "producer": "Organization: Apple Inc.",
       "license": "NOASSERTION",

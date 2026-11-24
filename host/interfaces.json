@@ -2328,6 +2328,38 @@
           "evidence": "vDSP_zvmags, vDSP (https://developer.apple.com/documentation/accelerate/vdsp_zvmags), in Accelerate, which re-exports vecLib's libvDSP: the audio analysis (host/AudioAnalysis.swift)"
         }
       ]
+    },
+    {
+      "name": "CoreAudio",
+      "path": "System/Library/Frameworks/CoreAudio.framework/CoreAudio.tbd",
+      "install_name": "/System/Library/Frameworks/CoreAudio.framework/Versions/A/CoreAudio",
+      "evidence": "CoreAudio, /System/Library/Frameworks/CoreAudio.framework/Versions/A/CoreAudio (https://developer.apple.com/documentation/coreaudio), the Core Audio hardware abstraction layer: the playback session's output device, its name, UID and latency (host/AudioOutput.swift). Its functions exist on arm64 and x86_64 alike.",
+      "symbols": [
+        {
+          "name": "_AudioObjectGetPropertyData",
+          "evidence": "AudioObjectGetPropertyData, Core Audio's Audio Object API (https://developer.apple.com/documentation/coreaudio/audioobjectgetpropertydata(_:_:_:_:_:_:)): an output device's name, UID, latency, safety offset, buffer size and streams (host/AudioOutput.swift)"
+        },
+        {
+          "name": "_AudioObjectGetPropertyDataSize",
+          "evidence": "AudioObjectGetPropertyDataSize, Core Audio's Audio Object API (https://developer.apple.com/documentation/coreaudio/audioobjectgetpropertydatasize(_:_:_:_:_:)): how many devices and streams a list property holds (host/AudioOutput.swift)"
+        }
+      ]
+    },
+    {
+      "name": "AudioToolbox",
+      "path": "System/Library/Frameworks/AudioToolbox.framework/AudioToolbox.tbd",
+      "install_name": "/System/Library/Frameworks/AudioToolbox.framework/Versions/A/AudioToolbox",
+      "evidence": "AudioToolbox, /System/Library/Frameworks/AudioToolbox.framework/Versions/A/AudioToolbox (https://developer.apple.com/documentation/audiotoolbox), whose Audio Unit API the playback session's measuring tap uses on the EQ's audio unit (host/AudioAnalysis.swift). Its functions exist on arm64 and x86_64 alike.",
+      "symbols": [
+        {
+          "name": "_AudioUnitAddRenderNotify",
+          "evidence": "AudioUnitAddRenderNotify, the Audio Unit API (https://developer.apple.com/documentation/audiotoolbox/audiounitaddrendernotify(_:_:_:)): a callback after each render of the EQ's unit, which copies the rendered buffer for the measurements (host/AudioAnalysis.swift)"
+        },
+        {
+          "name": "_AudioUnitRemoveRenderNotify",
+          "evidence": "AudioUnitRemoveRenderNotify, the Audio Unit API (https://developer.apple.com/documentation/audiotoolbox/audiounitremoverendernotify(_:_:_:)): the measuring tap's removal (host/AudioAnalysis.swift)"
+        }
+      ]
     }
   ]
 }

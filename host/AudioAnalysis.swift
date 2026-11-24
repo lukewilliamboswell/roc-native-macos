@@ -6,6 +6,7 @@
 import AVFAudio
 import Accelerate
 import AppKit
+import AudioToolbox
 
 /// One measurement of one analysis window. Plain Swift data, safe to hand
 /// to any thread.
@@ -65,10 +66,13 @@ final class AudioAnalysis {
     static let bandCount = 24
     static let envelopePoints = 32
     static let waveformPoints = 1024
-    /// Snapshots kept, about 350 ms at 48 kHz.
-    static let historyBound = 32
-    /// Tap chunks waiting for the worker, and the frames each holds.
-    static let slotCount = 4
+    /// Snapshots kept, about 1.4 s at 48 kHz: enough for an output with
+    /// 300 ms of latency and a picture offset of 500 ms either way.
+    static let historyBound = 128
+    /// Rendered buffers waiting for the worker, and the frames each holds:
+    /// a render cycle is 512 frames on most outputs (10.7 ms at 48 kHz), so
+    /// the ring holds about a third of a second before it overwrites.
+    static let slotCount = 32
     static let slotFrames = 8192
     /// Channels measured: the first two (a mono source is one).
     static let maxChannels = 2
@@ -83,7 +87,8 @@ final class AudioAnalysis {
     private let lock: UnsafeMutablePointer<os_unfair_lock>
     private var anchor = AudioAnchor()
     private struct Slot { var generation: UInt64 = 0; var start: Int64 = 0; var frames = 0; var channels = 0; var rate: Double = 0 }
-    private var slots = [Slot](repeating: Slot(), count: AudioAnalysis.slotCount)
+    /// Raw storage, so the render thread's writes never copy or allocate.
+    private let slots: UnsafeMutablePointer<Slot>
     private let slotData: UnsafeMutablePointer<Float>
     private var head = 0, count = 0
     private var stalled = false
@@ -91,6 +96,16 @@ final class AudioAnalysis {
     private(set) var tapped: Int64 = 0, skipped: Int64 = 0, busy: Int64 = 0, consumed: Int64 = 0, chunkFrames = 0
     /// The newest render time a tap delivered, in the tapped node's frames.
     private var tappedTo: Int64 = .min
+    /// Each tapped buffer's render stamp, newest last, in a ring
+    /// (AVTiming.swift): its first frame's node time and host time.
+    struct RenderStamp { var node: Int64 = 0; var host: UInt64 = 0; var frames: Int32 = 0 }
+    static let stampCount = 2048
+    private let stamps: UnsafeMutablePointer<RenderStamp>
+    private var stampNext = 0, stampFill = 0
+    /// Click onsets the worker found, in source frames (AVTiming.swift),
+    /// while `findOnsets` is on.
+    private var findOnsets = false
+    private var onsets: [Int64] = []
 
     // MARK: The history, under `historyLock` (the worker writes, readers copy)
 
@@ -120,6 +135,8 @@ final class AudioAnalysis {
             return p
         }
         lock = .allocate(capacity: 1); lock.initialize(to: os_unfair_lock())
+        stamps = .allocate(capacity: AudioAnalysis.stampCount); stamps.initialize(repeating: RenderStamp(), count: AudioAnalysis.stampCount)
+        slots = .allocate(capacity: AudioAnalysis.slotCount); slots.initialize(repeating: Slot(), count: AudioAnalysis.slotCount)
         historyLock = .allocate(capacity: 1); historyLock.initialize(to: os_unfair_lock())
         slotData = alloc(AudioAnalysis.slotCount * AudioAnalysis.slotFrames * AudioAnalysis.maxChannels)
         guard let setup = vDSP_create_fftsetup(AudioAnalysis.log2n, FFTRadix(kFFTRadix2)) else { fatal("audio analysis: cannot create the FFT setup") }
@@ -228,6 +245,38 @@ final class AudioAnalysis {
         return (tapped, skipped, busy, consumed, count, chunkFrames, tappedTo)
     }
 
+    /// The newest render stamp, if any.
+    func latestStamp() -> RenderStamp? {
+        os_unfair_lock_lock(lock)
+        defer { os_unfair_lock_unlock(lock) }
+        return stampFill > 0 ? stamps[(stampNext - 1 + AudioAnalysis.stampCount) % AudioAnalysis.stampCount] : nil
+    }
+
+    /// The render stamps kept, oldest first.
+    func renderStamps() -> [RenderStamp] {
+        os_unfair_lock_lock(lock)
+        defer { os_unfair_lock_unlock(lock) }
+        var out: [RenderStamp] = []
+        out.reserveCapacity(stampFill)
+        for i in 0..<stampFill { out.append(stamps[(stampNext - stampFill + i + AudioAnalysis.stampCount) % AudioAnalysis.stampCount]) }
+        return out
+    }
+
+    /// Find click onsets from now on, forgetting those found before.
+    func markOnsets() {
+        os_unfair_lock_lock(lock)
+        findOnsets = true
+        onsets.removeAll()
+        os_unfair_lock_unlock(lock)
+    }
+
+    /// The click onsets found since `markOnsets`, in source frames.
+    func clickOnsets() -> [Int64] {
+        os_unfair_lock_lock(lock)
+        defer { os_unfair_lock_unlock(lock) }
+        return onsets
+    }
+
     /// Whether the worker has measured everything tapped so far.
     var drained: Bool {
         os_unfair_lock_lock(lock)
@@ -236,15 +285,48 @@ final class AudioAnalysis {
     }
     private var inFlight = false
 
-    // MARK: The tap's side: copy and return, never wait
+    // MARK: The render thread's side: copy and return, never wait
 
-    /// Called by AVAudioEngine's tap with each rendered buffer of the
-    /// tapped node, `at` its render time in the node's frames. It calls
-    /// nothing of AVFAudio's: the anchor alone places the buffer on the
-    /// source timeline (asking the player from here would wait on the
-    /// player's lock, which the main thread holds while it stops the player
-    /// and waits for this tap).
-    func tap(_ buffer: AVAudioPCMBuffer, at: Int64) {
+    /// The measuring tap: a render notification on the EQ's audio unit
+    /// (`AudioUnitAddRenderNotify`), so every render cycle's buffer arrives
+    /// as soon as it is rendered, after the EQ and before the main mixer's
+    /// volume. AVAudioEngine's `installTap` delivers 100 ms at a time
+    /// whatever buffer size is asked for, so its newest data is up to a
+    /// chunk old. False if the unit refused it.
+    func attach(to unit: AudioUnit, channels: Int) -> Bool {
+        os_unfair_lock_lock(lock)
+        tapChannels = channels
+        os_unfair_lock_unlock(lock)
+        return AudioUnitAddRenderNotify(unit, AudioAnalysis.notify, Unmanaged.passUnretained(self).toOpaque()) == 0
+    }
+
+    func detach(from unit: AudioUnit) {
+        _ = AudioUnitRemoveRenderNotify(unit, AudioAnalysis.notify, Unmanaged.passUnretained(self).toOpaque())
+    }
+
+    /// Channels of the EQ's output format, set before the notification is on.
+    private var tapChannels = 1
+
+    /// Called on the audio render thread before and after each render of
+    /// the EQ: after it, with the rendered buffer list and its time stamp.
+    /// The time stamp's sample time is the EQ node's (the player's frames)
+    /// and its host time the render cycle's output time.
+    private static let notify: AURenderCallback = { refcon, flags, stamp, bus, frames, data in
+        let done = flags.pointee.contains(.unitRenderAction_PostRender) && !flags.pointee.contains(.unitRenderAction_PostRenderError)
+        guard done, bus == 0, let data else { return 0 }
+        let me = Unmanaged<AudioAnalysis>.fromOpaque(refcon).takeUnretainedValue()
+        let t = stamp.pointee
+        let valid = t.mFlags.contains(.sampleTimeValid)
+        guard valid else { return 0 }
+        me.rendered(data, frames: Int(frames), at: Int64(t.mSampleTime), host: t.mFlags.contains(.hostTimeValid) ? t.mHostTime : 0)
+        return 0
+    }
+
+    /// One rendered buffer, `at` its first frame's node time. It calls
+    /// nothing of AVFAudio's and nothing that allocates or can block: the
+    /// anchor alone places the buffer on the source timeline, the ring and
+    /// the stamps are preallocated, and the lock is only tried.
+    private func rendered(_ list: UnsafeMutablePointer<AudioBufferList>, frames: Int, at: Int64, host: UInt64) {
         // The main thread and the worker hold the lock only to copy a few
         // values or one chunk. Try it a bounded number of times, never
         // blocking; if it is still held, drop the buffer rather than wait.
@@ -257,19 +339,30 @@ final class AudioAnalysis {
             }
         }
         defer { os_unfair_lock_unlock(lock) }
-        let frames = Int(buffer.frameLength)
         chunkFrames = frames
         tappedTo = max(tappedTo, at + Int64(frames))
         tapped += 1
-        guard running, anchor.playing, let data = buffer.floatChannelData else { return }
-        // The source frame of the buffer's first sample: the player's
-        // time there (negative before it started) after the segment's start.
+        stamps[stampNext] = RenderStamp(node: at, host: host, frames: Int32(frames))
+        stampNext = (stampNext + 1) % AudioAnalysis.stampCount
+        stampFill = min(stampFill + 1, AudioAnalysis.stampCount)
+        guard running, anchor.playing, frames > 0 else { return }
         // The source frame of the buffer's first sample, and what of it was
         // rendered before the player started.
         let first = anchor.startSource + (at - anchor.startNode)
         let skip = Int(max(0, min(Int64(frames), anchor.startNode - at)))
         guard skip < frames else { return }
-        let channels = min(Int(buffer.format.channelCount), AudioAnalysis.maxChannels)
+        // The list's buffers follow its count, at the buffers' alignment (8),
+        // read directly: the CoreAudio overlay's buffer-list wrapper would
+        // need symbols the catalog does not own.
+        let lists = Int(list.pointee.mNumberBuffers)
+        let buffers = (UnsafeMutableRawPointer(list) + MemoryLayout<AudioBuffer>.alignment).assumingMemoryBound(to: AudioBuffer.self)
+        // Deinterleaved: one buffer a channel (AVAudioEngine's standard
+        // format). An interleaved buffer is read at its stride.
+        guard lists > 0 else { return }
+        let interleaved = lists == 1 && buffers[0].mNumberChannels > 1
+        let stride = interleaved ? Int(buffers[0].mNumberChannels) : 1
+        let channels = min(interleaved ? stride : lists, tapChannels, AudioAnalysis.maxChannels)
+        guard channels > 0 else { return }
         var offset = skip
         while offset < frames {
             let n = min(frames - offset, AudioAnalysis.slotFrames)
@@ -283,9 +376,16 @@ final class AudioAnalysis {
                 index = (head + count) % AudioAnalysis.slotCount
                 count += 1
             }
-            slots[index] = Slot(generation: anchor.generation, start: first + Int64(offset), frames: n, channels: channels, rate: buffer.format.sampleRate)
+            slots[index] = Slot(generation: anchor.generation, start: first + Int64(offset), frames: n, channels: channels, rate: anchor.sampleRate)
             for c in 0..<channels {
-                (slotData + (index * AudioAnalysis.maxChannels + c) * AudioAnalysis.slotFrames).update(from: data[c] + offset, count: n)
+                let to = slotData + (index * AudioAnalysis.maxChannels + c) * AudioAnalysis.slotFrames
+                guard let raw = buffers[interleaved ? 0 : c].mData else { to.update(repeating: 0, count: n); continue }
+                let from = raw.assumingMemoryBound(to: Float.self)
+                if interleaved {
+                    for i in 0..<n { to[i] = from[(offset + i) * stride + c] }
+                } else {
+                    to.update(from: from + offset, count: n)
+                }
             }
             offset += n
         }
@@ -313,7 +413,9 @@ final class AudioAnalysis {
             }
             os_unfair_lock_unlock(lock)
             guard let slot = taken else {
-                Thread.sleep(forTimeInterval: 0.004)
+                // A render cycle is 10.7 ms at 48 kHz: look again soon, so a
+                // measurement is ready within a millisecond of its samples.
+                Thread.sleep(forTimeInterval: 0.001)
                 continue
             }
             if slot.generation == generation { measure(slot) }
@@ -343,6 +445,7 @@ final class AudioAnalysis {
         for c in 0..<s.channels {
             (fifo + c * fifoCapacity + fifoFrames).update(from: fifoInput + c * AudioAnalysis.slotFrames, count: s.frames)
         }
+        findClicks(s)
         fifoFrames += s.frames
         var at = 0
         while fifoFrames - at >= AudioAnalysis.window {
@@ -357,6 +460,30 @@ final class AudioAnalysis {
             fifoFrames -= at
             fifoStart += Int64(at)
         }
+    }
+
+    /// The worker's quiet run, in frames, for `findClicks`.
+    private var quiet = 0
+
+    /// A click starts where the first channel goes over 0.3 after at least
+    /// 50 ms under 0.02 (AVTiming.swift's fixture: 5 ms bursts, 500 ms apart).
+    private func findClicks(_ s: Slot) {
+        os_unfair_lock_lock(lock)
+        let on = findOnsets
+        os_unfair_lock_unlock(lock)
+        guard on else { return }
+        let x = fifoInput
+        let needed = Int(s.rate * 0.05)
+        var found: [Int64] = []
+        for i in 0..<s.frames {
+            let v = abs(x[i])
+            if v > 0.3, quiet >= needed { found.append(s.start + Int64(i)) }
+            quiet = v < 0.02 ? quiet + 1 : 0
+        }
+        guard !found.isEmpty else { return }
+        os_unfair_lock_lock(lock)
+        if onsets.count < 4096 { onsets.append(contentsOf: found) }
+        os_unfair_lock_unlock(lock)
     }
 
     private func snapshot(offset: Int) {

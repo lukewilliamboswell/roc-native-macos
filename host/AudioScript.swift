@@ -27,6 +27,22 @@ extension Host {
             guard let value = Double(rest.first ?? "") else { return .failed("slide needs a value", nil) }
             s.doubleValue = value
             slid(s)
+        case "require-av-timing":
+            // The rest plays to the real output and draws at the display's
+            // pace, so it is judged only when ROC_AV_TIMING=1 asks for it.
+            guard AVTiming.reporting else {
+                emit("@\(line.k) skip ROC_AV_TIMING is not 1")
+                emit("@done")
+                NSApp.terminate(nil)
+                return .handedOver
+            }
+        case "mark-av-timing":
+            AVTiming.shared.mark()
+        case "av-timing":
+            let lines = AVTiming.shared.summary()
+            for l in lines { say("av-timing: \(l)") }
+            emit("@\(line.k) obs")
+            for l in lines { emit("|\(SpecSteps.escape(l))") }
         case "stall-analysis":
             audio.analysis.setStalled(f.first == "true")
         case "audio-status":

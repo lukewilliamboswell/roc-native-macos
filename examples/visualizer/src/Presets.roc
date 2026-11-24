@@ -68,6 +68,7 @@ Presets := [].{
 		spectrum_fire,
 		ripple_pool,
 		orb_garden,
+		sync_test,
 	]
 
 	## The presets' names, in order.
@@ -816,6 +817,31 @@ orb_garden = {
 	],
 }
 
+# --- 13. Sync Test ---
+
+## Not a visualization: the audio/visual sync test. The screen flashes white
+## as the level crosses half way, so played with a click track (the
+## specs' `fixtures/sync-clicks.wav`) every click is one flash, to measure
+## (host/AVTiming.swift) or to film beside the speaker.
+sync_test : Presets.Preset
+sync_test = {
+	name: "Sync Test",
+	about: "A white flash on every click of a click track: play specs/fixtures/sync-clicks.wav and film the screen beside the speaker to see how far apart they are.",
+	background: hex(0x000000),
+	space,
+	scene: [Save, Opacity(Source({ source: "audio.level", scale: 1, offset: 0 })), Fill(Rect({ x: 0, y: 0, width: 1000, height: 625 }), hex(0xffffff)), Restore],
+	trail: NoTrail,
+	warp: None,
+	composite: Some(
+		\\// White while the level is at least half way, black otherwise: a hard
+		\\// edge, so the frame a flash starts on is unmistakable.
+		\\float4 composite(Frame f, Params p) {
+		\\    return opaque(float3(f.level >= 0.5 ? 1.0 : 0.0));
+		\\}
+	),
+	params: [],
+}
+
 ## Core Graphics' orbs: a disc for each colour, riding a band.
 orb_marks : List(Ui.Mark)
 orb_marks = {
@@ -909,7 +935,7 @@ orb_composite =
 expect {
 	names = Presets.names
 	unique = names.fold([], |seen, n| if (seen.contains(n)) seen else seen.append(n))
-	names.len() == 12 and unique.len() == 12 and Presets.all.all(|p| !p.scene.is_empty() and !p.about.is_empty() and (p.warp != None or p.composite != None))
+	names.len() == 13 and unique.len() == 13 and Presets.all.all(|p| !p.scene.is_empty() and !p.about.is_empty() and (p.warp != None or p.composite != None))
 }
 
 ## A preset's params cross as its shader's, in order.
