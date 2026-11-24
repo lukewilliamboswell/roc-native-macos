@@ -4,7 +4,7 @@
     (choose "Cherry")
     (press "cmd+n" :heard true)
     (press "cmd+n" :heard true)
-    (expect-dump (window :width 560 :height 409
+    (expect-dump (window :width 560 :height 519
                    (vstack :views 1
                      (vstack :views 4
                        (hstack :views 2
@@ -17,7 +17,7 @@
                            (spacer)
                            (segmented :items ("Controls" "Text" "Styles" "Shortcuts") :selected "Controls")
                            (spacer))
-                         (vstack :views 3
+                         (vstack :views 4
                            (vstack :views 2
                              (text "CHOICE" :color secondary-label :text-style subheadline :weight semibold)
                              (box :border line:1:separator
@@ -36,6 +36,18 @@
                                    (slider :value 40.0)
                                    (text "40" :design monospaced-digits))
                                  (progress :value 40 :max 100))))
+                           (vstack :views 2
+                             (text "RANGES" :color secondary-label :text-style subheadline :weight semibold)
+                             (box :border line:1:separator
+                               (vstack :views 2
+                                 (hstack :views 3
+                                   (text "Gain")
+                                   (slider :value -6.0)
+                                   (text "-6" :design monospaced-digits))
+                                 (hstack :views 3
+                                   (text "Zoom")
+                                   (slider :value 200.0)
+                                   (text "200" :design monospaced-digits)))))
                            (vstack :views 2
                              (text "ACTIVITY" :color secondary-label :text-style subheadline :weight semibold)
                              (box :border line:1:separator

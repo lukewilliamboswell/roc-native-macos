@@ -7,8 +7,10 @@ import pf.Ui
 ## drawn at every display refresh without a turn of the engine, with a trail
 ## and a caption over it. `Scope` draws a wave and a marker that moves with a
 ## level; `Echo` draws a mark and a ring whose previous frames drift right and
-## fade (a trail). The caption is native text over the surface, which the
-## trail never draws.
+## fade (a trail); `Bands` draws the wave as bars, with a marker riding one
+## value of it, another bound past its end, which reads 0, and a line as
+## thick as the level. The caption is native text over the surface, which
+## the trail never draws.
 main : Engine.Program(_)
 main = Engine.program_store({}, |_boot| store, |_boot| view())
 
@@ -31,7 +33,7 @@ view = || {
 	Ui.vstack(
 		{ spacing: 12, align: Fill },
 		[
-			Ui.segmented(mode, { choices: ["Scope", "Echo"], on_change: Engine.handle(|chosen| [cells.mode.set(chosen)]) }),
+			Ui.segmented(mode, { choices: ["Scope", "Echo", "Bands"], on_change: Engine.handle(|chosen| [cells.mode.set(chosen)]) }),
 			Ui.hstack(
 				{ spacing: 12, align: Top, width: Fill },
 				[
@@ -73,10 +75,10 @@ plot = |mode| {
 	Ui.overlay({ vertical: Bottom, padding: All(8) }, surface, caption)
 }
 
-## Scope draws a 640 by 160 scene fitted to the surface; Echo draws in
-## points.
+## Scope draws a 640 by 160 scene fitted to the surface; Echo and Bands
+## draw in points.
 space : Str -> Ui.Space
-space = |mode| if (mode == "Echo") Points else Fit({ width: 640, height: 160 })
+space = |mode| if (mode == "Scope") Fit({ width: 640, height: 160 }) else Points
 
 ## The marks of a mode, from the surface's top-left corner.
 scene : Str -> List(Ui.Mark)
@@ -84,11 +86,24 @@ scene = |mode|
 	if mode == "Echo" {
 		[
 			Fill(Rect({ x: 20, y: 20, width: 20, height: 20 }), red),
-			Stroke(Ring({ source: "synthetic.wave", x: 240, y: 80, radius: 36, depth: 16, low: -1, high: 1 }), { color: Orange, width: 2 }),
+			Stroke(Ring({ source: "synthetic.wave", x: 240, y: 80, radius: 36, depth: 16, low: -1, high: 1 }), { color: Orange, width: Value(2) }),
+		]
+	} else if mode == "Bands" {
+		[
+			Fill(Bars({ source: "synthetic.wave", area: { x: 0, y: 20, width: 360, height: 120 }, low: -1, high: 1, gap: 4 }), Green),
+			Save,
+			Translate(Value(100), Element({ source: "synthetic.wave", index: 2, scale: -60, offset: 80 })),
+			Fill(Oval({ x: -8, y: -8, width: 16, height: 16 }), amber),
+			Restore,
+			Save,
+			Translate(Value(380), Element({ source: "synthetic.wave", index: 99, scale: -60, offset: 80 })),
+			Fill(Rect({ x: -8, y: -8, width: 16, height: 16 }), red),
+			Restore,
+			Stroke(Polyline([{ x: 0, y: 150 }, { x: 360, y: 150 }]), { color: Orange, width: Source({ source: "synthetic.level", scale: 16, offset: 1 }) }),
 		]
 	} else {
 		[
-			Stroke(Wave({ source: "synthetic.wave", area: { x: 0, y: 20, width: 640, height: 120 }, low: -1, high: 1 }), { color: Green, width: 3 }),
+			Stroke(Wave({ source: "synthetic.wave", area: { x: 0, y: 20, width: 640, height: 120 }, low: -1, high: 1 }), { color: Green, width: Value(3) }),
 			Save,
 			Translate(Source({ source: "synthetic.level", scale: 640, offset: 0 }), Value(0)),
 			Fill(Oval({ x: -12, y: 68, width: 24, height: 24 }), amber),
@@ -118,4 +133,4 @@ white : Ui.Color
 white = Adaptive({ light: 0xffffff, dark: 0xffffff })
 
 ## The scenes encode as the host reads them.
-expect scene("Echo").len() == 2 and scene("Scope").len() == 5
+expect scene("Echo").len() == 2 and scene("Scope").len() == 5 and scene("Bands").len() == 10

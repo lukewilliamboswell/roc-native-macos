@@ -29,11 +29,13 @@ import QuartzCore
 
 // MARK: - The scene
 
-/// A number of a scene: `offset`, plus `scale` times a source's scalar.
+/// A number of a scene: `offset`, plus `scale` times a source's scalar, or,
+/// with an `index`, times that value of the source's series.
 struct SceneNumber {
     let offset: Double
     let source: String?
     let scale: Double
+    var index: Int? = nil
 }
 
 /// A step of a path, in scene units.
@@ -58,7 +60,7 @@ enum SceneShape {
 
 enum SceneMark {
     case fill(SceneShape, NSColor, String)
-    case stroke(SceneShape, NSColor, String, Double)
+    case stroke(SceneShape, NSColor, String, SceneNumber)
     case save
     case restore
     case translate(SceneNumber, SceneNumber)
@@ -88,8 +90,10 @@ enum Scene {
                 marks.append(.fill(w.shape(&points), Host.color(word), word))
             case "stroke":
                 let word = w.word("a colour")
-                let width = w.number("a line width")
-                if width < 0 { w.fail("a line width is not negative") }
+                // A constant width is not negative; a bound one below 0
+                // draws as 0.
+                let width = w.sceneNumber()
+                if width.source == nil, width.offset < 0 { w.fail("a line width is not negative") }
                 marks.append(.stroke(w.shape(&points), Host.color(word), word, width))
             case "save":
                 depth += 1
@@ -154,7 +158,7 @@ enum Scene {
             return name
         }
 
-        /// A constant, or `@source:scale:offset`.
+        /// A constant, `@source:scale:offset`, or `@source[index]:scale:offset`.
         mutating func sceneNumber() -> SceneNumber {
             let text = word("a number")
             guard text.hasPrefix("@") else {
@@ -163,9 +167,16 @@ enum Scene {
             }
             let parts = text.split(separator: ":", omittingEmptySubsequences: false).map(String.init)
             let name = parts.first?.split(separator: "@").map(String.init) ?? []
-            guard parts.count == 3, name.count == 1, SurfaceSources.valid(name[0]), let scale = Double(parts[1]), let offset = Double(parts[2]), scale.isFinite, offset.isFinite
-            else { fail("\(text) is not @source:scale:offset") }
-            return SceneNumber(offset: offset, source: name[0], scale: scale)
+            // `source[index]`: one value of a series.
+            let element = name.first?.split(separator: "[", omittingEmptySubsequences: false).map(String.init) ?? []
+            guard parts.count == 3, name.count == 1, element.count == 1 || element.count == 2, SurfaceSources.valid(element[0]),
+                  let scale = Double(parts[1]), let offset = Double(parts[2]), scale.isFinite, offset.isFinite
+            else { fail("\(text) is not @source:scale:offset or @source[index]:scale:offset") }
+            guard element.count == 2 else { return SceneNumber(offset: offset, source: element[0], scale: scale) }
+            let digits = element[1].split(separator: "]", omittingEmptySubsequences: false).map(String.init)
+            guard digits.count == 2, digits[1].isEmpty, let index = Int(digits[0]), index >= 0, index < SurfaceSample.maxSeries
+            else { fail("\(text) does not index its source from 0 below \(SurfaceSample.maxSeries)") }
+            return SceneNumber(offset: offset, source: element[0], scale: scale, index: index)
         }
 
         mutating func shape(_ points: inout Int) -> SceneShape {
@@ -268,17 +279,22 @@ extension DrawingSurface {
         var steps: [DrawStep] = []
         steps.reserveCapacity(marks.count)
         var points = 0
-        func value(_ n: SceneNumber) -> Double {
-            guard let name = n.source else { return n.offset }
-            guard let sample = SurfaceSources.shared.source(name)?.latest(at: time) else { return n.offset }
-            guard case let .scalar(v) = sample else { fatal("surface source \(name) gave a series where the scene needs a number") }
-            return n.offset + n.scale * Double(v)
-        }
         func series(_ name: String) -> [Float] {
             guard let sample = SurfaceSources.shared.source(name)?.latest(at: time) else { return [] }
             guard case let .series(values) = sample else { fatal("surface source \(name) gave a number where the scene needs a series") }
             if values.count > SurfaceSample.maxSeries { fatal("surface source \(name) gave \(values.count) values, more than the \(SurfaceSample.maxSeries) a series may hold") }
             return values
+        }
+        func value(_ n: SceneNumber) -> Double {
+            guard let name = n.source else { return n.offset }
+            if let index = n.index {
+                // One value of the series; past its end, it reads 0.
+                let values = series(name)
+                return index < values.count ? n.offset + n.scale * Double(values[index]) : n.offset
+            }
+            guard let sample = SurfaceSources.shared.source(name)?.latest(at: time) else { return n.offset }
+            guard case let .scalar(v) = sample else { fatal("surface source \(name) gave a series where the scene needs a number") }
+            return n.offset + n.scale * Double(v)
         }
         func path(_ shape: SceneShape) -> [PathStep] {
             switch shape {
@@ -335,7 +351,7 @@ extension DrawingSurface {
             case let .stroke(shape, color, word, width):
                 let p = path(shape)
                 points += p.count
-                if !p.isEmpty { steps.append(.figure(fill: false, color: color, word: word, width: width, path: p)) }
+                if !p.isEmpty { steps.append(.figure(fill: false, color: color, word: word, width: max(0, value(width)), path: p)) }
             case .save: steps.append(.save)
             case .restore: steps.append(.restore)
             case let .translate(x, y): steps.append(.transform(1, 0, 0, 1, value(x), value(y)))
@@ -791,7 +807,8 @@ final class DrawingSurface: NSView {
         func number(_ n: SceneNumber) -> Bool { n.source == source }
         return marks.contains { mark in
             switch mark {
-            case let .fill(s, _, _), let .stroke(s, _, _, _): return shape(s)
+            case let .fill(s, _, _): return shape(s)
+            case let .stroke(s, _, _, width): return shape(s) || number(width)
             case let .translate(x, y), let .scale(x, y): return number(x) || number(y)
             case let .rotate(n), let .opacity(n): return number(n)
             case .save, .restore, .matrix: return false
