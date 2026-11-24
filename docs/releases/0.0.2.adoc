@@ -1,6 +1,6 @@
 = roc-native-macos 0.0.2
 
-A music player with Winamp-era visualizations is now the app `init` writes,
+A music player with music visualizations is now the app `init` writes,
 built on a new native drawing surface with Metal shaders, audio playback and
 analysis, and a new test format. The platform now runs on Intel Macs too.
 
