@@ -354,6 +354,10 @@
           "evidence": "objc_allocWithZone (apple-oss-distributions/objc4, runtime/objc-internal.h)"
         },
         {
+          "name": "_objc_autorelease",
+          "evidence": "objc_autorelease (apple-oss-distributions/objc4, runtime/objc-internal.h)"
+        },
+        {
           "name": "_objc_autoreleaseReturnValue",
           "evidence": "objc_autoreleaseReturnValue (apple-oss-distributions/objc4, runtime/objc-internal.h)"
         },
@@ -1234,6 +1238,10 @@
           "evidence": "`swift_retain_n`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
         },
         {
+          "name": "_swift_setDeallocating",
+          "evidence": "`swift_setDeallocating`, a function of the Swift runtime (swiftlang/swift, stdlib/public/runtime), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
           "name": "_swift_slowAlloc",
           "evidence": "`swift_slowAlloc`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
         },
@@ -1248,6 +1256,10 @@
         {
           "name": "_swift_unknownObjectRelease",
           "evidence": "`swift_unknownObjectRelease`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_swift_unknownObjectRelease_n",
+          "evidence": "`swift_unknownObjectRelease_n`, a function of the Swift runtime (swiftlang/swift, stdlib/public/runtime), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
         },
         {
           "name": "_swift_unknownObjectRetain",
@@ -1404,6 +1416,10 @@
         {
           "name": "_$s10Foundation15ContiguousBytesP010withUnsafeC0yqd__qd__SWKXEKlFTj",
           "evidence": "`dispatch thunk of Foundation.ContiguousBytes.withUnsafeBytes<A>((Swift.UnsafeRawBufferPointer) throws -> A1) throws -> A1`, a declaration of Swift's Foundation module (swiftlang/swift-foundation; swiftlang/swift-corelibs-foundation), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$s10Foundation22_convertNSErrorToErrorys0E0_pSo0C0CSgF",
+          "evidence": "`Foundation._convertNSErrorToError(__C.NSError?) -> Swift.Error`, the bridging of an Objective-C error that Swift emits for a throwing Objective-C method, a declaration of Swift's Foundation module (swiftlang/swift-foundation; swiftlang/swift-corelibs-foundation), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
         },
         {
           "name": "_$s10Foundation3URLV19_bridgeToObjectiveCSo5NSURLCyF",
@@ -1806,6 +1822,10 @@
           "evidence": "the Objective-C class NSColor (https://developer.apple.com/documentation/appkit/nscolor)"
         },
         {
+          "name": "_OBJC_CLASS_$_NSColorSpace",
+          "evidence": "the Objective-C class NSColorSpace (https://developer.apple.com/documentation/appkit/nscolorspace)"
+        },
+        {
           "name": "_OBJC_CLASS_$_NSControl",
           "evidence": "the Objective-C class NSControl (https://developer.apple.com/documentation/appkit/nscontrol)"
         },
@@ -2072,6 +2092,54 @@
         {
           "name": "_kCGColorSpaceSRGB",
           "evidence": "the colour space name kCGColorSpaceSRGB, which Swift reads as CGColorSpace.sRGB (https://developer.apple.com/documentation/coregraphics/cgcolorspace/srgb)"
+        }
+      ]
+    },
+    {
+      "name": "Metal",
+      "path": "System/Library/Frameworks/Metal.framework/Metal.tbd",
+      "install_name": "/System/Library/Frameworks/Metal.framework/Versions/A/Metal",
+      "evidence": "Metal, /System/Library/Frameworks/Metal.framework/Versions/A/Metal (https://developer.apple.com/documentation/metal).",
+      "symbols": [
+        {
+          "name": "_MTLCreateSystemDefaultDevice",
+          "evidence": "MTLCreateSystemDefaultDevice (https://developer.apple.com/documentation/metal/mtlcreatesystemdefaultdevice())"
+        },
+        {
+          "name": "_OBJC_CLASS_$_MTLDepthStencilDescriptor",
+          "evidence": "the Objective-C class MTLDepthStencilDescriptor (https://developer.apple.com/documentation/metal/mtldepthstencildescriptor)"
+        },
+        {
+          "name": "_OBJC_CLASS_$_MTLRenderPassDescriptor",
+          "evidence": "the Objective-C class MTLRenderPassDescriptor (https://developer.apple.com/documentation/metal/mtlrenderpassdescriptor)"
+        },
+        {
+          "name": "_OBJC_CLASS_$_MTLRenderPipelineDescriptor",
+          "evidence": "the Objective-C class MTLRenderPipelineDescriptor (https://developer.apple.com/documentation/metal/mtlrenderpipelinedescriptor)"
+        },
+        {
+          "name": "_OBJC_CLASS_$_MTLStencilDescriptor",
+          "evidence": "the Objective-C class MTLStencilDescriptor (https://developer.apple.com/documentation/metal/mtlstencildescriptor)"
+        },
+        {
+          "name": "_OBJC_CLASS_$_MTLTextureDescriptor",
+          "evidence": "the Objective-C class MTLTextureDescriptor (https://developer.apple.com/documentation/metal/mtltexturedescriptor)"
+        }
+      ]
+    },
+    {
+      "name": "QuartzCore",
+      "path": "System/Library/Frameworks/QuartzCore.framework/QuartzCore.tbd",
+      "install_name": "/System/Library/Frameworks/QuartzCore.framework/Versions/A/QuartzCore",
+      "evidence": "Core Animation, /System/Library/Frameworks/QuartzCore.framework/Versions/A/QuartzCore (https://developer.apple.com/documentation/quartzcore).",
+      "symbols": [
+        {
+          "name": "_OBJC_CLASS_$_CAMetalLayer",
+          "evidence": "the Objective-C class CAMetalLayer (https://developer.apple.com/documentation/quartzcore/cametallayer)"
+        },
+        {
+          "name": "_OBJC_CLASS_$_CATransaction",
+          "evidence": "the Objective-C class CATransaction (https://developer.apple.com/documentation/quartzcore/catransaction)"
         }
       ]
     }
