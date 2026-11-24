@@ -117,6 +117,10 @@ config = [
 	# The producer of the macOS linker inputs (scripts/link_inputs.roc):
 	# `-- build DIR`, `-- stubs DIR`, `-- fingerprint`.
 	Task("link-inputs", [Use("dev"), Run(["scripts/link_inputs.roc", "--"])]),
+	# One example from the checkout, `roc src/main.roc` in its directory,
+	# building the host first when it is missing (scripts/run.roc):
+	# `-- NAME`, such as `blueprint run run -- about`.
+	Task("run", [Use("dev"), Run(["scripts/run.roc", "--"])]),
 	Task("test", [Use("dev"), Run(["scripts/check_all.roc", "--", "test"])]),
 	Task("examples", [Use("dev"), Run(["scripts/check_all.roc", "--", "examples"])]),
 	# The platform bundle an app's header names: builds the platform's

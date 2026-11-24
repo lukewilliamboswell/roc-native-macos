@@ -56,11 +56,11 @@ enum Assets {
         }
         guard let directory else {
             let looked = ProcessInfo.processInfo.environment["ROC_ASSETS"].map { ["ROC_ASSETS=\($0)"] } ?? searched
-            return .missing("asset \"\(name)\": the app has no assets directory (looked in \(looked.joined(separator: ", "))). Put it in assets/ beside main.roc and build the app again.")
+            return .missing("asset \"\(name)\": the app has no assets directory (looked in \(looked.joined(separator: ", "))). Run the program from the app's directory, which holds assets/ beside src/, or set ROC_ASSETS to the app's assets directory.")
         }
         let path = "\(directory)/\(name)"
         guard kind(path) == 0o100000 else {
-            return .missing("asset \"\(name)\" is not in the app's assets (\(directory)). Put it in assets/ beside main.roc and build the app again.")
+            return .missing("asset \"\(name)\" is not in the app's assets (\(directory)). Put it in the app's assets/ directory, beside src/.")
         }
         return .found(path)
     }
