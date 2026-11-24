@@ -7,7 +7,7 @@
     (files "specs/fixtures/invalid.wav")
     (wait 400)
     (expect-audio-status :state "Idle" :position 0 :duration 0 :track 1 :ended 0 :analysis false)
-    (expect-dump (window :width 640 :height 581
+    (expect-dump (window :width 640 :height 595
                    (vstack :views 1
                      (vstack :views 6
                        (hstack :views 6
@@ -89,7 +89,10 @@
                              (checkbox "Measure levels" :checked #f)
                              (spacer)
                              (text "—" :design monospaced-digits))
-                           (progress :value 0 :max 60)))
+                           (overlay :vertical center
+                             (box :fill adaptive:e2ebe8:233330
+                               (spacer))
+                             (progress :value 0 :max 60))))
                        (text "Could not play it: not audio (the file's data is not valid audio ('dta?'))" :color secondary-label :text-style caption1)))))
     (files "specs/fixtures/clicks.wav")
     (wait 300)

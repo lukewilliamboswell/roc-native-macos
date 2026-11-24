@@ -34,7 +34,7 @@
     (expect-snapshot :present true :at "170.7" :rate 48000 :rms -120 :peak -120 :finite true :loudest "none")
     (expect-sources :waveform "1024 0.00 0.00" :bands "24 0.00 0.00" :level "0.00" :bass "0.00" :mids "0.00" :treble "0.00")
     (wait 200)
-    (expect-dump (window :width 640 :height 581
+    (expect-dump (window :width 640 :height 595
                    (vstack :views 1
                      (vstack :views 6
                        (hstack :views 6
@@ -116,5 +116,7 @@
                              (checkbox "Measure levels" :checked #t)
                              (spacer)
                              (text "level -120 dB · peak -120 dB" :design monospaced-digits))
-                           (progress :value 0 :max 60)))
+                           (overlay :vertical center
+                             (surface "Meter backlight" :width 564 :height 32 :pacing display :ticking #t :shader fallback)
+                             (progress :value 0 :max 60))))
                        (text "Loaded: 0:00.25, 48000 Hz, 1 channel" :color secondary-label :text-style caption1)))))))
