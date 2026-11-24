@@ -838,8 +838,13 @@ Ui := [].{
 	## polyline around (`x`, `y`), the first value at the top and the rest
 	## clockwise, each `radius + depth * t` from the centre. `Bars` divides
 	## `area` into one column per value, `gap` apart, each bar rising from the
-	## bottom edge to `t` of the height. A source that is not registered, or
-	## has nothing yet, draws nothing.
+	## bottom edge to `t` of the height. `Lissajous` plots the series named
+	## `across` against the one named `down`, value by value, as a polyline
+	## in `area`: `t` of `across` 0 at the left edge and 1 at the right, `t`
+	## of `down` 0 at the bottom and 1 at the top (a stereo vectorscope of
+	## `audio.left` and `audio.right`, say); it has as many points as the
+	## shorter series. A source that is not registered, or has nothing yet,
+	## draws nothing.
 	Shape : [
 		Rect(Area),
 		Oval(Area),
@@ -849,6 +854,7 @@ Ui := [].{
 		Wave({ source : Str, area : Area, low : F64, high : F64 }),
 		Ring({ source : Str, x : F64, y : F64, radius : F64, depth : F64, low : F64, high : F64 }),
 		Bars({ source : Str, area : Area, low : F64, high : F64, gap : F64 }),
+		Lissajous({ across : Str, down : Str, area : Area, low : F64, high : F64 }),
 	]
 
 	## How a shape's outline is drawn: its colour and its line width, in the
@@ -1436,6 +1442,7 @@ shape_words = |shape|
 		Wave({ source, area, low, high }) => "wave ${source} ${area_words(area)} ${num(low)} ${num(high)}"
 		Ring({ source, x, y, radius, depth, low, high }) => "ring ${source} ${nums([x, y, radius, depth, low, high])}"
 		Bars({ source, area, low, high, gap }) => "bars ${source} ${area_words(area)} ${nums([low, high, gap])}"
+		Lissajous({ across, down, area, low, high }) => "lissajous ${across} ${down} ${area_words(area)} ${num(low)} ${num(high)}"
 	}
 
 segment_words : Ui.Segment -> Str
@@ -1489,6 +1496,7 @@ expect {
 		Stroke(Ring({ source: "audio.waveform", x: 50, y: 50, radius: 20, depth: 8, low: -1, high: 1 }), { color: Yellow, width: Source({ source: "synthetic.level", scale: 4, offset: 1 }) }),
 		Matrix({ a: 1, b: 0, c: 0, d: 1, tx: 3, ty: 4 }),
 		Stroke(Polygon([]), { color: Blue, width: Value(1) }),
+		Stroke(Lissajous({ across: "audio.left", down: "audio.right", area: { x: 0, y: 0, width: 200, height: 200 }, low: -1, high: 1 }), { color: Green, width: Value(1) }),
 	]
 	actual = scene_text(scene)
 	expected =
@@ -1505,6 +1513,7 @@ expect {
 		\\stroke yellow @synthetic.level:4:1 ring audio.waveform 50 50 20 8 -1 1
 		\\matrix 1 0 0 1 3 4
 		\\stroke blue 1 polygon 0
+		\\stroke green 1 lissajous audio.left audio.right 0 0 200 200 -1 1
 	actual == expected
 }
 

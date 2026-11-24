@@ -54,6 +54,8 @@ enum SceneShape {
     case wave(String, [Double])
     /// Around a centre (`values`: x y radius depth low high).
     case ring(String, [Double])
+    /// One series against another, as a polyline in x y w h (`values`: x y w h low high).
+    case lissajous(String, String, [Double])
     /// As bars (`values`: x y w h low high gap).
     case bars(String, [Double])
 }
@@ -215,6 +217,14 @@ enum Scene {
                 }
                 if case .move = steps.first {} else if !steps.isEmpty { fail("a path starts with M") }
                 return .path(steps)
+            case "lissajous":
+                let across = source(), down = source()
+                var v = (0..<4).map { _ in number("x, y, width or height") }
+                v.append(number("low"))
+                v.append(number("high"))
+                if v[2] < 0 || v[3] < 0 { fail("a lissajous's size is not negative") }
+                if v[4] == v[5] { fail("low and high are different numbers") }
+                return .lissajous(across, down, v)
             case "wave", "bars":
                 let name = source()
                 var v = (0..<4).map { _ in number("x, y, width or height") }
@@ -309,6 +319,18 @@ extension DrawingSurface {
                     let t = (Double(value) - v[4]) / (v[5] - v[4])
                     let x = v[0] + (n == 1 ? 0 : v[2] * Double(i) / Double(n - 1))
                     let y = v[1] + v[3] * (1 - t)
+                    out.append(i == 0 ? .move(x, y) : .line(x, y))
+                }
+                if n == 1, case let .move(x, y) = out[0] { out.append(.line(x, y)) }
+                return out
+            case let .lissajous(across, down, v):
+                let xs = series(across), ys = series(down)
+                let n = min(xs.count, ys.count)
+                var out: [PathStep] = []
+                out.reserveCapacity(n)
+                for i in 0..<n {
+                    let tx = (Double(xs[i]) - v[4]) / (v[5] - v[4]), ty = (Double(ys[i]) - v[4]) / (v[5] - v[4])
+                    let x = v[0] + v[2] * tx, y = v[1] + v[3] * (1 - ty)
                     out.append(i == 0 ? .move(x, y) : .line(x, y))
                 }
                 if n == 1, case let .move(x, y) = out[0] { out.append(.line(x, y)) }
@@ -734,7 +756,12 @@ final class DrawingSurface: NSView {
 
     /// This frame's shader inputs, or nil when no stage is ready.
     private func shaderFrame(at time: Double, metal: MetalSurface) -> ShaderFrame? {
-        guard warpProgram != nil || compositeProgram != nil, let target = metal.target else { return nil }
+        guard let target = metal.target else { return nil }
+        return shaderFrame(at: time, width: target.width, height: target.height)
+    }
+
+    private func shaderFrame(at time: Double, width: Int, height: Int, dt fixed: Double? = nil) -> ShaderFrame? {
+        guard warpProgram != nil || compositeProgram != nil else { return nil }
         if shaderEpoch == nil {
             shaderEpoch = time
             shaderFrames = 0
@@ -742,7 +769,8 @@ final class DrawingSurface: NSView {
         let elapsed = Float(max(0, time - (shaderEpoch ?? time)))
         var dt: Float = 0
         if let lastTime { dt = Float(max(0, time - lastTime)) }
-        let w = Float(target.width), h = Float(target.height)
+        if let fixed { dt = Float(fixed) }
+        let w = Float(width), h = Float(height)
         let uniforms: [Float] = [
             w, h, 1 / w, 1 / h, w / h, elapsed, dt, Float(bitPattern: shaderFrames),
             DrawingSurface.scalar("audio.bass", at: time), DrawingSurface.scalar("audio.mids", at: time),
@@ -756,6 +784,41 @@ final class DrawingSurface: NSView {
             warpParams: (warpProgram?.params ?? []).map { values[$0] ?? 0 },
             compositeParams: (compositeProgram?.params ?? []).map { values[$0] ?? 0 },
             audio: DrawingSurface.audioBlock(at: time))
+    }
+
+    /// `bench-surfaces`: this surface's last scene and its shaders drawn
+    /// `frames` times at 60 Hz into a target of `width` by `height` pixels
+    /// (at 2 pixels a point, the scene fitted as the surface fits it), each
+    /// waited for; the GPU's mean and most time a frame, in milliseconds,
+    /// or nil without a shader running.
+    func benchShaders(frames: Int, width: Int, height: Int) -> (Double, Double)? {
+        guard let metal, warpProgram != nil || compositeProgram != nil else { return nil }
+        let target = MetalTarget(renderer: metal.renderer, width: width, height: height, scale: 2)
+        let w = Double(width) / 2, h = Double(height) / 2
+        var m = Mapping(scale: 1, dx: 0, dy: 0)
+        if let space {
+            let s = min(w / space.width, h / space.height)
+            m = Mapping(scale: s, dx: (w - space.width * s) / 2, dy: (h - space.height * s) / 2)
+        }
+        var sum = 0.0, most = 0.0
+        let start = FrameClock.shared.now
+        for i in 0..<frames {
+            let time = start + Double(i) / 60
+            var scene = Tessellation([], base: Affine())
+            effectiveAppearance.performAsCurrentDrawingAppearance {
+                scene = Tessellation(DrawingSurface.resolve(marks, at: time), base: Affine(a: m.scale, d: m.scale, tx: m.dx, ty: m.dy))
+            }
+            guard let stages = shaderFrame(at: time, width: width, height: height, dt: 1.0 / 60),
+                  let commands = target.render(scene, background: [0, 0, 0, 1], trail: nil, fade: 1, shaders: stages)
+            else { return nil }
+            commands.commit()
+            commands.waitUntilCompleted()
+            let ms = (commands.gpuEndTime - commands.gpuStartTime) * 1000
+            sum += ms
+            most = max(most, ms)
+            shaderFrames &+= 1
+        }
+        return (sum / Double(max(frames, 1)), most)
     }
 
     /// A param's number at `time`, as a scene's numbers read.
@@ -998,6 +1061,7 @@ final class DrawingSurface: NSView {
             switch s {
             case .path: return false
             case let .wave(name, _), let .ring(name, _), let .bars(name, _): return name == source
+            case let .lissajous(across, down, _): return across == source || down == source
             }
         }
         func number(_ n: SceneNumber) -> Bool { n.source == source }
@@ -1335,7 +1399,15 @@ extension Host {
         case "bench-surfaces":
             // N frames of a trail at three sizes with each renderer,
             // reported on standard error and never judged.
-            benchSurfaces(frames: Int(f.first ?? "") ?? 100)
+            let n = Int(f.first ?? "") ?? 100
+            benchSurfaces(frames: n)
+            // And each surface running shaders, its own frame, GPU time alone.
+            for s in allSurfaces() {
+                for (w, h) in [(1600, 1000), (2560, 1664), (2880, 1800)] {
+                    guard let (mean, most) = s.benchShaders(frames: n, width: w, height: h) else { continue }
+                    say("bench shaders \"\(s.label)\" \(w)x\(h) px: gpu \(Host.decimal(mean, 2)) ms mean, \(Host.decimal(most, 2)) ms most a frame")
+                }
+            }
         case "probe":
             // The colour a surface shows at a point, from its top-left, in
             // percent of red, green, blue and opacity.

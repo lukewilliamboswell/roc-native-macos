@@ -319,6 +319,7 @@ SHAPE: rect X Y W H | oval X Y W H
      | wave SOURCE X Y W H LOW HIGH
      | ring SOURCE X Y RADIUS DEPTH LOW HIGH
      | bars SOURCE X Y W H LOW HIGH GAP
+     | lissajous SOURCE SOURCE X Y W H LOW HIGH
 ----
 
 The other attributes:
@@ -549,7 +550,32 @@ line 0 with the GPU's message, until the app sends new sources.
 *Measuring.* `ROC_SURFACE_TIMING=1` prints, every two seconds, each Metal
 surface's GPU time a frame (`gpuEndTime - gpuStartTime`, mean and most);
 `ROC_SURFACE_SHOTS=DIR` writes its shown frame as `DIR/LABEL-N.png` every two
-seconds of frame time.
+seconds of frame time. A spec's `(bench-surfaces N)` also draws each surface
+running shaders `N` times offscreen at three sizes, each frame waited for,
+and prints its GPU time. The twelve presets of `examples/visualizer`
+(`src/Presets.roc`), playing music, on an Apple M2 (both stages, the scene
+and the resolve; mean GPU milliseconds a frame):
+
+[cols="2,1,1,1",options="header"]
+|===
+| Preset | 1600 × 1000 | 2560 × 1664 | 2880 × 1800
+
+| Liquid Drift | 1.23 | 3.31 | 4.03
+| Blur Corridor | 0.74 | 2.01 | 2.43
+| Superscope Bloom | 0.98 | 2.58 | 3.08
+| Flux Streaks | 1.08 | 3.16 | 3.83
+| Phase Scope | 1.10 | 3.17 | 3.64
+| Peak Meter | 0.69 | 2.01 | 2.48
+| Plasma Weave | 0.84 | 2.36 | 2.87
+| Hyperspace | 0.66 | 1.85 | 2.31
+| Mirror Shard | 1.08 | 3.24 | 3.97
+| Spectrum Fire | 0.59 | 1.89 | 1.89
+| Ripple Pool | 1.06 | 2.91 | 3.73
+| Orb Garden | 1.65 | 4.45 | 5.56
+|===
+
+Drawn live at the display's pace at 2038 × 1000 pixels, each took 1.1 to
+2.5 ms a frame (`ROC_SURFACE_TIMING`), and none above 4 ms.
 
 Deferred:
 

@@ -1,7 +1,9 @@
 app [main] { pf: platform "../../../platform/main.roc" }
 
 import pf.Engine exposing [Elem, Signal]
+import pf.Audio
 import pf.Ui
+import Presets
 
 ## A visualizer: a drawing surface fed by the platform's synthetic sources,
 ## drawn at every display refresh without a turn of the engine, with a trail
@@ -14,9 +16,10 @@ import pf.Ui
 ## Echo's marks (`Ui.Shader`): a warp that drags the previous frame right, a
 ## composite that inverts the colours, one whose red follows a param bound
 ## to a source, and a warp that does not compile; the line beside them says
-## what the shaders are doing.
+## what the shaders are doing. `Gallery` plays an audio file the person
+## chooses through any of twelve visualizations (`Presets`).
 main : Engine.Program(_)
-main = Engine.program_store({}, |_boot| store, |_boot| view())
+main = Engine.program_store({}, |_boot| store, |_boot| view()).with_ports(Audio.ports)
 
 store = Engine.store(
 	Visualizer,
@@ -27,6 +30,15 @@ store = Engine.store(
 		resets: Engine.cell(0.U64),
 		test: Engine.cell("Warp"),
 		status: Engine.cell("Shaders: none"),
+
+		## The gallery: the preset shown, what its shaders are doing, and the
+		## playback the commands a press posts (`outbox`) drive.
+		preset: Engine.cell("Liquid Drift"),
+		shading: Engine.cell(""),
+		outbox: Engine.cell(Engine.outbox({})),
+		track: Engine.cell(0.U64),
+		song: Engine.cell(""),
+		playback: Engine.cell(idle),
 	}.Engine.Cells,
 )
 
@@ -36,37 +48,141 @@ view : () -> Elem(Engine.StoreRoot(_))
 view = || {
 	mode = cells.mode.signal()
 	shown = cells.shown.signal()
-	Ui.vstack(
-		{ spacing: 12, align: Fill },
-		[
-			Ui.segmented(mode, { choices: ["Scope", "Echo", "Bands", "Shaders"], on_change: Engine.handle(|chosen| [cells.mode.set(chosen)]) }),
-			Engine.when(
-				mode.map(|m| m == "Shaders"),
-				|| Ui.hstack(
-					{ spacing: 12 },
-					[
-						Ui.segmented(cells.test.signal(), { choices: tests, on_change: Engine.handle(|chosen| [cells.test.set(chosen)]) }),
-						Ui.text(cells.status.signal(), { style: Caption1, color: SecondaryLabel, overflow: Wrap, width: Fill }),
-					],
-				),
-				|| Engine.text(""),
-			),
-			Ui.hstack(
-				{ spacing: 12, align: Top, width: Fill },
-				[
-					Ui.vstack(
-						{ spacing: 8, align: Fill, width: Fixed(120) },
+	Engine.when(
+		mode.map(|m| m == "Gallery"),
+		|| gallery(),
+		|| Ui.vstack(
+			{ spacing: 12, align: Fill },
+			[
+				modes(),
+				Engine.when(
+					mode.map(|m| m == "Shaders"),
+					|| Ui.hstack(
+						{ spacing: 12 },
 						[
-							Ui.button(shown.map(|on| if (on) "Hide plot" else "Show plot"), { on_press: Engine.handle_by(shown, |on, _| [cells.shown.set(!on)]) }),
-							Ui.button("Clear trail", { on_press: Engine.handle(|_| [cells.resets.update(|n| n + 1)]) }),
-							Ui.checkbox("Caption", { checked: cells.caption.signal(), on_change: Engine.handle(|on| [cells.caption.set(on)]) }),
+							Ui.segmented(cells.test.signal(), { choices: tests, on_change: Engine.handle(|chosen| [cells.test.set(chosen)]) }),
+							Ui.text(cells.status.signal(), { style: Caption1, color: SecondaryLabel, overflow: Wrap, width: Fill }),
 						],
 					),
-					Engine.when(shown, || plot(mode), || Engine.text("")),
+					|| Engine.text(""),
+				),
+				Ui.hstack(
+					{ spacing: 12, align: Top, width: Fill },
+					[
+						Ui.vstack(
+							{ spacing: 8, align: Fill, width: Fixed(120) },
+							[
+								Ui.button(shown.map(|on| if (on) "Hide plot" else "Show plot"), { on_press: Engine.handle_by(shown, |on, _| [cells.shown.set(!on)]) }),
+								Ui.button("Clear trail", { on_press: Engine.handle(|_| [cells.resets.update(|n| n + 1)]) }),
+								Ui.checkbox("Caption", { checked: cells.caption.signal(), on_change: Engine.handle(|on| [cells.caption.set(on)]) }),
+							],
+						),
+						Engine.when(shown, || plot(mode), || Engine.text("")),
+					],
+				),
+			],
+		),
+	)
+}
+
+## The modes, as a segmented control.
+modes : () -> Elem(Engine.StoreRoot(_))
+modes = || Ui.segmented(cells.mode.signal(), { choices: ["Scope", "Echo", "Bands", "Shaders", "Gallery"], on_change: Engine.handle(|chosen| [cells.mode.set(chosen)]) })
+
+# --- The gallery ---
+
+## Where playback stood when the host last said.
+idle : Audio.Status
+idle = { track: 0, generation: 0, state: Idle, position_ms: 0, duration_ms: 0, volume: 1, latency_ms: 0, eq: { bypass: Bool.False, preamp_db: 0, gains_db: List.repeat(0, 10) } }
+
+## The gallery: a picker of the presets, a file to play through them, and
+## the preset filling the window, with what it is and what its shaders are
+## doing beneath it.
+gallery : () -> Elem(Engine.StoreRoot(_))
+gallery = || {
+	preset = cells.preset.signal().map(Presets.named)
+	playback = cells.playback.signal()
+	loaded = playback.map(|s| s.state != Idle and s.state != Loading)
+	Ui.vstack(
+		{ spacing: 10, align: Fill },
+		[
+			modes(),
+			Ui.hstack(
+				{ spacing: 8 },
+				[
+					Ui.dropdown(cells.preset.signal(), { choices: Presets.names, on_change: Engine.handle(|name| [cells.preset.set(name)]) }),
+					Ui.file_button("Choose Audio…", { on_files: Engine.handle_by(cells.track.signal(), chose), icon: Symbol("music.note") }),
+					Ui.button("Play", { on_press: Engine.handle(|_| send([Play])), enabled: loaded, icon: Symbol("play.fill") }),
+					Ui.button("Pause", { on_press: Engine.handle(|_| send([Pause])), enabled: loaded, icon: Symbol("pause.fill") }),
+					Ui.text({ song: cells.song.signal(), playback }.Signal.map(|{ song, playback: s }| playing(song, s)), { design: MonospacedDigits, overflow: TruncateTail, width: Fill }),
 				],
+			),
+			Ui.slider(playback.map(|s| s.position_ms.to_i64_wrap()), { range: { min: 0, max: 300_000 }, on_input: Engine.handle(|typed| send([Seek((I64.from_str(typed) ?? 0).max(0).to_u64_wrap())])), enabled: loaded, width: Fill }),
+			Ui.text(preset.map(|p| p.about), { overflow: Wrap, width: Fill }),
+			Ui.surface(
+				preset.map(|p| p.scene),
+				{
+					label: "Gallery",
+					space: preset.map(|p| p.space),
+					background: preset.map(|p| p.background),
+					pacing: Engine.const(Display),
+					trail: preset.map(|p| p.trail),
+					reset: playback.map(|s| s.generation),
+					shader: preset.map(Presets.shader),
+					on_shader: Handled(Engine.handle(|status| [cells.shading.set(describe(status))])),
+					width: Fill,
+					height: FillAtLeast(500),
+				},
+			),
+			Ui.text(cells.shading.signal(), note),
+			Ui.text(preset.map(Presets.ranges), note),
+			# The commands each press posted, sent in order, and where
+			# playback stands, while the gallery is shown.
+			Engine.on_post(cells.outbox.signal(), |commands| commands.map(Audio.send), Engine.ignore({})),
+			Engine.watch(
+				Engine.const({}),
+				|_| [Audio.status({ every_ms: 250 })],
+				Engine.react(
+					|_, result| match result {
+						Ok(s) => [cells.playback.set(s)]
+						Err(_) => []
+					},
+				),
 			),
 		],
 	)
+}
+
+## The commands a handler sends, in order.
+send : List(Audio.Command) -> List(Engine.Write(_))
+send = |commands| [cells.outbox.update(|box| box.post(commands))]
+
+## A chosen file: loaded as the next track, and played.
+chose : U64, Engine.Received -> List(Engine.Write(_))
+chose = |track, { files, .. }|
+	match files.first() {
+		Ok(file) => [cells.track.set(track + 1), cells.song.set(file.name())].concat(send([Load({ track: track + 1, file }), Play]))
+		Err(_) => []
+	}
+
+## The song and where it stands.
+playing : Str, Audio.Status -> Str
+playing = |song, s|
+	match s.state {
+		Idle => "Choose an audio file to play."
+		Loading => "Loading ${song}…"
+		_ => "${song} · ${clock(s.position_ms)} / ${clock(s.duration_ms)}"
+	}
+
+## The gallery's small print.
+note : Ui.TextProps
+note = { style: Caption1, color: SecondaryLabel, overflow: Wrap, width: Fill }
+
+## `m:ss`
+clock : U64 -> Str
+clock = |ms| {
+	seconds = (ms // 1000) % 60
+	"${(ms // 60000).to_str()}:${if (seconds < 10) "0" else ""}${seconds.to_str()}"
 }
 
 ## The surface, with the caption over it while it is on.

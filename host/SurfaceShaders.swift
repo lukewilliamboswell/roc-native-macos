@@ -275,6 +275,23 @@ enum ShaderSource {
     /// The image at `uv`, tiled with every other tile mirrored.
     float4 sample_mirror(Frame f, float2 uv) { return f.image.sample(roc_mirror, uv); }
 
+    /// The image's pixel `p` (whole pixels from the top-left corner, held to
+    /// the image), exactly as it was written: for state a warp keeps in its
+    /// history, such as a value in row 0.
+    float4 fetch(Frame f, int2 p) { return f.image.read(uint2(clamp(p, int2(0), int2(f.size) - 1))); }
+    /// A number from 0 to 1 as two channels, and back: the history keeps 8
+    /// bits a channel, so a value kept across frames in one channel has only
+    /// 256 steps, and in two, 65,536.
+    float2 pack(float v) {
+        float x = round(saturate(v) * 65535.0);
+        float hi = floor(x / 256.0);
+        return float2(hi, x - hi * 256.0) / 255.0;
+    }
+    float unpack(float2 c) {
+        float2 b = round(saturate(c) * 255.0);
+        return (b.x * 256.0 + b.y) / 65535.0;
+    }
+
     /// The image around `uv` blurred over about `radius` pixels (nine taps).
     float4 blur(Frame f, float2 uv, float radius) {
         float2 d = f.texel * radius;

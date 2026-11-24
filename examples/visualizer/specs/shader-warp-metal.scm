@@ -30,7 +30,7 @@
     (expect-dump (window :width 600 :height 268
                    (vstack :views 1
                      (vstack :views 3
-                       (segmented :items ("Scope" "Echo" "Bands" "Shaders") :selected "Shaders")
+                       (segmented :items ("Scope" "Echo" "Bands" "Shaders" "Gallery") :selected "Shaders")
                        (hstack :views 2
                          (segmented :items ("Warp" "Invert" "Param" "Broken") :selected "Warp")
                          (text "Shaders: running" :color secondary-label :text-style caption1))

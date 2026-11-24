@@ -1,0 +1,65 @@
+; The gallery with Core Graphics: shaders never run, the line under the
+; surface says so, and each preset draws its own scene and trail, the
+; fallback picture. With nothing playing the audio sources draw nothing,
+; so what shows is each scene's fixed part: Liquid Drift's background, and
+; Orb Garden's orbs resting at their places.
+(test "gallery"
+  (steps
+    (renderer cg)
+    (window-size 830 700)
+    (choose "Gallery")
+    (frame 100)
+    (expect-visible (text "Shaders: not on this renderer, so the marks and the trail alone"))
+    (expect-visible (text "Choose an audio file to play."))
+    (expect-probe (surface "Gallery") 400 60 :r 2 :g 2 :b 6 :a 100)
+    (choose "Orb Garden")
+    (frame 100)
+    (expect-visible (text "Shaders: not on this renderer, so the marks and the trail alone"))
+    (expect-dump (window :width 830 :height 720
+                   (vstack :views 1
+                     (vstack :views 7
+                       (segmented :items ("Scope" "Echo" "Bands" "Shaders" "Gallery") :selected "Gallery")
+                       (hstack :views 5
+                         (dropdown "Orb Garden" :items ("Liquid Drift" "Blur Corridor" "Superscope Bloom" "Flux Streaks" "Phase Scope" "Peak Meter" "Plasma Weave" "Hyperspace" "Mirror Shard" "Spectrum Fire" "Ripple Pool" "Orb Garden"))
+                         (file-button "Choose Audio…")
+                         (button "Play" :enabled #f)
+                         (button "Pause" :enabled #f)
+                         (text "Choose an audio file to play." :design monospaced-digits))
+                       (slider :value 0.0)
+                       (text "Glowing orbs of magenta, teal and orange drift, merge and swell with their bands over deep purple, trailing liquid light, with spiky stars twinkling between them.")
+                       (surface "Gallery" :width 790 :height 500 :pacing display :ticking #t :trail held :shader fallback
+                         (space :fit 1000.0 625.0 :scale 0.790 :offset 0.0 3.1)
+                         (save)
+                         (transform 1.000 0.000 0.000 1.000 300.000 260.000)
+                         (transform 0.600 0.000 0.000 0.600 0.000 0.000)
+                         (save)
+                         (opacity 0.350)
+                         (fill adaptive:ff3fc8:ff3fc8 0.0,-88.0 88.0,0.0 0.0,88.0 -88.0,0.0 0.0,-88.0 close)
+                         (restore)
+                         (fill adaptive:ff3fc8:ff3fc8 0.0,-55.0 55.0,0.0 0.0,55.0 -55.0,0.0 0.0,-55.0 close)
+                         (restore)
+                         (save)
+                         (transform 1.000 0.000 0.000 1.000 520.000 360.000)
+                         (transform 0.600 0.000 0.000 0.600 0.000 0.000)
+                         (save)
+                         (opacity 0.350)
+                         (fill adaptive:22e0d0:22e0d0 0.0,-72.0 72.0,0.0 0.0,72.0 -72.0,0.0 0.0,-72.0 close)
+                         (restore)
+                         (fill adaptive:22e0d0:22e0d0 0.0,-45.0 45.0,0.0 0.0,45.0 -45.0,0.0 0.0,-45.0 close)
+                         (restore)
+                         (save)
+                         (transform 1.000 0.000 0.000 1.000 700.000 240.000)
+                         (transform 0.600 0.000 0.000 0.600 0.000 0.000)
+                         (save)
+                         (opacity 0.350)
+                         (fill adaptive:ff9a2a:ff9a2a 0.0,-64.0 64.0,0.0 0.0,64.0 -64.0,0.0 0.0,-64.0 close)
+                         (restore)
+                         (fill adaptive:ff9a2a:ff9a2a 0.0,-40.0 40.0,0.0 0.0,40.0 -40.0,0.0 0.0,-40.0 close)
+                         (restore)
+                         (save)
+                         (transform 1.000 0.000 0.000 1.000 500.000 312.500)
+                         (transform 1.000 0.000 0.000 1.000 0.000 0.000)
+                         (transform 1.000 0.000 0.000 1.000 0.000 0.000)
+                         (restore))
+                       (text "Shaders: not on this renderer, so the marks and the trail alone" :color secondary-label :text-style caption1)
+                       (text "decay 0.85–0.98 · size 0.05–0.2 · swell 0.2–0.8" :color secondary-label :text-style caption1)))))))

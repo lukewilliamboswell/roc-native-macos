@@ -197,7 +197,7 @@ read as `offset + scale * value`, or
 `Element({ source, index, scale, offset })`: the value at `index` (from 0)
 of a source's latest series, read the same way, so one band of
 `"audio.bands"` can move a mark. An index past the end of the series reads
-0, so the number is `offset`. Three shapes draw a source's latest series
+0, so the number is `offset`. Four shapes draw sources' latest series
 of numbers (at most 4,096). Each value `v` counts as
 `t = (v - low) / (high - low)`:
 
@@ -209,6 +209,11 @@ of numbers (at most 4,096). Each value `v` counts as
 * `Bars({ source, area, low, high, gap })` is one bar per value, `gap`
   apart, each rising from the bottom edge to `t` of the height (`t` is held
   between 0 and 1).
+* `Lissajous({ across, down, area, low, high })` plots one series against
+  another, value by value: `t` of `across` from the area's left edge (0) to
+  its right (1), and `t` of `down` from its bottom edge to its top. With
+  `audio.left` and `audio.right`, turned 45 degrees with `Rotate`, it is a
+  stereo vectorscope.
 
 A source is named by a stable string, such as `"audio.waveform"`. It is
 native code that registers that name (xref:architecture.adoc#surface-sources[Surface sources]).
@@ -394,7 +399,11 @@ not ask for Metal), the surface draws its marks and its trail as if it had
 no shaders, and `on_shader` hears `Fallback`. Give a shaded surface a scene
 and a trail that look reasonable alone: they are its simpler picture.
 
-`examples/visualizer`'s `Shaders` mode has a test of each stage.
+`examples/visualizer`'s `Shaders` mode has a test of each stage, and its
+`Gallery` plays a file through twelve visualizations kept as data in
+`src/Presets.roc`: each a name, a description, its shaders (commented, to
+learn from), its params with their ranges, and the scene and trail it
+draws with Core Graphics. Another app adopts them by copying that module.
 
 === Overlays
 
