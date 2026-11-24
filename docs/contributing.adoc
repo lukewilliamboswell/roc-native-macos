@@ -339,6 +339,7 @@ same one CI runs on `macos-15`, and in part on `macos-15-intel`
 | `test` | `roc test` on `platform/main.roc` and every example (its `src/main.roc`, with the starter's logic package), and for an example with `fuzz/main.roc` (the starter) its roc-fuzz build and `check` on every target
 | `examples` | every example's specs
 | `bench` | every harness under `bench/`, built and run at a token size (`bench/<name>/run.sh --smoke`) so it never goes stale, failing unless the run does what it measures; then its specs, `bench/<name>/specs/*.scm`, which count a turn's work with the same bounds at two sizes: a hover or a cooling timer at N=20 and N=60 cells, a tick writing 3 rows and a selection at 2,000 and 200,000 rows. The harnesses' timing ratios are reported as diagnostics and never fail
+| `matrix` | every build an author can ask `roc build` for, of `examples/arith` (the library calls 128-bit, `Dec` and float arithmetic lower to) and `examples/workers` (worker threads, and a crashed job's unwind): each built with every `--opt` (`speed`, `size`, `dev`, `interpreter`) and `--specialize` (`yes`, `no`) for this Mac's own target and run against one spec (`arith`'s `rows`, `workers`' `crash`), then `arith` with every `--opt` but `interpreter` (which builds only for the native target) for the other Mac targets, each linked, and run too where this Mac runs it: `x64v1mac` under Rosetta on Apple silicon, natively on an Intel Mac. Programs go to `build/matrix/`. It takes about 10 minutes on an M-series Mac, most of it `workers` with `--specialize=yes` (`TODO(slow-lambda-sets)`). A missing system symbol fails here first, so take it into `host/interfaces.json` with its evidence
 | `bundle` | the bundle from the `build` stage's inputs, and its consumer test: `macos.roc` `init`, `build`, `test`, `fuzz --check` and `ci package` against it
 |===
 
@@ -358,11 +359,13 @@ Intel runner, `macos-15-intel`, with the hosts the `host` job
 cross-compiled:
 
 * `ci.yml`'s `Check on an Intel Mac` job runs `scripts/check_all.roc --
-  scripts tool glue build test examples bundle`: the glue the Intel `roc`
+  scripts tool glue build test examples matrix bundle`: the glue the Intel `roc`
   generates (identical to Apple silicon's), the stub audit of both hosts and
   of the Intel `roc`'s own run shims, every example's `expect`s, every
   example built natively and its specs run, the counter's through
-  `roc src/main.roc` too, and the bundle's consumer test, which inits the
+  `roc src/main.roc` too, the build matrix with its `x64mac` and
+  `x64v1mac` builds run natively (the only place an `x64mac` build runs:
+  Rosetta has no x86-64-v3), and the bundle's consumer test, which inits the
   starter app and whose `macos.roc` builds a universal app and runs its
   Intel half. roc-fuzz has no Intel Mac target (only `arm64mac` and
   `x64musl`), so on Intel the `test` stage does not check the starter's

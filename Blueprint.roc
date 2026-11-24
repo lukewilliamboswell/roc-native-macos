@@ -105,7 +105,9 @@ config = [
 	Shell("default", [Use("dev")]),
 	# The per-pull-request gate: compiler pins, formatting, the scripts'
 	# tests, the macos.roc tool's tests, the build, `roc test`, every
-	# example's specs and the bundle with its consumer test.
+	# example's specs, the build matrix (two examples built and run with
+	# every `--opt` and `--specialize`, one for every Mac target) and the
+	# bundle with its consumer test.
 	# `check -- STAGE...` runs only the named stages, in order.
 	Task("check", [Use("dev"), Run(["scripts/check_all.roc", "--"])]),
 	# The host, the linker inputs and every example (scripts/build.roc):
