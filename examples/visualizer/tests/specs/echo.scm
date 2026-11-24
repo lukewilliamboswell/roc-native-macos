@@ -43,7 +43,7 @@
                            (box :fill adaptive:000000:000000
                              (text "Echo, echo, fading slow: the old light under the new." :color adaptive:ffffff:ffffff))))))))
     (expect-probe (surface "Visualizer") 120 150 :r 0 :g 0 :b 0 :a 0)
-    (expect-probe (surface "Visualizer") 40 30 :r 100 :g 0 :b 0 :a 50)
+    (expect-probe (surface "Visualizer") 45 30 :r 100 :g 0 :b 0 :a 50)
     (mark-metrics)
     (frame 100)
     (expect-allocations-at-most 0)))

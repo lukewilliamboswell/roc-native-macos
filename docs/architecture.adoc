@@ -216,7 +216,17 @@ two of them centre what lies between.
 
 Window sizing:: The window fits its content, measured after two layout
 passes (the first gives wrapping labels their widths). Once it holds a scroll
-area or list it grows only when its content needs more room.
+area or list it grows only when its content needs more room. It never grows
+past the room its screen has (`Host.windowRoom`: the screen's visible frame
+less the title bar), and fits again when it changes screen or the screens
+change. The root stack sits in a document view inside the window's page, an
+`NSScrollView` whose document fills it at a priority (749) below a view's
+resistance to compression: what cannot shrink makes the document taller
+than the window, and the page scrolls it. The window's minimum is its
+content's, within that room. A spec's window is on a virtual screen
+(`SpecScreen`, 1440 × 840 points of content unless `(screen-size W H)` says
+otherwise), and `HostWindow` keeps AppKit from constraining it to the run's
+real display, so its size is the same on every Mac.
 
 `ROC_APPEARANCE=dark` (or `light`) draws the app in that appearance whatever
 the system's, to check both looks.
@@ -365,7 +375,7 @@ and calls on the main thread, between engine turns. A tick draws one frame
 for the time it will be seen, on `ProcessInfo.systemUptime`'s monotonic
 clock (which the display link's and Core Audio's host times share): its
 `targetTimestamp`, plus, with Metal, how late after their targets its
-last frames were presented (xref:architecture.adoc#av-timing[Audio
+last frames were presented (xref:architecture.adoc#audio[Audio,
 timing]), and marks the view for display. The run loop delivers only the latest refresh, so a busy main
 thread skips frames rather than queueing them. The next frame's time covers
 the gap, and since a trail's fade and motion are rates, the picture keeps
@@ -994,7 +1004,6 @@ on every transport change. A native consumer samples the history directly
 time (see Timing), and every transport change calls
 `SurfaceSources.changed` for the `audio.*` names. None of this runs Roc off
 the main thread or waits on a consumer.
-[#av-timing]
 Timing:: A frame shows the sound heard when it reaches the screen.
 +
 --
@@ -1059,10 +1068,12 @@ The manual clock:: A spec's `(audio-clock manual)` enables
 `enableManualRenderingMode(.offline)` at 48 kHz stereo: nothing plays to a
 device, and only a `(render MS)` step advances the clock, in 1024-frame
 renders. The render notification runs within each render, so after each
-one the host waits (at most 2 s) while the ring is all but full, unless a
-spec stalled the worker, and at the end until the worker has measured
-everything: every buffer rendered is measured, whatever the worker's speed,
-then the host publishes.
+one the host waits while the ring is all but full, unless a spec stalled
+the worker, and at the end until the worker has measured everything. The
+waits have no deadline, and offline the tap takes the ring's lock rather
+than only trying it, so every buffer rendered is measured however slow the
+machine, then the host publishes. A worker that takes no chunk for 60 s
+has stopped, which is fatal.
 `.dataPlayedBack` completions do not fire in this mode, so a render that
 reaches the end ends the source itself, through the same generation check.
 The node times follow from the frames rendered, so every spec

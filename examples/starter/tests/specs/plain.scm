@@ -11,7 +11,7 @@
     (await-work)
     (expect-visible (text "Read the words of verses.txt."))
     (choose "Queue")
-    (expect-dump (window :width 760 :height 735
+    (expect-dump (window :width 760 :height 840
                    (vstack :views 1
                      (vstack :views 9
                        (hstack :views 7
@@ -107,26 +107,28 @@
                            (image speaker.wave.2.fill)
                            (slider :value 100.0)))
                        (segmented :items ("Hide Panels" "Queue" "EQ" "Editor") :selected "Queue")
-                       (vstack :views 2
-                         (hstack :views 3
-                           (text "Queue · 2 songs of 60" :text-style headline)
-                           (spacer)
-                           (button "Clear Queue"))
-                         (scroll :views 2 :height 160
-                           (hstack :views 6
-                             (text "1." :color secondary-label :design monospaced-digits)
-                             (text "Polymorphic Defunctionalization Through Lambda Set Specialization")
-                             (spacer)
-                             (text "timed lyrics" :color secondary-label :text-style caption1)
-                             (button "Play Polymorphic Defunctionalization Through Lambda Set Specialization")
-                             (button "Remove Polymorphic Defunctionalization Through Lambda Set Specialization"))
-                           (hstack :views 6
-                             (text "▶" :color secondary-label :design monospaced-digits)
-                             (text "clicks")
-                             (spacer)
-                             (text "lyrics as text" :color secondary-label :text-style caption1)
-                             (button "Play clicks")
-                             (button "Remove clicks"))))
+                       (scroll :views 1 :height 289
+                         (vstack :views 1
+                           (vstack :views 2
+                             (hstack :views 3
+                               (text "Queue · 2 songs of 60" :text-style headline)
+                               (spacer)
+                               (button "Clear Queue"))
+                             (scroll :views 2 :height 160
+                               (hstack :views 6
+                                 (text "1." :color secondary-label :design monospaced-digits)
+                                 (text "Polymorphic Defunctionalization Through Lambda Set Specialization")
+                                 (spacer)
+                                 (text "timed lyrics" :color secondary-label :text-style caption1)
+                                 (button "Play Polymorphic Defunctionalization Through Lambda Set Specialization")
+                                 (button "Remove Polymorphic Defunctionalization Through Lambda Set Specialization"))
+                               (hstack :views 6
+                                 (text "▶" :color secondary-label :design monospaced-digits)
+                                 (text "clicks")
+                                 (spacer)
+                                 (text "lyrics as text" :color secondary-label :text-style caption1)
+                                 (button "Play clicks")
+                                 (button "Remove clicks"))))))
                        (text "Read the words of verses.txt." :color secondary-label :text-style callout)
                        (shortcut)
                        (shortcut)

@@ -4,11 +4,24 @@ import AppKit
 
 // MARK: - The application
 
-final class AppDelegate: NSObject, NSApplicationDelegate {
+/// The app's window. AppKit keeps a window within its screen's visible
+/// area when it is shown, so the size a window settles at would depend on
+/// the display a spec runs on (a runner's 1024x768 screen with its Dock
+/// shortens a tall window). In a spec the window keeps the size the host
+/// gives it, within the room the spec's `(screen-size W H)` sets; otherwise
+/// it is constrained as any window is, and the host keeps it within its
+/// screen (`Host.windowRoom`).
+final class HostWindow: NSWindow {
+    override func constrainFrameRect(_ frameRect: NSRect, to screen: NSScreen?) -> NSRect {
+        driven ? frameRect : super.constrainFrameRect(frameRect, to: screen)
+    }
+}
+
+final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     var host: Host?
 
     func applicationDidFinishLaunching(_ note: Notification) {
-        let window = NSWindow(
+        let window = HostWindow(
             contentRect: NSRect(x: 0, y: 0, width: 360, height: 200),
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered,
@@ -35,9 +48,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         } else {
             window.makeKeyAndOrderFront(nil)
             NSApp.activate(ignoringOtherApps: true)
+            // Sized again for the screen it is shown on.
+            host.refit()
         }
+        window.delegate = self
         host.bench?.shown(host)
     }
+
+    /// The window moved to another screen, or the screens changed: the
+    /// window keeps within the room it now has (`Host.windowRoom`).
+    /// After the change, between turns: AppKit may report it from inside
+    /// a resize the host itself made.
+    func windowDidChangeScreen(_ note: Notification) { DispatchQueue.main.async { self.host?.refit() } }
+    func applicationDidChangeScreenParameters(_ note: Notification) { DispatchQueue.main.async { self.host?.refit() } }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ app: NSApplication) -> Bool { true }
 

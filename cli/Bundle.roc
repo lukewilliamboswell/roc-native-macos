@@ -44,6 +44,7 @@ import "../examples/starter/tests/specs/plain.scm" as scaffold_tests_specs_plain
 import "../examples/starter/tests/specs/presets.scm" as scaffold_tests_specs_presets_scm : Str
 import "../examples/starter/tests/specs/problem.scm" as scaffold_tests_specs_problem_scm : Str
 import "../examples/starter/tests/specs/shaders.scm" as scaffold_tests_specs_shaders_scm : Str
+import "../examples/starter/tests/specs/small-screen.scm" as scaffold_tests_specs_small_screen_scm : Str
 import "../examples/starter/tests/specs/trails.scm" as scaffold_tests_specs_trails_scm : Str
 import "../examples/starter/tests/specs/transport.scm" as scaffold_tests_specs_transport_scm : Str
 
@@ -114,6 +115,7 @@ Bundle := [].{
 		{ path: "tests/specs/presets.scm", contents: Text(scaffold_tests_specs_presets_scm) },
 		{ path: "tests/specs/problem.scm", contents: Text(scaffold_tests_specs_problem_scm) },
 		{ path: "tests/specs/shaders.scm", contents: Text(scaffold_tests_specs_shaders_scm) },
+		{ path: "tests/specs/small-screen.scm", contents: Text(scaffold_tests_specs_small_screen_scm) },
 		{ path: "tests/specs/trails.scm", contents: Text(scaffold_tests_specs_trails_scm) },
 		{ path: "tests/specs/transport.scm", contents: Text(scaffold_tests_specs_transport_scm) },
 	]

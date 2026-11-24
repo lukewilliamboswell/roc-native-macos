@@ -542,6 +542,7 @@ checkbox its `checked` signal. Write the new value in the handler, as
 `Ui.text_field(cells.url.signal(), { on_input: Engine.handle(|typed| [cells.url.set(typed)]) })`
 does.
 
+[#the-window]
 == The window
 
 Without a scroll area or a list, the window fits its content exactly; give
@@ -550,6 +551,15 @@ area or list appears, the window opens tall enough for its
 `opening_height`, and from then on grows only when the content around it
 needs more room. The user can resize the window; the scroll area takes the
 slack, within its `height`.
+
+The window never grows past its screen: it keeps within the screen's
+visible frame (less the menu bar and the Dock), and fits it again when it
+moves to another screen or the screens change. Content that needs more
+than that is not cut off: the whole window scrolls, as a page does, and the
+window can be made no smaller than its content needs or its screen has
+room for. A layout that suits small screens gives what is tall a scroll
+area of its own, so that part scrolls, not the window, as the starter's
+panels do.
 
 == Lists
 

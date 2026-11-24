@@ -1,6 +1,8 @@
 ; The pen width drawn with the Metal renderer: the same pixels as with
 ; Core Graphics (pen.scm). A Mac without a Metal device draws with Core
-; Graphics, so the spec passes the same there.
+; Graphics, so the spec passes the same there. The pen is the system's
+; orange, whose green and blue macOS releases change, so its probes read
+; the red and the coverage alone.
 (test "pen-metal"
   (steps
     (renderer metal)
@@ -29,7 +31,7 @@
                              (fill adaptive:ff0000:ff0000 -8.0,-8.0 8.0,-8.0 8.0,8.0 -8.0,8.0 close)
                              (restore)
                              (stroke orange 1.0 0.0,150.0 360.0,150.0))))))))
-    (expect-probe (surface "Visualizer") 50 150 :r 100 :g 55 :b 16 :a 100)
+    (expect-probe (surface "Visualizer") 50 150 :r 100 :a 100)
     (expect-probe (surface "Visualizer") 50 153 :r 0 :g 0 :b 0 :a 0)
     (step-source "synthetic.level" 4)
     (frame 100)
@@ -55,5 +57,5 @@
                              (fill adaptive:ff0000:ff0000 -8.0,-8.0 8.0,-8.0 8.0,8.0 -8.0,8.0 close)
                              (restore)
                              (stroke orange 9.0 0.0,150.0 360.0,150.0))))))))
-    (expect-probe (surface "Visualizer") 50 153 :r 100 :g 55 :b 16 :a 100)
+    (expect-probe (surface "Visualizer") 50 153 :r 100 :a 100)
     (expect-probe (surface "Visualizer") 50 157 :r 0 :g 0 :b 0 :a 0)))

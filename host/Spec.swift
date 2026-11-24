@@ -9,6 +9,14 @@ import AppKit
 let specText = ProcessInfo.processInfo.environment["ROC_SPEC"]
 let driven = specText != nil
 
+/// The screen a spec's window is on, the same on every Mac: room for
+/// 1440 x 840 points of content (a 1440 x 900 screen less its menu bar and
+/// the window's title bar), or what a `(screen-size W H)` step gave
+/// (Views.swift, `windowRoom`). It outlives a reload, as a screen would.
+enum SpecScreen {
+    static var room = NSSize(width: 1440, height: 840)
+}
+
 /// A spec's lowered steps and how far the run has got. The tool writes
 /// them (`Spec.lower`): a `roc-spec 1` line, then `k<TAB>verb<TAB>field…`
 /// per step, `k` from 1 (0 for setup), each field escaping `\`, tab and
