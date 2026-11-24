@@ -88,6 +88,8 @@ error, not a silent skip.
 | `file_button` | `ui-file-button` | `NSButton` opening an `NSOpenPanel`
 | `drop_zone` | `ui-drop-zone` | a `Surface` with a dashed outline, registered for dragged file URLs
 | `hover` | `ui-hover` | none: its child's view stands in its place; one window-level `NSTrackingArea` (Hover.swift)
+| `surface` | `ui-surface` | `DrawingSurface` (`host/Drawing.swift`): one `NSView` drawing a scene with Core Graphics; see xref:architecture.adoc#drawing-surfaces[Drawing surfaces]
+| `overlay` | `ui-overlay` | `Overlay` (`host/Drawing.swift`): an `NSView` holding a background pinned to its edges and a foreground over it
 | `divider`, `spacer` | `ui-divider`, `ui-spacer` | `NSBox` separator, flexible `NSView`
 |===
 
@@ -279,9 +281,244 @@ A grid of 10,000 fixed-size boxes lays out in 0.09 s instead of 3.2 s
 (`bench/grid`). A box draws its fill and solid border as its layer's
 properties (`updateLayer`), so it has no backing store.
 
-A batch that only repaints (`fill`, `border`, `radius`, `color`, and no
-structure or text) skips layout and is only drawn. Hit testing a framed
+A batch that only repaints (`fill`, `border`, `radius`, `color`, a
+surface's `scene`, `space`, `background`, `pacing`, `trail`, `reset` and
+`label`, and no structure or text) skips layout and is only drawn. Hit testing a framed
 stack searches its children by position.
+
+[#drawing-surfaces]
+== Drawing surfaces
+
+A `ui-surface` is one `DrawingSurface` (`host/Drawing.swift`): a flipped,
+layer-backed `NSView` that clips to its bounds and is one accessibility
+element (an image, named by `label`). Its scene is one attribute, so a
+change to it is one `ATTR` command, a paint-only change. The view is marked
+for display, and the window is not laid out again. No shape has a view of
+its own.
+
+=== The scene on the wire
+
+`scene` holds one mark per line, in words separated by single spaces. A
+colour is a xref:architecture.adoc#looks[Looks] colour word. A number `N` is
+a decimal as Roc's `F64.to_str` writes it. A bound number is
+`@SOURCE:SCALE:OFFSET`.
+
+----
+fill COLOUR SHAPE
+stroke COLOUR WIDTH SHAPE
+save | restore
+translate N N | rotate N | scale N N | matrix A B C D TX TY | opacity N
+
+SHAPE: rect X Y W H | oval X Y W H
+     | line COUNT (X Y)* | polygon COUNT (X Y)*
+     | path COUNT (M X Y | L X Y | Q CX CY X Y | C AX AY BX BY X Y | Z)*
+     | wave SOURCE X Y W H LOW HIGH
+     | ring SOURCE X Y RADIUS DEPTH LOW HIGH
+     | bars SOURCE X Y W H LOW HIGH GAP
+----
+
+The other attributes:
+
+* `space` is `points` or `fit W H`.
+* `pacing` is `on-demand` or `display`.
+* `trail` is `none` or `trail HALF-LIFE-MS ZOOM TURN SHIFT-X SHIFT-Y`, with a
+  positive half-life and zoom.
+* `reset` is any word; a new one clears the trail.
+* `background` is a colour.
+
+The host parses a scene once, when it arrives. A word outside the grammar,
+a number that is not finite or is beyond ±1,000,000, a count above the
+point bound, or a `restore` without a `save` is a fatal error naming the
+line. A frame may draw at most 65,536 points, sources' series included, and
+a series may hold at most 4,096 values.
+
+=== Frames
+
+A frame is logical. Drawing one resolves the parsed scene: it reads each
+bound number and each source's series once, at the frame's time, and keeps
+the result. With Core Graphics (xref:architecture.adoc#drawing-surfaces[Renderers]), `draw(_:)` draws the kept frame in the view's
+own context, at the backing scale, so an AppKit repaint (an expose, a resize
+redraw, a change of key window) draws the same frame again. A new frame is
+due when the scene or a look attribute changes, the size, backing scale or
+appearance changes, or an on-demand surface's source reports a change. On an
+on-demand surface it is drawn at the next repaint. A display-paced surface
+draws frames only at its ticks.
+
+The frame clock (`FrameClock`) ticks a display-paced surface while it is in
+a window and neither it nor an ancestor is hidden. `viewDidMoveToWindow`,
+`viewDidHide` and `viewDidUnhide` start and stop it. Each surface on the
+clock has its own `NSView.displayLink(target:selector:)` (macOS 14), added to
+the main run loop in its common modes. It follows the screen the view is on
+and calls on the main thread, between engine turns. A tick draws one frame
+at `ProcessInfo.systemUptime`, a monotonic time, and marks the view for
+display. The run loop delivers only the latest refresh, so a busy main
+thread skips frames rather than queueing them. The next frame's time covers
+the gap, and since a trail's fade and motion are rates, the picture keeps
+time. Nothing here calls the engine: a tick reads native sources, never Roc.
+Under `ROC_SCRIPT` the clock is controlled instead. It starts at 0, the
+`frame` step moves it and ticks every surface on it, and no display link
+runs, so a recorded case draws the same frames everywhere.
+
+=== Renderers
+
+A surface draws with one of two renderers, and both draw the same frame in
+the same order.
+
+* **Metal** (`host/SurfaceMetal.swift`) draws a display-paced surface while
+  it is on the frame clock, when the Mac has a Metal device
+  (`MTLCreateSystemDefaultDevice`).
+* **Core Graphics** draws everything else: an on-demand surface, any surface
+  on a Mac or virtual machine without a device, and every surface of a
+  scripted run unless the run asks for Metal. It is the reference renderer.
+
+`ROC_SURFACE_RENDERER` (`auto`, `metal` or `cg`) or the scripted
+`renderer:` step chooses the renderer. `auto`, the default outside a
+scripted run, is Metal where there is a device; `metal` falls back to Core
+Graphics without one.
+
+A Metal surface adds one `CAMetalLayer` over its view's layer. It is a
+plain layer rather than an `MTKView`, because the frame clock already paces
+it, and so it costs one QuartzCore class in the linker catalog. Its textures
+and the layer are released when the surface stops ticking: when it is
+removed or hidden, or when its pacing becomes `OnDemand`. The device, queue
+and pipeline states are shared while any surface renders with Metal, and
+released with the last one. The shaders are Metal source in that file,
+compiled when the first surface needs them (`makeLibrary(source:options:)`),
+so the host build has no Metal step.
+
+=== Trails and their storage
+
+Each frame of a surface with a trail is drawn into whichever of its two
+images the latest frame is not in:
+
+. Clear it to the background.
+. If there is a previous frame, draw it source-over (premultiplied) at
+  `0.5^(dt / half-life)` of its opacity, through a transform. The transform
+  is a translation by `shift * dt`, then a rotation by `turn * dt` and a
+  scale by `zoom^dt` about the surface's centre, where `dt` is the time since
+  that frame. Points the moved image does not cover keep the background, and
+  nothing outside the image is sampled.
+. Draw the scene.
+
+That image is shown, and it is the next frame's source. A repaint shows it
+again without fading it. History therefore costs two images however many
+frames it spans. It is emptied when the surface first appears, when its size
+or backing scale changes, when `trail` turns on or off, when `reset`
+changes, and when the surface changes renderer. Both images are released
+when the surface leaves its window (or, with Metal, stops ticking).
+
+*With Core Graphics* the images are bitmaps (`CGBitmapContext`, 8-bit sRGB,
+premultiplied), shown as the layer's `contents` in `updateLayer`. Each holds
+at most 500,000 pixels, so a larger surface keeps its trail below its
+backing scale and its picture is a little softer. A surface without a trail
+has no bitmaps; `draw(_:)` draws its frame at the backing scale.
+
+*With Metal* the images are two `bgra8Unorm` textures at the full backing
+resolution, with no pixel cap. A trail-less surface uses them too. Each
+frame renders 4x multisampled, with a stencil, and resolves into the
+texture; the texture is then copied into the layer's drawable (sRGB colour
+space) and presented. The previous frame is a textured quad whose corners
+go through the trail's transform; its sampler clamps to transparent. The
+scene is drawn on the GPU by stencil, then cover:
+
+* A fill's path is flattened on the CPU (curves to segments within a
+  quarter pixel) and fanned into triangles, which add their winding to the
+  stencil: front faces increment and back faces decrement.
+* A stroke becomes a quad per segment and a disk per point (the round joins
+  and caps), which set the stencil.
+* One quad over the figure's bounds then paints its colour where the
+  stencil is not zero, and clears the stencil for the next figure.
+
+This gives the nonzero rule for any path, and a stroke whose pieces overlap
+is painted once, so its opacity is right. Transforms and opacity are
+applied on the CPU as the vertices are made. Sources are still read once per
+frame, on the main thread, and a frame never calls the engine.
+
+The scripted `probe` reads the Metal texture back at the backing scale
+(`pixel`), and Core Graphics draws at 2 pixels a point. Away from the edges
+of shapes the two agree: `echo-metal`, the visualizer's Metal case, records
+the same output as `echo`, its Core Graphics case, so on a Mac without a
+device it falls back and still passes.
+
+The scripted `bench:N` step draws N trail frames offscreen. Each frame
+composites the previous one faded, zoomed and turned, then draws a
+512-point stroke and 24 bars. Measured on an Apple M2, in milliseconds a
+frame, with Core Graphics at full size (no pixel cap) and Metal (CPU
+tessellation, encoding and the GPU, waited for):
+
+[cols="1,1,1",options="header"]
+|===
+| Pixels | Core Graphics | Metal
+
+| 800 × 500 | 8.1 | 0.2
+| 1600 × 1000 | 32.0 | 0.3
+| 2880 × 1800 | 98 | 0.9
+|===
+
+Core Graphics spends most of its frame compositing the previous image,
+about 14 ms a megapixel on the CPU, which is why it caps its bitmaps.
+
+Deferred:
+
+* Metal for on-demand surfaces.
+* A Metal path for a scene of many separate figures, which now costs two
+  draws each.
+* Dashes and line-join choices.
+* GPU-side transforms of a series that changes every frame.
+* Suspending on window occlusion; a surface suspends only when it is
+  hidden or removed.
+
+[#surface-sources]
+=== Surface sources
+
+A scene names native data by a string. `host/SurfaceSource.swift`, which
+stands alone (it needs only Foundation and the host's `fatal`), is the
+whole contract:
+
+[source,swift]
+----
+enum SurfaceSample {
+    case series([Float])   // at most SurfaceSample.maxSeries (4096) values, oldest first
+    case scalar(Float)
+}
+
+protocol SurfaceSource: AnyObject {
+    var name: String { get }                          // e.g. "audio.waveform"
+    func latest(at frameTime: Double) -> SurfaceSample?
+}
+
+SurfaceSources.shared.register(source)              // replaces one of that name
+SurfaceSources.shared.unregister("audio.waveform")
+SurfaceSources.shared.changed("audio.waveform")     // redraw on-demand surfaces that read it
+----
+
+The registry, and every call of `latest(at:)`, is on the main thread only.
+A surface calls `latest` once for each mark that reads the source in each
+frame, so it must return at once. A producer on another thread (an audio
+tap's analysis worker, say) publishes into storage that `latest` reads
+under a short lock of its own, and never calls the registry or a view from
+its thread. `frameTime` is the frame's time: `ProcessInfo.systemUptime`
+seconds, which follow `mach_absolute_time`. Under a scripted run it is the
+controlled clock's seconds. A producer that keeps timestamped snapshots
+returns the one for that time. Returning nil draws nothing for the mark,
+and a number reads as its offset. A series where a number belongs, the
+reverse, or a series longer than 4,096 values is a fatal error naming the
+source.
+
+`SyntheticSource` registers `synthetic.wave` and `synthetic.level` in every
+app. With the display clock they move with time; under a scripted run they
+move only on `step`.
+
+=== Overlays
+
+A `ui-overlay` is an `Overlay`, an `NSView` holding its first element
+child's view (the background), pinned to all four edges, and its second's
+(the foreground) above it. The foreground stays inside `padding`, and is
+pinned or centred by `horizontal` and `vertical`. Its views are AppKit's
+own: text wraps to the width it is given, scroll views scroll, and both
+children are in the accessibility tree. The foreground is composited by
+Core Animation above the background's layer and never drawn into a
+surface's bitmaps.
 
 [#lists]
 == Lists
@@ -406,6 +643,11 @@ its own worker thread, which follows the same rules from the other side
 . *One result, one turn, through the UI's queue.* Results enter through
   `Host.send`, as AppKit events do, which queues while a batch is being
   applied: a completion never re-enters Roc mid-batch.
+. *Frames never enter Roc.* A drawing surface's display link calls on the
+  main thread, between turns, and reads native sources, not the engine
+  (xref:architecture.adoc#drawing-surfaces[Drawing surfaces]). A native
+  producer feeding a surface publishes from its own thread into storage
+  that its `SurfaceSource` reads on the main thread.
 . *Teardown cancels everything in flight* (`teardownEffects`, from
   `Host.stop` on `applicationWillTerminate`, which the scripted `quit` also
   reaches), and invalidates the session.

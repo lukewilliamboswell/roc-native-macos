@@ -172,7 +172,8 @@ extension Host {
             case "quit":
                 NSApp.terminate(nil)  // through teardown (effects, then the engine), as a person quitting would
             default:
-                fatal("script: unknown step \(step)")
+                // The drawing steps (Drawing.swift).
+                if !surfaceStep(verb, arg) { fatal("script: unknown step \(step)") }
             }
             DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: next)
         }
@@ -260,6 +261,11 @@ extension Host {
             say("\(pad)\(name) \(picture.name) [\(wide)x\(high), \(Int(picture.frame.width))pt wide, \(Int(picture.frame.height))pt high]\(look(n, ["scaling": "fit", "label": ""]))")
         case let bar as NSProgressIndicator:
             say("\(pad)\(name) " + (bar.isIndeterminate ? (n.attrs["value"] == "1" ? "busy" : "idle") : "\(Int(bar.doubleValue))/\(Int(bar.maxValue))"))
+        case let surface as DrawingSurface:
+            say("\(pad)\(name) \(surface.summary)")
+        case is Overlay:
+            say("\(pad)\(name)\(look(n, ["horizontal": "fill", "vertical": "bottom"]))")
+            for c in n.children where c.name != nil { dump(c, depth + 1) }
         case is Surface:
             say("\(pad)\(name)\(look(n, ["fill": "control-background", "border": "none"]))")
             for c in n.children where c.name != nil { dump(c, depth + 1) }

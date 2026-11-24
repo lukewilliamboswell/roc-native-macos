@@ -91,6 +91,8 @@ Handlers are fields too: `Ui.button("Save", { on_press: h })`.
 | `file_button` | `Signal(ctx, Str), FileButtonProps(ctx) -> Elem(ctx)` | `NSButton` opening an `NSOpenPanel`
 | `drop_zone` | `DropZoneProps(ctx), Elem(ctx) -> Elem(ctx)` | a dashed drop target around one child, accent while files are over it
 | `hover` | `HoverProps(ctx), Elem(ctx) -> Elem(ctx)` | none: its child's own view, which hears the pointer enter and leave
+| `surface` | `Signal(ctx, List(Mark)), SurfaceProps(ctx) -> Elem(ctx)` | one view drawing a scene of shapes with Core Graphics; see xref:ui.adoc#drawing[Drawing]
+| `overlay` | `OverlayProps, Elem(ctx), Elem(ctx) -> Elem(ctx)` | a background (a `surface`, say) with a foreground of native views over it
 | `divider` | `() -> Elem(ctx)` | `NSBox` separator
 | `spacer` | `() -> Elem(ctx)` | empty space that grows; spacers in one stack share it equally
 |===
@@ -132,7 +134,148 @@ table gives other defaults. Sizes are points.
 | `FileButtonProps(ctx)` | `on_files : Engine.FilesHandler(ctx)` (required), `bezel`, `icon`, `title_display`, `size`, `width`, `squeeze`
 | `DropZoneProps(ctx)` | `on_drop : Engine.FilesHandler(ctx)` (required), `padding : Insets ?? All(16)`, `radius : U32 ?? 10`, `width : Length ?? Fill`, `height`
 | `HoverProps(ctx)` | `on_hover : HandlerOf(ctx, Bool)` (required); `hover` has no frame of its own, its child's is used
+| `SurfaceProps(ctx)` | `label : Str` (required; names it to VoiceOver), `space : Signal(ctx, Space) ?? Engine.const(Points)`, `background : Signal(ctx, Color) ?? Engine.const(Clear)`, `pacing : Signal(ctx, Pacing) ?? Engine.const(OnDemand)`, `trail : Signal(ctx, Trail) ?? Engine.const(NoTrail)`, `reset : Signal(ctx, U64) ?? Engine.const(0)` (a new value clears the trail), `width : Length ?? Fill`, `height : Length ?? Fixed(160)`, `squeeze`
+| `OverlayProps` | `horizontal : HorizontalAlign ?? Fill`, `vertical : [Top, Center, Bottom, Fill] ?? Bottom`, `padding : Insets ?? All(16)` (between the background's edges and the foreground), `width : Length ?? Fill`, `height`, `squeeze`
 |===
+
+[#drawing]
+== Drawing
+
+`Ui.surface` draws a scene: an ordered list of marks, in one native view.
+The scene is a signal, so a plot that follows state is a `map`:
+
+[source,roc]
+----
+Ui.surface(
+    points.map(|ps| [
+        Fill(Rect({ x: 0, y: 0, width: 320, height: 160 }), Adaptive({ light: 0xf4f4f4, dark: 0x202020 })),
+        Stroke(Polyline(ps), { color: Green, width: 2 }),
+    ]),
+    { label: "Temperature", space: Engine.const(Fit({ width: 320, height: 160 })) },
+)
+----
+
+A new scene redraws that one view. There is no view per shape and no layout
+pass, so a scene can change at every turn.
+
+*Marks*, drawn in order:
+
+* `Fill(shape, color)` and `Stroke(shape, { color, width })` draw a shape.
+  Strokes have round joins and caps.
+* `Translate(x, y)`, `Rotate(radians)`, `Scale(x, y)` and
+  `Matrix({ a, b, c, d, tx, ty })` move everything drawn after them.
+  `Opacity(amount)` multiplies its opacity.
+* `Save` keeps the current transform and opacity, and the matching `Restore`
+  returns to them.
+
+*Shapes:* `Rect` and `Oval` of an `Area` (`{ x, y, width, height }`),
+`Polyline` and `Polygon` of `Point`s, and `Path` of segments (`MoveTo`,
+`LineTo`, `QuadTo`, `CurveTo`, `Close`).
+
+*Coordinates.* With the default `space: Points`, one unit is one point,
+from the surface's top-left corner, with y down and positive angles
+clockwise. Points are AppKit's units: the surface draws at the screen's
+backing scale (2 pixels a point on a Retina display), so lines stay sharp.
+With `Fit({ width, height })`, a `width` by `height` scene is scaled to the
+largest size that fits the surface without distortion, and centred. It
+follows the surface as the window resizes, and line widths scale with it.
+Whatever falls outside the surface is clipped.
+
+*Bounds.* A coordinate, size or width must be a finite number within
+±1,000,000 units. A frame may draw at most 65,536 points, counting every
+series. A scene outside these bounds, or a `Restore` without a `Save`,
+stops the app with an error naming the line of the scene.
+
+[#surface-sources]
+=== Native sources
+
+A number in a scene is a constant, `Value(n)`, or
+`Source({ source, scale, offset })`: the latest scalar of a native source,
+read as `offset + scale * value`. Three shapes draw a source's latest series
+of numbers (at most 4,096). Each value `v` counts as
+`t = (v - low) / (high - low)`:
+
+* `Wave({ source, area, low, high })` is a polyline across the area, with
+  `t` 0 on its bottom edge and 1 on its top.
+* `Ring({ source, x, y, radius, depth, low, high })` is a closed polyline
+  around a centre, starting at the top and going clockwise, each point
+  `radius + depth * t` out.
+* `Bars({ source, area, low, high, gap })` is one bar per value, `gap`
+  apart, each rising from the bottom edge to `t` of the height (`t` is held
+  between 0 and 1).
+
+A source is named by a stable string, such as `"audio.waveform"`. It is
+native code that registers that name (xref:architecture.adoc#surface-sources[Surface sources]).
+A source that is not registered, or has nothing to show yet, draws nothing,
+and its number reads as `offset`. Every app has two test sources:
+`synthetic.wave`, nine values of one sine cycle, and `synthetic.level`, a
+number from 0 up to 1. They move on with time, and a scripted run steps
+them (xref:apps.adoc#steps[Steps]).
+
+*Pacing.* `pacing: OnDemand` (the default) draws a new frame when the
+scene, its look or its size changes. `Display` also draws one at every
+refresh of the display, reading its sources each time, with no turn of the
+engine. It does this only while the surface is in a window and not hidden,
+so removing it stops the work. A refresh the Mac was too busy for is skipped,
+not queued. Each frame has a time on a monotonic clock, and the next frame
+covers the time since. On a display-paced surface, a scene change shows
+from the next refresh.
+
+=== Trails
+
+`trail: Trail({ half_life_ms, zoom, turn, shift })` draws each new frame over
+the previous one. The previous frame first fades, so that after
+`half_life_ms` it has half its opacity. It also grows by `zoom` each second
+(1 for none), turns by `turn` radians a second (both about the surface's
+centre), and moves `shift` points a second. Then the scene is drawn over it.
+These are rates, so a trail lasts as long at 60 Hz as at 120 Hz:
+
+[source,roc]
+----
+# Rings that zoom away and fade by half every 300 ms.
+trail: Engine.const(Trail({ half_life_ms: 300, zoom: 1.4, turn: 0, shift: { x: 0, y: 0 } }))
+----
+
+Each frame is drawn in this order:
+
+. The background colour.
+. The previous frame, moved and faded. Where the moved frame no longer
+  covers the surface, the background shows.
+. The scene.
+
+A repaint of the same frame (a window drawn again) never fades it again.
+
+The trail starts empty when the surface first appears, and empties again
+when its size or backing scale changes, when `trail` is turned on or off,
+and whenever `reset` takes a new value. Bump a counter in `reset` to clear it
+on a seek or a new track. The trail is kept in two bitmaps however long it
+lasts, and they are released when the surface is removed. A display-paced
+surface draws with Metal when the Mac has a GPU, at the screen's full
+resolution. Otherwise, and for an on-demand surface, it draws with Core
+Graphics, which keeps a large surface's trail at below the screen's backing
+scale, so it looks a little softer. See
+xref:architecture.adoc#drawing-surfaces[Drawing surfaces].
+
+=== Overlays
+
+`Ui.overlay(props, background, foreground)` puts native views over a
+surface: captions, lyrics, a legend. The background fills the overlay and
+sizes it. The foreground sits inside `padding`, placed by `horizontal` and
+`vertical`: `Fill` stretches it to that side, and the others hug it. The
+foreground is ordinary AppKit views, so its text wraps, it can scroll (put a
+`Ui.scroll` in it), and VoiceOver reads it. It is never part of the
+surface's picture, so it never enters a trail:
+
+[source,roc]
+----
+Ui.overlay(
+    { vertical: Bottom, padding: All(12) },
+    visualizer,
+    Engine.when(show_lyrics, || Ui.box({ fill: Adaptive({ light: 0x000000, dark: 0x000000 }) }, Ui.text(line, { overflow: Wrap, align: Center, width: Fill })), || Engine.text("")),
+)
+----
+
+The background must always be an element. The foreground may come and go.
 
 [#ui-looks]
 == Looks

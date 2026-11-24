@@ -1,0 +1,1 @@
+renderer:metal;choose:Echo;size:600,300;frame:100;probe:30,30;probe:45,30;frame:100;probe:25,30;probe:30,30;probe:45,30;probe:55,30;repaint;probe:30,30;probe:45,30;click:Clear trail;frame:0;probe:30,30;probe:45,30;toggle:Caption;frame:100;dump;probe:120,150;probe:40,30;quit

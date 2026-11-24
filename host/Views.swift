@@ -274,6 +274,11 @@ extension Host {
             view = spacer
         case "ui-file-button", "ui-drop-zone":
             view = makeFileView(name)  // Files.swift
+        case "ui-surface":
+            view = DrawingSurface()  // Drawing.swift
+            watchSurfaceSources()
+        case "ui-overlay":
+            view = Overlay()  // Drawing.swift
         default:
             fatal("<\(name)> is not a native element this host knows")
         }
@@ -298,6 +303,8 @@ extension Host {
     static func paintOnly(_ name: String) -> Bool {
         switch name {
         case "fill", "border", "radius", "color": return true
+        // A drawing surface's scene and look redraw it alone (Drawing.swift).
+        case "scene", "background", "pacing", "trail", "reset", "space", "label": return true
         default: return false
         }
     }
@@ -308,6 +315,8 @@ extension Host {
     /// attributes use the closed grammar in docs/architecture.adoc; a word
     /// outside it is a fatal error.
     func applyAttr(_ n: Node, _ name: String, _ value: String?) {
+        // Drawing surfaces and overlays (Drawing.swift).
+        if applyDrawingAttr(n, name, value) { return }
         switch (n.view, name) {
         // Frame: any element
         case (let view?, "width"):
@@ -926,6 +935,9 @@ extension Host {
             // A framed box that gains or loses its child changes how its
             // stack places it (Frames.swift).
             if framedViews.contains(ObjectIdentifier(surface)), let parent = owner.parent { markChildren(parent) }
+        case let overlay as Overlay:
+            let kids = owner.children.filter { $0.name != nil }
+            overlay.hold(kids.first.flatMap(shownView), kids.dropFirst().first.flatMap(shownView))
         case let button as NSButton where owner.name == "ui-button" || owner.name == "ui-file-button":
             button.title = owner.textContent
             setTitleDisplay(button, owner.attrs["title-display"] ?? "visible")
