@@ -12,8 +12,8 @@ xref:ui.adoc#builders[The Ui reference] lists every builder.
 You need Roc as `roc` on your PATH: a current
 https://github.com/roc-lang/nightlies/releases[nightly] or 0.1.0 RC1, on
 macOS, Linux or Windows. The platform carries the prebuilt Swift host and its
-linker inputs. The app is universal: it runs on Apple silicon and Intel Macs
-with macOS 15 or later.
+linker inputs. The app is universal by default: it runs on Apple silicon and
+Intel Macs with macOS 15 or later.
 
 Download `macos.roc`, the tool for creating, building, running and testing an
 app, and create one:
@@ -93,12 +93,12 @@ Run `macos.roc` from the app's directory, the one holding `src/main.roc`
 | Command | What it does
 
 | `roc macos.roc init [DIR]` | create an app in `DIR`, or in this directory; it never overwrites a file
-| `roc macos.roc build` | build `<name>.app`, on any system
-| `roc macos.roc run` | build the app and start it, on a Mac
+| `roc macos.roc build` | build `<name>.app`, universal, on any system; `--target arm64mac` or `--target x64mac` builds it for that Mac alone
+| `roc macos.roc run` | build the app and start it, on a Mac; it takes `--target` as `build` does
 | `roc macos.roc dev` | start the app with `roc src/main.roc`, which reloads it as you save, on a Mac; no `.app`, so `macos.json` and the icon do not apply (xref:apps.adoc#hot-reloading[Hot reloading])
 | `roc macos.roc test` | run the app's `expect` tests (`roc test src/main.roc`, on any system), then build the app for this Mac and run its recorded cases, on a Mac; `--update` records what they print now
 | `roc macos.roc fuzz` | build the app's roc-fuzz targets, `fuzz/main.roc`, and run each for 10 seconds, on an Apple silicon Mac or Linux x64 (roc-fuzz has no Intel Mac target); `--check` runs only their declared examples, `--time SECONDS` longer, and target names only those (xref:apps.adoc#fuzz-the-logic[Fuzz the logic])
-| `roc macos.roc package` | build the app, sign it and zip it as `dist/<name>-<version>.zip`, on any system; `--sign` and `--notarize` sign it with a Developer ID (see xref:apps.adoc#ship-your-app[Ship your app])
+| `roc macos.roc package` | build the app, sign it and zip it as `dist/<name>-<version>.zip`, on any system; `--sign` and `--notarize` sign it with a Developer ID, and `--target` packages one Mac's build as `dist/<name>-<version>-<target>.zip` (see xref:apps.adoc#ship-your-app[Ship your app])
 | `roc macos.roc ci package`, `ci release` | what the release workflow runs: package the app as the secrets allow, and attach the zip to the pushed tag's GitHub release (see xref:apps.adoc#automate[Let GitHub release it])
 |===
 
@@ -111,7 +111,12 @@ into one universal program, `.macos/<name>`, with no Apple tool, and puts it
 in a minimal `.app`, named for the app's `name` (by default `<name>.app`),
 with the app's xref:apps.adoc#assets[assets and icon] and its
 xref:apps.adoc#metadata[metadata]. Each Mac runs its own half natively.
-`test` builds the program for the Mac it runs on alone, and runs that.
+`--target arm64mac` (Apple silicon) or `--target x64mac` (Intel), which
+`build`, `run`, `package` and `ci package` take, builds only that program
+instead: a thin `.app`, about half the size, for that kind of Mac alone. An
+Apple silicon Mac runs an `x64mac` build under Rosetta; an Intel Mac cannot
+run an `arm64mac` one. `test` and `dev` build the program for the Mac they
+run on alone.
 
 [#metadata]
 === The app's metadata
@@ -701,8 +706,8 @@ roc build src/main.roc --target=arm64mac   # Apple silicon
 roc build src/main.roc --target=x64mac     # Intel
 ----
 
-`roc build` makes one program for one Mac; `roc macos.roc build` makes both
-and joins them into a universal one. On an Intel Mac, `roc src/main.roc` and a
+`roc build` makes one program for one Mac, as `roc macos.roc build --target`
+does; `roc macos.roc build` makes both and joins them into a universal one. On an Intel Mac, `roc src/main.roc` and a
 bare `roc build` need no `--target`. A machine whose CPU does not report
 x86-64-v3 (an Intel virtual machine, say, or Rosetta) gets Roc's baseline
 target, `x64v1mac`, which the platform supports too.

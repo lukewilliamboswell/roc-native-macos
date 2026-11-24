@@ -30,7 +30,11 @@ import Package
 MacOS :: [].{
 
 	## What the user asked for.
-	Command : [Help, CommandHelp(Str), Init(Str), Build(Meta.Fields), Run(Meta.Fields), Dev, Test({ update : Bool }), Fuzz(Fuzz.Options), Package(Package.Options), CiPackage(Meta.Fields), CiRelease]
+	Command : [Help, CommandHelp(Str), Init(Str), Build(Built), Run(Built), Dev, Test({ update : Bool }), Fuzz(Fuzz.Options), Package(Package.Options), CiPackage(Built), CiRelease]
+
+	## What `build`, `run` and `ci package` were asked for: the metadata
+	## flags, and what to build (universal, or `--target`'s one Mac).
+	Built : { fields : Meta.Fields, how : App.Build }
 
 	## The commands, in the order `help` lists them.
 	commands : List(Str)
@@ -52,7 +56,7 @@ MacOS :: [].{
 			Ok(Test({ update })) => Cases.run!(update)
 			Ok(Fuzz(chosen)) => Fuzz.run!(chosen)
 			Ok(Package(chosen)) => Package.run!(chosen, Package.environment!()).map_ok(|_| {})
-			Ok(CiPackage(fields)) => Ci.package!(fields)
+			Ok(CiPackage(chosen)) => Ci.package!(chosen)
 			Ok(CiRelease) => Ci.release!()
 			Err(problem) => Err(problem)
 		}
@@ -67,7 +71,7 @@ MacOS :: [].{
 	}
 
 	## The command the arguments name.
-	parse : List(Str) -> Try(Command, [UnknownCommand(Str), UnexpectedArguments({ command : Str, extra : List(Str) })])
+	parse : List(Str) -> Try(Command, [UnknownCommand(Str), UnexpectedArguments({ command : Str, extra : List(Str) }), UnknownTarget(Str)])
 	parse = |args|
 		match args {
 			[] => Ok(Help)
@@ -75,10 +79,10 @@ MacOS :: [].{
 			[command, "--help"] | [command, "-h"] if MacOS.commands.contains(command) => Ok(CommandHelp(command))
 			["init"] => Ok(Init("."))
 			["init", dir] if !dir.starts_with("-") => Ok(Init(dir))
-			["build", .. as rest] => MacOS.options("build", rest, nothing).map_ok(|chosen| Build(chosen.fields))
-			["run", .. as rest] => MacOS.options("run", rest, nothing).map_ok(|chosen| Run(chosen.fields))
+			["build", .. as rest] => MacOS.options("build", rest, nothing).map_ok(|chosen| Build({ fields: chosen.fields, how: chosen.how }))
+			["run", .. as rest] => MacOS.options("run", rest, nothing).map_ok(|chosen| Run({ fields: chosen.fields, how: chosen.how }))
 			["package", .. as rest] => MacOS.options("package", rest, nothing).map_ok(|chosen| Package(chosen))
-			["ci", "package", .. as rest] => MacOS.options("ci package", rest, nothing).map_ok(|chosen| CiPackage(chosen.fields))
+			["ci", "package", .. as rest] => MacOS.options("ci package", rest, nothing).map_ok(|chosen| CiPackage({ fields: chosen.fields, how: chosen.how }))
 			["ci", "release"] => Ok(CiRelease)
 			["dev"] => Ok(Dev)
 			["test"] => Ok(Test({ update: Bool.False }))
@@ -88,15 +92,16 @@ MacOS :: [].{
 			[command, ..] => Err(UnknownCommand(command))
 		}
 
-	## The metadata flags, which `build`, `run` and `package` take, and
-	## `package`'s `--sign` and `--notarize`.
-	options : Str, List(Str), Package.Options -> Try(Package.Options, [UnexpectedArguments({ command : Str, extra : List(Str) })])
+	## The metadata flags and `--target`, which `build`, `run` and `package`
+	## take, and `package`'s `--sign` and `--notarize`.
+	options : Str, List(Str), Package.Options -> Try(Package.Options, [UnexpectedArguments({ command : Str, extra : List(Str) }), UnknownTarget(Str)])
 	options = |command, args, found| {
 		packaging = command == "package"
 		match args {
 			[] => Ok(found)
 			["--sign", .. as rest] if packaging => MacOS.options(command, rest, { ..found, sign: Bool.True })
 			["--notarize", .. as rest] if packaging => MacOS.options(command, rest, { ..found, notarize: Bool.True })
+			["--target", value, .. as rest] => MacOS.options(command, rest, { ..found, how: App.target_of(value)? })
 			[flag, value, .. as rest] if !value.starts_with("--") =>
 				match Meta.flag_field(flag) {
 					Ok(field) =>
@@ -115,7 +120,7 @@ MacOS :: [].{
 		\\Run it from the app's directory:
 		\\
 		\\  roc macos.roc init [DIR]       Create an app in DIR, or in this directory.
-		\\  roc macos.roc build            Build the app, <name>.app, on any system.
+		\\  roc macos.roc build            Build the app, a universal <name>.app, on any system.
 		\\  roc macos.roc run              Build it and start it, its output in this terminal.
 		\\  roc macos.roc dev              Start it with roc src/main.roc, which reloads it as you save.
 		\\  roc macos.roc test [--update]  Run its expect tests, then its recorded cases, tests/*.script.
@@ -128,7 +133,8 @@ MacOS :: [].{
 		\\made by 0.0.1). The app's metadata is in macos.json there: its name, bundle
 		\\identifier (by default com.example.<name>), version, build number, copyright,
 		\\category and oldest macOS. build, run and package take each as a flag too,
-		\\such as --version 1.2.0, which overrides the file. Images and other files go
+		\\such as --version 1.2.0, which overrides the file, and --target arm64mac or
+		\\--target x64mac, which builds for that Mac alone. Images and other files go
 		\\in assets/, and assets/icon.png is the app's icon. `roc macos.roc COMMAND
 		\\--help` describes a command.
 		\\
@@ -158,14 +164,16 @@ MacOS :: [].{
 			"build" =>
 				\\Build the app as <name>.app, where <name> is the app's directory.
 				\\
-				\\Usage: roc macos.roc build [METADATA FLAGS]
+				\\Usage: roc macos.roc build [--target arm64mac|x64mac] [METADATA FLAGS]
 				\\
 				\\Run from the app's directory, containing src/main.roc (or main.roc). It works
 				\\on macOS, Linux and Windows alike: the platform carries everything the link
 				\\needs. The app is built for Apple silicon and for Intel Macs (roc build
 				\\--target=arm64mac, then --target=x64mac), and the two programs are joined
-				\\into one universal program, which each Mac runs natively. The build goes to
-				\\.macos/, and then replaces <name>.app.
+				\\into one universal program, which each Mac runs natively. --target arm64mac
+				\\(Apple silicon) or --target x64mac (Intel) builds only that one, a smaller
+				\\app for that Mac alone. The build goes to .macos/, and then replaces
+				\\<name>.app.
 				\\The app directory's assets/, if there is one, is copied into the
 				\\app, where Ui.asset_image finds its images. assets/icon.png (square, best
 				\\1024 by 1024 pixels) or assets/icon.icns becomes the app's icon.
@@ -176,12 +184,12 @@ MacOS :: [].{
 			"run" =>
 				\\Build the app and start it, with its output in this terminal.
 				\\
-				\\Usage: roc macos.roc run [METADATA FLAGS]
+				\\Usage: roc macos.roc run [--target arm64mac|x64mac] [METADATA FLAGS]
 				\\
 				\\Run from the app's directory, on a Mac. It builds <name>.app
 				\\as build does, then runs the program inside it, so dbg
 				\\output and crash reports appear here. Quit the app to return. It takes the
-				\\metadata flags build takes.
+				\\flags build takes; an Apple silicon Mac runs an x64mac build under Rosetta.
 			"dev" =>
 				\\Start the app with hot reloading, with its output in this terminal.
 				\\
@@ -203,11 +211,13 @@ MacOS :: [].{
 			"package" =>
 				\\Build the app, sign it, and zip it as dist/<name>-<version>.zip, to share.
 				\\
-				\\Usage: roc macos.roc package [--sign] [--notarize] [METADATA FLAGS]
+				\\Usage: roc macos.roc package [--sign] [--notarize] [--target arm64mac|x64mac]
+				\\                            [METADATA FLAGS]
 				\\
 				\\Run from the app's directory, on any system. It builds <name>.app as build
-				\\does, seals it with an ad hoc signature (with codesign on a Mac, or rcodesign
-				\\anywhere, when either is on PATH), and zips it with the program's execute
+				\\does (universal, or with --target for one Mac), seals it with an ad hoc
+				\\signature (with codesign on a Mac, or rcodesign anywhere, when either is on
+				\\PATH), and zips it with the program's execute
 				\\bit set. Whoever downloads an ad hoc zip approves the app once, in System
 				\\Settings > Privacy & Security, before it opens.
 				\\
@@ -222,7 +232,8 @@ MacOS :: [].{
 				\\or its contents). MACOS_SIGN_TOOL=codesign or rcodesign picks the tool.
 				\\SOURCE_DATE_EPOCH, if set, is the time the zip's entries carry.
 				\\
-				\\The zip is named for the app's name and version. A version may have a
+				\\The zip is named for the app's name and version, and with --target for its
+				\\target too, as dist/<name>-<version>-x64mac.zip. A version may have a
 				\\pre-release suffix, as 1.0.0-beta.1 does: the zip's name keeps it, and the
 				\\app's Info.plist has 1.0.0.
 				\\
@@ -230,7 +241,7 @@ MacOS :: [].{
 			"ci" =>
 				\\Package the app in a CI run, and attach it to a GitHub release.
 				\\
-				\\Usage: roc macos.roc ci package [METADATA FLAGS]
+				\\Usage: roc macos.roc ci package [--target arm64mac|x64mac] [METADATA FLAGS]
 				\\       roc macos.roc ci release
 				\\
 				\\The workflow init writes, .github/workflows/release.yml, runs these, so that
@@ -292,9 +303,9 @@ MacOS :: [].{
 		match command {
 			"init" => "Use it as `roc macos.roc init [DIR]`."
 			"dev" => "Use it as `roc macos.roc dev`, with no arguments; `roc macos.roc dev --help` describes it."
-			"build" | "run" => "Use it as `roc macos.roc ${command} [METADATA FLAGS]`; `roc macos.roc ${command} --help` lists the flags."
-			"package" => "Use it as `roc macos.roc package [--sign] [--notarize] [METADATA FLAGS]`; `roc macos.roc package --help` lists the flags."
-			"ci" | "ci package" => "Use it as `roc macos.roc ci package [METADATA FLAGS]` or `roc macos.roc ci release`; ci decides how to sign from the secrets that are set. `roc macos.roc ci --help` describes them."
+			"build" | "run" => "Use it as `roc macos.roc ${command} [--target arm64mac|x64mac] [METADATA FLAGS]`; `roc macos.roc ${command} --help` lists the flags."
+			"package" => "Use it as `roc macos.roc package [--sign] [--notarize] [--target arm64mac|x64mac] [METADATA FLAGS]`; `roc macos.roc package --help` lists the flags."
+			"ci" | "ci package" => "Use it as `roc macos.roc ci package [--target arm64mac|x64mac] [METADATA FLAGS]` or `roc macos.roc ci release`; ci decides how to sign from the secrets that are set. `roc macos.roc ci --help` describes them."
 			"test" => "Use it as `roc macos.roc test [--update]`."
 			"fuzz" => "Use it as `roc macos.roc fuzz [--check] [--time SECONDS] [TARGET...]`, where SECONDS is a whole number above 0; `roc macos.roc fuzz --help` describes it."
 			_ => "`roc macos.roc help` describes it."
@@ -373,6 +384,8 @@ MacOS :: [].{
 					{ code: 1, text: "The recorded cases run the app, which runs only on a Mac, and this is ${system}, so test cannot run them here. `roc macos.roc build` builds the app on any system." }
 				}
 			DevNotAMac(system) => { code: 1, text: "dev starts the app, which runs only on a Mac, and this is ${system}, so it cannot start it here. `roc macos.roc build` builds the app on any system." }
+			UnknownTarget(given) => { code: 2, text: "--target is arm64mac (Apple silicon Macs) or x64mac (Intel Macs), not \"${given}\": leave it out to build a universal app, which runs on both." }
+			NotThisMac({ bundle, mac, built }) => { code: 1, text: "Built ${bundle} for ${built}, which this Mac, one of the ${mac}, cannot run: build it with --target x64mac, or without --target for a universal app." }
 			NotUniversal(_) => { code: 1, text: "roc build did not write one Mac program for Apple silicon and one for Intel in .macos/, so they cannot be joined into the app's universal program: build again, and report it if it recurs." }
 			DevFailed({ how, code, entry }) => { code, text: "roc ${entry} ${how}: its output is above." }
 			NoCases => { code: 1, text: "There are no recorded cases to run: tests/ holds no .script files. `roc macos.roc init` writes tests/add.script as an example, and `roc macos.roc test --help` describes them." }
@@ -392,7 +405,7 @@ MacOS :: [].{
 
 ## No flags given.
 nothing : Package.Options
-nothing = { fields: Meta.none, sign: Bool.False, notarize: Bool.False }
+nothing = { fields: Meta.none, sign: Bool.False, notarize: Bool.False, how: Universal }
 
 ## What `build --help` and `package --help` say about the metadata.
 metadata_help : Str
@@ -414,7 +427,7 @@ metadata_help =
 ## Each command line names its command, with the defaults filled in.
 expect {
 	actual = [[], ["help"], ["init"], ["init", "my-app"], ["build"], ["run", "--id", "org.me.app", "--name", "My App"], ["dev"], ["test"], ["test", "--update"]].map(MacOS.parse)
-	expected = [Ok(Help), Ok(Help), Ok(Init(".")), Ok(Init("my-app")), Ok(Build(Meta.none)), Ok(Run({ ..Meta.none, id: "org.me.app", name: "My App" })), Ok(Dev), Ok(Test({ update: Bool.False })), Ok(Test({ update: Bool.True }))]
+	expected = [Ok(Help), Ok(Help), Ok(Init(".")), Ok(Init("my-app")), Ok(Build({ fields: Meta.none, how: Universal })), Ok(Run({ fields: { ..Meta.none, id: "org.me.app", name: "My App" }, how: Universal })), Ok(Dev), Ok(Test({ update: Bool.False })), Ok(Test({ update: Bool.True }))]
 	actual == expected
 }
 
@@ -427,6 +440,32 @@ expect {
 		Ok(Package({ ..nothing, fields: { ..Meta.none, minimum_macos: "13.0", build: "7" }, notarize: Bool.True })),
 	]
 	actual == expected
+}
+
+## --target builds one Mac's thin program, for build, run, package and ci
+## package alike; a target that is not a Mac's is refused, and test and dev
+## take none.
+expect {
+	actual = [["build", "--target", "x64mac"], ["run", "--target", "arm64mac", "--version", "1.2.0"], ["package", "--sign", "--target", "x64mac"], ["ci", "package", "--target", "arm64mac"], ["build", "--target", "x64v1mac"], ["build", "--target"], ["test", "--target", "x64mac"]].map(MacOS.parse)
+	expected = [
+		Ok(Build({ fields: Meta.none, how: Native("x64mac") })),
+		Ok(Run({ fields: { ..Meta.none, version: "1.2.0" }, how: Native("arm64mac") })),
+		Ok(Package({ ..nothing, sign: Bool.True, how: Native("x64mac") })),
+		Ok(CiPackage({ fields: Meta.none, how: Native("arm64mac") })),
+		Err(UnknownTarget("x64v1mac")),
+		Err(UnexpectedArguments({ command: "build", extra: ["--target"] })),
+		Err(UnexpectedArguments({ command: "test", extra: ["--target", "x64mac"] })),
+	]
+	actual == expected
+}
+
+## An unknown target, and a build this Mac cannot run, each say what to do.
+expect {
+	explained = [UnknownTarget("x86"), NotThisMac({ bundle: "counter.app", mac: "Intel Macs (x64mac)", built: "Apple silicon Macs (arm64mac)" })].map(MacOS.explain)
+	explained == [
+		{ code: 2, text: "--target is arm64mac (Apple silicon Macs) or x64mac (Intel Macs), not \"x86\": leave it out to build a universal app, which runs on both." },
+		{ code: 1, text: "Built counter.app for Apple silicon Macs (arm64mac), which this Mac, one of the Intel Macs (x64mac), cannot run: build it with --target x64mac, or without --target for a universal app." },
+	]
 }
 
 ## A misused command line is refused with what was wrong.
@@ -505,8 +544,8 @@ expect {
 expect {
 	actual = [["ci", "package"], ["ci", "package", "--version", "1.0.0-beta.1"], ["ci", "release"], ["ci", "package", "--sign"], ["ci", "release", "--draft"], ["ci"]].map(MacOS.parse)
 	expected = [
-		Ok(CiPackage(Meta.none)),
-		Ok(CiPackage({ ..Meta.none, version: "1.0.0-beta.1" })),
+		Ok(CiPackage({ fields: Meta.none, how: Universal })),
+		Ok(CiPackage({ fields: { ..Meta.none, version: "1.0.0-beta.1" }, how: Universal })),
 		Ok(CiRelease),
 		Err(UnexpectedArguments({ command: "ci package", extra: ["--sign"] })),
 		Err(UnexpectedArguments({ command: "ci", extra: ["release", "--draft"] })),

@@ -4,6 +4,7 @@ import cli.OsStr
 import cli.Path
 import cli.Stdout
 import cli.System
+import App
 import Meta
 import Package
 import Sign
@@ -143,8 +144,8 @@ Ci := [].{
 	}
 
 	## `ci package`: package the app for a CI run.
-	package! : Meta.Fields => Try({}, _)
-	package! = |fields| {
+	package! : { fields : Meta.Fields, how : App.Build } => Try({}, _)
+	package! = |{ fields, how }| {
 		actions = env!("GITHUB_ACTIONS") == "true"
 		chosen = Ci.version({ flag: fields.version, input: env!("RELEASE_VERSION"), ref_type: env!("GITHUB_REF_TYPE"), ref_name: env!("GITHUB_REF_NAME") })?
 		given = Package.environment!()
@@ -154,7 +155,7 @@ Ci := [].{
 		for text in notices {
 			Stdout.line!(Ci.notice(actions, text))?
 		}
-		outcome = prepare_and_package!({ fields: { ..fields, version: chosen }, sign, notarize }, given, p12_base64, actions)
+		outcome = prepare_and_package!({ fields: { ..fields, version: chosen }, sign, notarize, how }, given, p12_base64, actions)
 		Package.forget_secrets!()
 		outcome.map_ok(|_| {})
 	}

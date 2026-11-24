@@ -12,7 +12,8 @@ import Universal
 ##
 ## `roc build --target=arm64mac` and `--target=x64mac` write the program for
 ## Apple silicon and for Intel Macs, and the tool joins the two into one
-## universal program, `.macos/<name>` (`Universal`): the platform carries the
+## universal program, `.macos/<name>` (`Universal`), or with `--target`
+## builds only the one, a thin program: the platform carries the
 ## Swift host for each and the linker's inputs, and Roc's linker signs each
 ## program (ad hoc), so this works the same on macOS, Linux and Windows. The
 ## tool then writes `<name>.app` around it: the program in
@@ -54,10 +55,36 @@ App := [].{
 	mac_targets : List(Str)
 	mac_targets = ["arm64mac", "x64mac"]
 
+	## What `build`, `run` and `package` build: a universal program for every
+	## Mac (the default), or with `--target` a thin one for that Mac alone.
+	Build : [Native(Str), Universal]
+
+	## A `--target` value, checked: one of `mac_targets`.
+	target_of : Str -> Try(Build, [UnknownTarget(Str)])
+	target_of = |given| if (App.mac_targets.contains(given)) Ok(Native(given)) else Err(UnknownTarget(given))
+
+	## The Macs a build is for, in a sentence.
+	built_for : Build -> Str
+	built_for = |how|
+		match how {
+			Native(target) => App.target_name(target)
+			Universal => "Apple silicon and Intel Macs"
+		}
+
+	## Whether a Mac whose own target is `own` runs a build: Apple silicon
+	## runs every build (an Intel one under Rosetta), and an Intel Mac all but
+	## an Apple silicon one.
+	runs_on : Build, Str -> Bool
+	runs_on = |how, own|
+		match how {
+			Native("arm64mac") => own == "arm64mac"
+			_ => Bool.True
+		}
+
 	## Build the program, `.macos/<name>`, from the app's root module: for
 	## this Mac's own target (`Native`), which `test` runs, or for every Mac
 	## (`Universal`), which `build` and `run` put in `<name>.app`.
-	compile! : [Native(Str), Universal] => Try({ name : Str, program : Str }, _)
+	compile! : Build => Try({ name : Str, program : Str }, _)
 	compile! = |how| {
 		entry = App.entry!()?
 		if !Cmd.check_available!("roc") {
@@ -165,14 +192,15 @@ App := [].{
 		Ok(fields)
 	}
 
-	## Build `<name>.app` from the app, with the metadata `macos.json`
-	## gives and `flags` override, and say what it is.
-	build! : Meta.Fields => Try({ bundle : Str, name : Str, meta : Meta.Resolved }, _)
-	build! = |flags| {
+	## Build `<name>.app` from the app, universal or (`--target`) for one
+	## Mac, with the metadata `macos.json` gives and `flags` override, and
+	## say what it is.
+	build! : { fields : Meta.Fields, how : Build } => Try({ bundle : Str, name : Str, meta : Meta.Resolved }, _)
+	build! = |{ fields: flags, how }| {
 		Meta.check(flags, Flag)?
 		written = App.written!()?
 		icon = App.icon!()?
-		{ name, program } = App.compile!(Universal)?
+		{ name, program } = App.compile!(how)?
 		meta = Meta.resolve(Meta.over(flags, written), name)
 		bundle = "${Meta.bundle_name(meta.name)}.app"
 		if Path.exists!(Path.utf8(bundle))? {
@@ -190,16 +218,17 @@ App := [].{
 			NoIcon => Bool.False
 		}
 		Path.write_utf8!(Path.utf8("${bundle}/Contents/Info.plist"), App.info_plist(meta, name, has_icon))?
-		Stdout.line!("Built ${bundle}: ${meta.name} ${meta.release} (${meta.id}), for Apple silicon and Intel Macs with macOS ${meta.minimum_macos} or later.")?
+		Stdout.line!("Built ${bundle}: ${meta.name} ${meta.release} (${meta.id}), for ${App.built_for(how)} with macOS ${meta.minimum_macos} or later.")?
 		Ok({ bundle, name, meta })
 	}
 
 	## Build `<name>.app` and run the program inside it, with its output in
 	## this terminal, until the app quits.
-	run! : Meta.Fields => Try({}, _)
-	run! = |flags| {
-		{ bundle, name, .. } = App.build!(flags)?
+	run! : { fields : Meta.Fields, how : Build } => Try({}, _)
+	run! = |chosen| {
+		{ bundle, name, .. } = App.build!(chosen)?
 		match App.system(System.target!()) {
+			Mac(own) if !App.runs_on(chosen.how, own) => return Err(NotThisMac({ bundle, mac: App.target_name(own), built: App.built_for(chosen.how) }))
 			Mac(_) => {}
 			Other(here) => return Err(NotAMac({ command: "run", system: here, bundle }))
 		}
@@ -332,6 +361,14 @@ expect [App.app_name("My App"), App.app_name("counter"), App.app_name("todo_list
 ## An app made by `init` has `src/main.roc`; one made before has `main.roc`
 ## at its top; both at once is ambiguous.
 expect [App.entry_of(Bool.True, Bool.False), App.entry_of(Bool.False, Bool.True), App.entry_of(Bool.True, Bool.True), App.entry_of(Bool.False, Bool.False)] == [Ok("src/main.roc"), Ok("main.roc"), Err(TwoEntries), Err(NoMainRoc)]
+
+## `--target` takes the Mac targets alone; a build names its Macs.
+expect [App.target_of("arm64mac"), App.target_of("x64mac"), App.target_of("x64v1mac")] == [Ok(Native("arm64mac")), Ok(Native("x64mac")), Err(UnknownTarget("x64v1mac"))]
+
+expect [App.built_for(Universal), App.built_for(Native("x64mac")), App.built_for(Native("arm64mac"))] == ["Apple silicon and Intel Macs", "Intel Macs (x64mac)", "Apple silicon Macs (arm64mac)"]
+
+## An Intel Mac cannot run an Apple silicon build; everything else runs.
+expect [App.runs_on(Native("arm64mac"), "x64mac"), App.runs_on(Native("arm64mac"), "arm64mac"), App.runs_on(Native("x64mac"), "arm64mac"), App.runs_on(Universal, "x64mac")] == [Bool.False, Bool.True, Bool.True, Bool.True]
 
 expect [App.last_part("/Users/me/counter"), App.last_part("C:\\Users\\me\\counter"), App.last_part("counter")] == ["counter", "counter", "counter"]
 

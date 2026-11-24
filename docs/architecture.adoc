@@ -742,15 +742,16 @@ symbols, such as `_swiftImmortalRefCount` and
 `swift_getTypeByMangledNameInContext2`, that older macOS releases do not
 export, so an earlier macOS could not load the program.
 
-An app is universal. `macos.roc build` builds the app for `arm64mac` and for
+An app is universal by default. `macos.roc build` builds the app for `arm64mac` and for
 `x64mac` and joins the two programs into one fat Mach-O file (`cli/Universal.roc`),
 written byte for byte as `lipo -create` writes it, so that it needs no Apple
 tool and works on Linux and Windows too: a big-endian header, then each
 thin program at its CPU's page alignment, the Intel one first. Each slice
 keeps the ad hoc signature Roc's linker gave it, and macOS runs the slice
 for its own CPU. `LSArchitecturePriority` is left out: with both slices
-native, macOS's own choice is the right one. A bare `roc build` makes one
-program for one target.
+native, macOS's own choice is the right one. `macos.roc build --target
+arm64mac` (or `x64mac`), like a bare `roc build`, makes one thin program
+for one target, which `package` names `<name>-<version>-<target>.zip`.
 
 [#linker-inputs]
 == Linker inputs: no Apple SDK files
