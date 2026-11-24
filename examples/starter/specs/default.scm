@@ -60,7 +60,7 @@
                              (text "Simple visuals" :color secondary-label :text-style caption1))
                            (text "Using Orb Garden" :color secondary-label :text-style caption1)
                            (box :border line:1:separator :fill text-background
-                             (scroll :views 15 :height 190
+                             (scroll :views 16 :height 190
                                (hstack :views 2
                                  (text "" :color accent)
                                  (button "Scope"))
@@ -105,7 +105,10 @@
                                  (button "Ripple Pool"))
                                (hstack :views 2
                                  (text "●" :color accent)
-                                 (button "Orb Garden"))))
+                                 (button "Orb Garden"))
+                               (hstack :views 2
+                                 (text "" :color accent)
+                                 (button "Sync Test"))))
                            (hstack :views 3
                              (button "New")
                              (button "Duplicate")

@@ -61,7 +61,7 @@
                                (save)
                                (transform 1.000 0.000 0.000 1.000 500.000 500.000)
                                (transform 1.000 0.000 0.000 1.000 0.000 0.000)
-                               (transform 0.333 0.000 0.000 0.333 0.000 0.000)
+                               (transform 0.690 0.000 0.000 0.690 0.000 0.000)
                                (opacity 1.000)
                                (stroke adaptive:b266ff:b266ff 12.0 0.0,-450.0 450.0,0.0 0.0,450.0 -450.0,0.0 0.0,-450.0 close)
                                (opacity 1.000)
@@ -77,7 +77,7 @@
                              (spacer))
                            (text "Using Echo Rings" :color secondary-label :text-style caption1)
                            (box :border line:1:separator :fill text-background
-                             (scroll :views 15 :height 190
+                             (scroll :views 16 :height 190
                                (hstack :views 2
                                  (text "" :color accent)
                                  (button "Scope"))
@@ -122,7 +122,10 @@
                                  (button "Ripple Pool"))
                                (hstack :views 2
                                  (text "" :color accent)
-                                 (button "Orb Garden"))))
+                                 (button "Orb Garden"))
+                               (hstack :views 2
+                                 (text "" :color accent)
+                                 (button "Sync Test"))))
                            (hstack :views 3
                              (button "New")
                              (button "Duplicate")

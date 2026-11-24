@@ -20,7 +20,7 @@
                      (vstack :views 7
                        (segmented :items ("Scope" "Echo" "Bands" "Shaders" "Gallery") :selected "Gallery")
                        (hstack :views 5
-                         (dropdown "Orb Garden" :items ("Liquid Drift" "Blur Corridor" "Superscope Bloom" "Flux Streaks" "Phase Scope" "Peak Meter" "Plasma Weave" "Hyperspace" "Mirror Shard" "Spectrum Fire" "Ripple Pool" "Orb Garden"))
+                         (dropdown "Orb Garden" :items ("Liquid Drift" "Blur Corridor" "Superscope Bloom" "Flux Streaks" "Phase Scope" "Peak Meter" "Plasma Weave" "Hyperspace" "Mirror Shard" "Spectrum Fire" "Ripple Pool" "Orb Garden" "Sync Test"))
                          (file-button "Choose Audio…")
                          (button "Play" :enabled #f)
                          (button "Pause" :enabled #f)

@@ -49,15 +49,15 @@ final class AudioSurfaceSource: SurfaceSource {
     /// 0…1. `audio.level`: the RMS level; `audio.bass`, `audio.mids` and
     /// `audio.treble`: the energy of their bands, each in 0…1. A value is
     /// -60…0 dB mapped to 0…1, rising at once and falling slowly. Each is the
-    /// snapshot nearest the audible playhead at `frameTime`
-    /// (`ProcessInfo.systemUptime` seconds, extrapolated from now when within
-    /// 100 ms of it, less the output latency). Nil before the first
+    /// snapshot whose window ends at the sound heard at `frameTime`
+    /// (`ProcessInfo.systemUptime` seconds: when the frame will be seen;
+    /// `AudioService.audibleSnapshot`). Nil before the first
     /// measurement of the current generation (after a seek or a replacement).
     func latest(at frameTime: Double) -> SurfaceSample? {
         guard let audio else { return nil }
         audio.sampledNatively()
-        let ahead = frameTime - Bench.now()
-        guard let snap = audio.audibleSnapshot(extrapolate: abs(ahead) < 0.1 ? ahead : 0) else {
+        // A spec's controlled frame clock is not the audio's: it reads now.
+        guard let snap = audio.audibleSnapshot(at: FrameClock.shared.manual ? Bench.now() : frameTime) else {
             shown = []
             return nil
         }

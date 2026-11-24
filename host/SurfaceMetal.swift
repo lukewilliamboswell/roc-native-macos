@@ -616,6 +616,21 @@ final class MetalSurface {
     /// Called on the main thread when the GPU fails a frame that ran a
     /// shader (the system's GPU watchdog stops one that runs too long).
     var onShaderFault: ((String) -> Void)?
+    /// Frames presented to the layer whose presented handler has not run:
+    /// those waiting for the glass. A frame due while one waits is skipped,
+    /// so the layer never queues a second frame: queued, every later frame
+    /// reached the glass a refresh or two late, and the picture lagged as much.
+    private(set) var awaiting = 0
+    static let maxAwaiting = 1
+    /// The last frames' presented time less the refresh they targeted, in
+    /// seconds, newest last: how long after its display-link target a frame
+    /// reaches the glass.
+    private var lags: [Double] = []
+    static let lagWindow = 31
+    /// The median of `lags`: what a frame's time adds to its target (0
+    /// until a frame has been presented), within 0...0.1 s.
+    private(set) var presentLag = 0.0
+
     /// GPU time of the frames since the last report (`ROC_SURFACE_TIMING`).
     private var gpuTimes: [Double] = []
     private var reportedAt: Double?
@@ -623,15 +638,30 @@ final class MetalSurface {
     /// Render a frame and present it; false when it was skipped because
     /// the GPU is behind.
     @discardableResult
-    func frame(_ scene: Tessellation, background: [Float], trail: Affine?, fade: Double, shaders: ShaderFrame? = nil, label: String = "") -> Bool {
+    func frame(_ scene: Tessellation, background: [Float], trail: Affine?, fade: Double, shaders: ShaderFrame? = nil, label: String = "", timing: Int = 0, aim: Double? = nil) -> Bool {
         guard inFlight < MetalSurface.maxInFlight || Host.scripted else { return false }
+        guard awaiting < MetalSurface.maxAwaiting || Host.scripted else { return false }
         guard let target, let commands = target.render(scene, background: background, trail: trail, fade: fade, shaders: shaders) else { return false }
         if let drawable = layer.nextDrawable() {
             target.copy(into: commands, drawable)
+            // When the frame reached the glass (0 if it never did): how far
+            // behind its target frames appear, and AVTiming's record.
+            let aimed = aim
+            awaiting += 1
+            drawable.addPresentedHandler { [weak self] d in
+                let at = d.presentedTime
+                DispatchQueue.main.async {
+                    self?.presented(at: at, aimed: aimed)
+                    if timing != 0 { AVTiming.shared.presented(timing, at: at) }
+                }
+            }
             commands.present(drawable)
+        } else if timing != 0 {
+            AVTiming.shared.presented(timing, at: 0)
         }
         let shaded = shaders.map { $0.warp != nil || $0.composite != nil } ?? false
-        let timing = SurfaceDiagnostics.timing
+        let timed = timing
+        let printing = SurfaceDiagnostics.timing
         inFlight += 1
         commands.addCompletedHandler { [weak self] done in
             let failed = done.status == .error ? (done.error.map { AudioService.describe($0) } ?? "the GPU failed the frame") : nil
@@ -640,11 +670,21 @@ final class MetalSurface {
                 guard let self else { return }
                 self.inFlight -= 1
                 if let failed, shaded { self.onShaderFault?(failed) }
-                if timing { self.timed(gpu, label: label, size: (target.width, target.height)) }
+                if printing { self.timed(gpu, label: label, size: (target.width, target.height)) }
+                if timed != 0 { AVTiming.shared.gpu(timed, ms: gpu) }
             }
         }
         commands.commit()
         return true
+    }
+
+    /// A frame's presented handler ran (main thread).
+    private func presented(at: Double, aimed: Double?) {
+        awaiting = max(0, awaiting - 1)
+        guard at > 0, let aimed else { return }
+        lags.append(min(max(at - aimed, 0), 0.1))
+        if lags.count > MetalSurface.lagWindow { lags.removeFirst() }
+        presentLag = AVTiming.percentile(lags, 50) ?? 0
     }
 
     /// Note one frame's GPU time, and print the mean and the most every

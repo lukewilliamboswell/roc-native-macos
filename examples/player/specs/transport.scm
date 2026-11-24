@@ -23,7 +23,7 @@
     ; TODO(slow-lambda-sets): 212 with --opt=speed; restore it when the default build returns (cli/App.roc build_opt).
     ; The conditional backlight adds six allocations with measurement off.
 
-    (expect-allocations-at-most 832)
+    (expect-allocations-at-most 884)
     (expect-dump (window :width 640 :height 595
                    (vstack :views 1
                      (vstack :views 6

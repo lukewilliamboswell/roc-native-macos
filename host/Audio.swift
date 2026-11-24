@@ -87,6 +87,7 @@ final class AudioService: PortService {
 
     init(host: Host) {
         self.host = host
+        AVTiming.shared.audio = self
     }
 
     /// A flat 10-band EQ of one-octave parametric bands at `centres`.
@@ -164,6 +165,11 @@ final class AudioService: PortService {
             gains = gains.map { _ in 0 }
             preamp = 0
             applyEq()
+        case "VisualOffset":
+            guard let ms = payload?.double else { fatal("audio: VisualOffset needs milliseconds: \(message.json)") }
+            if !ms.isNaN { visualOffsetMs = min(max(ms, AudioService.visualOffsetRange.lowerBound), AudioService.visualOffsetRange.upperBound) }
+            AudioSurfaceSources.changed()
+            publishStatus()
         case "Close": close()
         default: fatal("audio: unknown command \(name)")
         }
@@ -275,6 +281,8 @@ final class AudioService: PortService {
             if manual {
                 guard let out = AVAudioFormat(standardFormatWithSampleRate: AudioService.manualRate, channels: 2) else { fatal("audio: no manual rendering format") }
                 try engine.enableManualRenderingMode(.offline, format: out, maximumFrameCount: AudioService.manualChunk)
+            } else {
+                AudioOutput.choose(for: engine)
             }
             engine.connect(player, to: eq, format: format)
             engine.connect(eq, to: engine.mainMixerNode, format: format)
@@ -286,6 +294,7 @@ final class AudioService: PortService {
             engine.prepare()
             try engine.start()
         }
+        measureOutput()
         updateAnalysis()
     }
 
@@ -438,7 +447,25 @@ final class AudioService: PortService {
 
     /// How long after it is rendered a sample is heard, in seconds: the
     /// output's presentation latency (0 under the manual clock).
-    var outputLatency: Double { manual ? 0 : (engine?.outputNode.presentationLatency ?? 0) }
+    ///
+    /// AVAudioEngine's `outputNode.presentationLatency` counts the device's
+    /// own latency alone (1.5 ms on an M2's speakers), so this is the larger
+    /// of it and Core Audio's device latency plus its first output stream's
+    /// latency (21.2 ms there): the time from an IO cycle's output time
+    /// stamp to the sound leaving the device. The safety offset and the IO
+    /// buffer come before the time stamp, so neither is added.
+    var outputLatency: Double { manual ? 0 : max(engine?.outputNode.presentationLatency ?? 0, deviceLatency) }
+    /// The output device's latency plus its stream's, in seconds, as Core
+    /// Audio last reported it (`measureOutput`).
+    private var deviceLatency = 0.0
+
+    /// Ask Core Audio for the output device's latency again: when the
+    /// engine starts, and when its configuration changes (another device).
+    private func measureOutput() {
+        guard let engine, !manual else { deviceLatency = 0; return }
+        let l = AudioOutput.latency(AudioOutput.device(of: engine))
+        deviceLatency = l.rate > 0 ? Double(l.device + l.stream) / l.rate : 0
+    }
 
     /// Where the player last started: the node time and the source frame.
     private var started: (node: Int64, source: Int64)?
@@ -500,11 +527,8 @@ final class AudioService: PortService {
             if !analysis.isRunning { analysis.start() }
             if !tapped {
                 _ = engine
-                let analysis = self.analysis
-                eq.installTap(onBus: 0, bufferSize: AVAudioFrameCount(AudioAnalysis.window), format: nil) { buffer, when in
-                    guard when.isSampleTimeValid else { return }
-                    analysis.tap(buffer, at: when.sampleTime)
-                }
+                let channels = Int(eq.outputFormat(forBus: 0).channelCount)
+                guard analysis.attach(to: eq.audioUnit, channels: channels) else { fatal("audio: the EQ's audio unit refused the measuring tap's render notification") }
                 tapped = true
                 anchor()
             }
@@ -515,7 +539,7 @@ final class AudioService: PortService {
     }
 
     private func removeTap() {
-        if tapped { eq.removeTap(onBus: 0); tapped = false }
+        if tapped { analysis.detach(from: eq.audioUnit); tapped = false }
     }
 
     /// A native consumer sampled the measurements.
@@ -534,14 +558,78 @@ final class AudioService: PortService {
     }
     private var leaseTimer: Timer?
 
-    /// The snapshot of the current generation nearest the audible playhead.
-    func audibleSnapshot(extrapolate seconds: Double = 0) -> AudioSnapshot? {
+    /// How far before the frame being heard the chosen snapshot's window
+    /// centre sits: half a window, so the window ends where the listener
+    /// is. A meter shows what has been heard; a window centred on the
+    /// playhead holds the next 21 ms too, so a click would flash before it
+    /// sounds.
+    static let alignment = Double(AudioAnalysis.window / 2)
+
+    /// The source frame heard at `time` (`systemUptime` seconds), less the
+    /// visual offset: the newest render stamp's node frame, moved on at the
+    /// node's rate by the time from its output time stamp to `time` less the
+    /// output latency, on the source timeline. Without a stamp to go by
+    /// (the manual clock, before the first render, paused or stopped) it
+    /// is where playback has rendered to.
+    func heardFrame(at time: Double) -> Double {
+        guard state == .playing, !manual, let s = started, sampleRate > 0, let st = analysis.latestStamp(), st.host != 0 else { return Double(frame()) }
+        let heard = time - outputLatency - visualOffsetMs / 1000
+        let node = Double(st.node) + (heard - AVAudioTime.seconds(forHostTime: st.host)) * sampleRate
+        return max(Double(s.source), Double(s.source) + node - Double(s.node))
+    }
+
+    /// The snapshot of the current generation whose window ends nearest
+    /// the frame heard at `time`.
+    func audibleSnapshot(at time: Double) -> AudioSnapshot? {
         let history = analysis.snapshots().filter { $0.generation == generation }
         guard !history.isEmpty else { return nil }
-        let rate = sampleRate
-        let heard = Double(frame()) + (state == .playing ? (seconds - outputLatency) * rate : 0)
-        return history.min { abs(Double($0.centreFrame) - heard) < abs(Double($1.centreFrame) - heard) }
+        let want = heardFrame(at: time) - AudioService.alignment
+        let chosen = history.min { abs(Double($0.centreFrame) - want) < abs(Double($1.centreFrame) - want) }
+        drawnCentre = chosen?.centreFrame ?? -1
+        drawnShort = chosen.map { (want - Double($0.centreFrame)) * 1000 / sampleRate } ?? 0
+        return chosen
     }
+
+    /// The visual offset (`VisualOffset`), in milliseconds: how much later
+    /// than the sound the measurements a picture reads are shown.
+    private(set) var visualOffsetMs: Double = 0
+    static let visualOffsetRange: ClosedRange<Double> = -500...500
+
+    /// When each click found since `AVTiming.mark` was heard, in
+    /// `systemUptime` seconds (`audibleTimes`).
+    func audibleClicks() -> [Double] { audibleTimes(analysis.clickOnsets()).compactMap { $0 } }
+
+    /// When each source frame of the current start was heard, in
+    /// `systemUptime` seconds: the host time of the render stamp holding its
+    /// node frame, plus its place in that buffer at the node's rate, plus
+    /// the output's presentation latency; nil without a stamp for it.
+    func audibleTimes(_ frames: [Int64]) -> [Double?] {
+        guard let s = started, sampleRate > 0 else { return frames.map { _ in nil } }
+        let stamps = analysis.renderStamps().filter { $0.host != 0 }
+        return frames.map { c in
+            let node = s.node + (c - s.source)
+            guard let st = stamps.last(where: { $0.node <= node && node < $0.node + Int64($0.frames) }) else { return nil }
+            return AVAudioTime.seconds(forHostTime: st.host) + Double(node - st.node) / sampleRate + outputLatency
+        }
+    }
+
+    /// The output device, for the timing report: its name, its
+    /// presentation latency as AVAudioEngine reports it, and Core Audio's parts.
+    func outputReport() -> String {
+        guard let engine, !manual else { return "manual clock" }
+        let d = AudioOutput.device(of: engine)
+        let l = AudioOutput.latency(d)
+        let rate = l.rate > 0 ? l.rate : 48000
+        func ms(_ frames: UInt32) -> String { Host.decimal(Double(frames) * 1000 / rate, 1) }
+        return "\"\(AudioOutput.name(d))\" compensated \(Host.decimal(outputLatency * 1000, 1)) ms; presentationLatency \(Host.decimal(engine.outputNode.presentationLatency * 1000, 1)) ms; device \(ms(l.device)) + safety \(ms(l.safety)) + stream \(ms(l.stream)) ms, buffer \(l.buffer) frames (\(ms(l.buffer)) ms) at \(Int(rate)) Hz"
+    }
+
+    /// The window centre of the snapshot a surface last drew, in source
+    /// frames (-1 for none), for AVTiming.
+    private(set) var drawnCentre: Int64 = -1
+    /// How far before the window wanted the drawn one was, in ms: more
+    /// than half a hop when the measurement wanted was not made yet.
+    private(set) var drawnShort = 0.0
 
     // MARK: Subscriptions
 
@@ -601,7 +689,7 @@ final class AudioService: PortService {
     /// The newest snapshot of the current generation, to each analysis
     /// subscriber that has not had it: a slow app gets the latest only.
     func publishSnapshot() {
-        guard let ports, let snap = audibleSnapshot() else { return }
+        guard let ports, let snap = audibleSnapshot(at: Bench.now()) else { return }
         for id in analysisSubs.keys.sorted() where lastSent[id] != snap.seq {
             lastSent[id] = snap.seq
             ports.emit(id, json: snapshotJson(snap))
@@ -630,8 +718,23 @@ final class AudioService: PortService {
             ("duration_ms", u64(ms(durationFrames))),
             ("volume", JsonText.number(volume)),
             ("latency_ms", JsonText.number(Float(outputLatency * 1000))),
+            ("visual_offset_ms", JsonText.number(Float(visualOffsetMs))),
+            ("output", outputJson()),
             ("eq", eqJson),
         ])
+    }
+
+    /// The output device's name and UID (`AudioOutput`), empty under the
+    /// manual clock or before the engine starts. Read when the status is
+    /// sent, so a change of device shows in the next one.
+    private func outputJson() -> String {
+        var name = "", uid = ""
+        if let engine, !manual {
+            let d = AudioOutput.device(of: engine)
+            name = AudioOutput.name(d)
+            uid = AudioOutput.uid(d)
+        }
+        return JsonText.object([("name", JsonText.string(name)), ("uid", JsonText.string(uid))])
     }
 
     func snapshotJson(_ s: AudioSnapshot) -> String {
@@ -683,22 +786,21 @@ final class AudioService: PortService {
             } catch { fatal("audio: offline render failed: \(AudioService.describe(error))") }
             if let data = out.floatChannelData { rendered.append(contentsOf: UnsafeBufferPointer(start: data[0], count: Int(out.frameLength))) }
             left -= Int(n)
-            // Offline, the tap delivers as fast as this loop renders, far
-            // faster than the worker measures: wait while its ring is all
+            // Offline, the render notification delivers each render as this
+            // loop renders it, far faster than the worker measures: wait while its ring is all
             // but full, so no chunk is overwritten. A dropped chunk restarts
             // the rolling window, and where it restarted would depend on the
             // worker's speed, so a spec's measurements would not repeat.
             if tapped { awaitAnalysisRoom() }
             if state == .playing, frame() >= durationFrames { finish(generation) }
         }
-        // Let the tap deliver every whole chunk rendered, and the worker
-        // measure it, so what is published next is the same on every run.
+        // The tap is called within each render, so everything rendered is
+        // in the ring: let the worker measure it, so what is published next
+        // is the same on every run.
         if tapped, let to = renderedNodeFrames() {
             let deadline = Bench.now() + 2
             while Bench.now() < deadline {
-                let c = analysis.counters()
-                let chunk = Int64(c.chunkFrames > 0 ? c.chunkFrames : Int((sampleRate / 10).rounded()))
-                if c.tappedTo >= (to / chunk) * chunk, analysis.drained || analysis.isStalled { break }
+                if analysis.drained || analysis.isStalled { break }
                 Thread.sleep(forTimeInterval: 0.002)
             }
             let c = analysis.counters()

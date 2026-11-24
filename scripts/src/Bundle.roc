@@ -115,6 +115,7 @@ Bundle := [].{
 		{ name: "my-app.app/Contents/Resources/assets/icon.png", mode: 0o100644 },
 		{ name: "my-app.app/Contents/Resources/assets/polymorphic-defunctionalization.lrc", mode: 0o100644 },
 		{ name: "my-app.app/Contents/Resources/assets/polymorphic-defunctionalization.mp3", mode: 0o100644 },
+		{ name: "my-app.app/Contents/Resources/assets/sync-test.wav", mode: 0o100644 },
 		{ name: "my-app.app/Contents/_CodeSignature/", mode: 0o040755 },
 		{ name: "my-app.app/Contents/_CodeSignature/CodeResources", mode: 0o100644 },
 	]

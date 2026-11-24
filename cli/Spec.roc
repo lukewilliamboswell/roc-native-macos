@@ -100,6 +100,10 @@ Spec := [].{
 		ExpectSnapshot(List(Field)),
 		ExpectHistory(List(Field)),
 		ExpectSources(List(Field)),
+		RequireAvTiming,
+		MarkAvTiming,
+		ExpectAvOffset(List(Field)),
+		ExpectFramePacing(List(Field)),
 	]
 
 	## One `:name value` pair an expectation holds, its value as text.
@@ -399,7 +403,7 @@ Spec := [].{
 
 	## The step names, for an unknown step's message.
 	step_names : List(Str)
-	step_names = ["click", "fill", "submit", "toggle", "select", "hover", "choose", "press", "files", "drop", "move", "leave", "sweep", "scroll", "phase", "stats", "window", "wait", "reload", "expect-dump", "expect-tree", "expect-visible", "expect-absent", "expect-text", "expect-checked", "expect-disabled", "expect-workers", "stub-http", "fail-http", "run-effect", "tick-interval", "fire-timer", "advance-time", "await-work", "expect-pending-effects", "expect-interval", "expect-request", "expect-cancelled", "mark-metrics", "expect-metric-delta", "expect-metric-delta-at-most", "expect-allocations-at-most", "expect-allocated-bytes-at-most", "expect-no-new-live-allocations", "frame", "frame-clock", "step-source", "repaint", "window-size", "renderer", "require-metal", "bench-surfaces", "expect-probe", "expect-surfaces", "render", "slide", "stall-analysis", "expect-audio-status", "expect-tone", "expect-eq", "expect-snapshot", "expect-history", "expect-sources"]
+	step_names = ["click", "fill", "submit", "toggle", "select", "hover", "choose", "press", "files", "drop", "move", "leave", "sweep", "scroll", "phase", "stats", "window", "wait", "reload", "expect-dump", "expect-tree", "expect-visible", "expect-absent", "expect-text", "expect-checked", "expect-disabled", "expect-workers", "stub-http", "fail-http", "run-effect", "tick-interval", "fire-timer", "advance-time", "await-work", "expect-pending-effects", "expect-interval", "expect-request", "expect-cancelled", "mark-metrics", "expect-metric-delta", "expect-metric-delta-at-most", "expect-allocations-at-most", "expect-allocated-bytes-at-most", "expect-no-new-live-allocations", "frame", "frame-clock", "step-source", "repaint", "window-size", "renderer", "require-metal", "bench-surfaces", "expect-probe", "expect-surfaces", "render", "slide", "stall-analysis", "expect-audio-status", "expect-tone", "expect-eq", "expect-snapshot", "expect-history", "expect-sources", "require-av-timing", "mark-av-timing", "expect-av-offset", "expect-frame-pacing"]
 
 	## The fields each report expectation may name: a drawing surface's
 	## colour at a point, in percent; the surfaces shown and on the frame
@@ -415,6 +419,26 @@ Spec := [].{
 		{ step: "expect-snapshot", fields: ["present", "at", "rate", "rms", "peak", "finite", "loudest"] },
 		{ step: "expect-history", fields: ["count", "bound", "first", "last", "current", "ordered", "waiting", "slots", "skipped"] },
 		{ step: "expect-sources", fields: ["waveform", "left", "right", "bands", "level", "bass", "mids", "treble"] },
+		{ step: "expect-av-offset", fields: ["mean-within", "p95-within", "max-within", "lead-at-most", "matched-at-least"] },
+		{ step: "expect-frame-pacing", fields: ["dropped-at-most", "skipped-at-most", "p99-at-most", "gpu-p99-at-most", "frames-at-least"] },
+	]
+
+	## What each bound of the timing expectations reads from the host's
+	## report (`av-timing`), and whether the value must be at least the
+	## bound rather than at most: `mean-within` bounds the mean offset's
+	## size, `p95-within` and `max-within` the offsets' sizes.
+	timing_bounds : List({ field : Str, reads : Str, least : Bool, size : Bool })
+	timing_bounds = [
+		{ field: "mean-within", reads: "mean", least: Bool.False, size: Bool.True },
+		{ field: "p95-within", reads: "p95", least: Bool.False, size: Bool.False },
+		{ field: "max-within", reads: "max", least: Bool.False, size: Bool.False },
+		{ field: "lead-at-most", reads: "lead", least: Bool.False, size: Bool.False },
+		{ field: "matched-at-least", reads: "matched", least: Bool.True, size: Bool.False },
+		{ field: "dropped-at-most", reads: "dropped", least: Bool.False, size: Bool.False },
+		{ field: "skipped-at-most", reads: "skipped", least: Bool.False, size: Bool.False },
+		{ field: "p99-at-most", reads: "frame-p99", least: Bool.False, size: Bool.False },
+		{ field: "gpu-p99-at-most", reads: "gpu-p99", least: Bool.False, size: Bool.False },
+		{ field: "frames-at-least", reads: "frames", least: Bool.True, size: Bool.False },
 	]
 
 	## The page heap's metrics, which the host counts while a spec runs:
@@ -834,6 +858,14 @@ step_form = |form| {
 		("expect-history", _) => return usage("(expect-history :count 5 :current true …)")
 		("expect-sources", [_, ..]) => ExpectSources(report_pairs(head, args)?)
 		("expect-sources", _) => return usage("(expect-sources :level \"0.67\" …)")
+		("require-av-timing", []) => RequireAvTiming
+		("require-av-timing", _) => return usage("(require-av-timing), which ends the spec, passing, unless ROC_AV_TIMING=1 asks for real-clock timing")
+		("mark-av-timing", []) => MarkAvTiming
+		("mark-av-timing", _) => return usage("(mark-av-timing), which starts the timing report again from now")
+		("expect-av-offset", [_, ..]) => ExpectAvOffset(report_pairs(head, args)?)
+		("expect-av-offset", _) => return usage("(expect-av-offset :mean-within 30 :p95-within 45 :lead-at-most 15), in milliseconds")
+		("expect-frame-pacing", [_, ..]) => ExpectFramePacing(report_pairs(head, args)?)
+		("expect-frame-pacing", _) => return usage("(expect-frame-pacing :dropped-at-most 3 :p99-at-most 25)")
 		_ => return Err({ pos, message: "unknown step ${head}; the steps are ${Str.join_with(Spec.step_names, ", ")}" })
 	}
 	Ok({ pos, op })
@@ -1076,6 +1108,10 @@ lowered = |op|
 		ExpectSnapshot(_) => ["snapshot"]
 		ExpectHistory(_) => ["history"]
 		ExpectSources(_) => ["sources"]
+		RequireAvTiming => ["require-av-timing"]
+		MarkAvTiming => ["mark-av-timing"]
+		ExpectAvOffset(_) => ["av-timing"]
+		ExpectFramePacing(_) => ["av-timing"]
 	}
 
 loc_fields : Spec.Loc -> List(Str)
@@ -1149,6 +1185,7 @@ observes = |op|
 		ExpectMetricDelta(_, _) | ExpectMetricDeltaAtMost(_, _, _) | ExpectAllocationsAtMost(_, _) | ExpectAllocatedBytesAtMost(_, _) | ExpectNoNewLiveAllocations => Bool.True
 		Press({ heard: Heard(_), .. }) => Bool.True
 		ExpectProbe(_, _, _, _) | ExpectSurfaces(_) | ExpectAudioStatus(_) | ExpectTone(_, _) | ExpectEq(_) | ExpectSnapshot(_) | ExpectHistory(_) | ExpectSources(_) => Bool.True
+		ExpectAvOffset(_) | ExpectFramePacing(_) => Bool.True
 		_ => Bool.False
 	}
 
@@ -1269,6 +1306,8 @@ expectation = |op, seen, mark| {
 		ExpectSnapshot(want) => fields_expect("the newest measurement's", want, lines)
 		ExpectHistory(want) => fields_expect("the kept measurements'", want, lines)
 		ExpectSources(want) => fields_expect("the audio sources'", want, lines)
+		ExpectAvOffset(want) => bounds_expect("the audio/visual offsets'", want, lines)
+		ExpectFramePacing(want) => bounds_expect("the frame pacing's", want, lines)
 		Press({ key, heard: Heard(want) }) => {
 			got = lines.contains("heard true")
 			if (got == want) Ok({}) else Err("expected ${key} to be ${if (want) "heard" else "not heard"} by the app, saw it ${if (got) "heard" else "not heard"}")
@@ -1294,6 +1333,42 @@ fields_expect = |what, want, lines| {
 		shown = |list| Str.join_with(list.map(|{ field, value }| ":${field} ${Str.inspect(value)}"), " ")
 		saw = wrong.map(|w| seen.find_first(|s| s.field == w.field) ?? { field: w.field, value: "nothing" })
 		Err("expected ${what} ${shown(wrong)}, saw ${shown(saw)}")
+	}
+}
+
+## Whether a timing report's `name value` lines keep within every bound
+## wanted (`Spec.timing_bounds`), each a number in milliseconds or a count.
+bounds_expect : Str, List(Spec.Field), List(Str) -> Try({}, Str)
+bounds_expect = |what, want, lines| {
+	seen = |name|
+		lines.keep_oks(
+			|line|
+				match line.split_on(" ") {
+					[field, value] if field == name => F64.from_str(value).map_err(|_| NotANumber)
+					_ => Err(NotANumber)
+				},
+		).first()
+	var $wrong = []
+	for w in want {
+		bound = Spec.timing_bounds.find_first(|b| b.field == w.field) ?? { field: w.field, reads: w.field, least: Bool.False, size: Bool.False }
+		limit = F64.from_str(w.value) ?? 0
+		held = match seen(bound.reads) {
+			Ok(v) => {
+				got = if (bound.size and v < 0) -v else v
+				if (bound.least) got >= limit else got <= limit
+			}
+			Err(_) => Bool.False
+		}
+		if !held {
+			saw = lines.find_first(|l| l.starts_with("${bound.reads} ")).map_ok(|l| l.drop_prefix("${bound.reads} ")) ?? "nothing"
+			$wrong = $wrong.append(":${w.field} ${w.value}, saw ${bound.reads} ${saw}")
+		}
+	}
+	if $wrong.is_empty() {
+		Ok({})
+	} else {
+		report = lines.find_first(|l| l.starts_with("offsets ")) ?? ""
+		Err("expected ${what} ${Str.join_with($wrong, "; ")}${if (report.is_empty()) "" else " (${report})"}")
 	}
 }
 
@@ -1868,4 +1943,13 @@ expect {
 	text = "(test \"t\" (steps (require-metal) (expect-visible (text \"x\"))))"
 	run = Spec.read_run("@1 skip no Metal device\n@done\n")
 	Spec.parse(text).map_ok(|p| (Spec.judge(p, run).len(), Spec.lower(p))) == Ok((0, "roc-spec 1\n0\ttime\t0\n1\trequire-metal\n2\tfind\t1\ttext\tx\n"))
+}
+
+## The timing expectations hold bounds, not values: the mean's size, the
+## rest at most (or at least) what they name.
+expect {
+	text = "(test \"t\" (steps (require-av-timing) (expect-av-offset :mean-within 30 :p95-within 45 :lead-at-most 15) (expect-frame-pacing :dropped-at-most 2 :frames-at-least 100)))"
+	run = Spec.read_run("@2 obs\n|mean -12.5\n|p95 40.0\n|lead 20.0\n|offsets -20.0 5.0\n@3 obs\n|dropped 1\n|frames 99\n@done\n")
+	Spec.parse(text).map_ok(|p| (Spec.lower(p), Spec.judge(p, run).map(|x| x.message)))
+		== Ok(("roc-spec 1\n0\ttime\t0\n1\trequire-av-timing\n2\tav-timing\n3\tav-timing\n", ["expected the audio/visual offsets' :lead-at-most 15, saw lead 20.0 (offsets -20.0 5.0)", "expected the frame pacing's :frames-at-least 100, saw frames 99"]))
 }

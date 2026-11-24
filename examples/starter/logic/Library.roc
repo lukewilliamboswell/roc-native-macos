@@ -49,8 +49,22 @@ Library := [].{
 		shaders: NoShaders,
 	}
 
+	## Not a look but a test: a thick ring that flashes with every click of
+	## the Sync Test track (`assets/sync-test.wav`), so a listener can see
+	## whether the picture keeps time with what they hear, and set the
+	## picture's offset for their speakers (the EQ panel's Picture Sync).
+	sync_test : Preset.Doc
+	sync_test = {
+		id: "builtin.sync-test",
+		name: "Sync Test",
+		background: { r: 0, g: 0, b: 0 },
+		layers: [{ ..Preset.layer(Ring), size: 300, thickness: 200, colors: [{ r: 0xF4, g: 0xF1, b: 0xEA }], opacity: 0, mappings: [{ feature: Level, property: Opacity, from: 0, to: 100 }] }],
+		feedback: Preset.no_feedback,
+		shaders: NoShaders,
+	}
+
 	builtins : List(Preset.Doc)
-	builtins = [Library.scope, Library.spectrum_bars, Library.echo_rings].concat(Gallery.all)
+	builtins = [Library.scope, Library.spectrum_bars, Library.echo_rings].concat(Gallery.all).append(Library.sync_test)
 
 	## The preset a first launch shows, and the one chosen when the chosen
 	## preset is gone: one of the shaded built-ins, at its best with the
@@ -201,7 +215,7 @@ Library := [].{
 ## The built-ins and the worked example are valid presets, and each reads
 ## back from its file unchanged.
 expect Library.builtins.append(Library.ember_tunnel).all(|p| Preset.problems(p).is_empty() and Preset.decode(Preset.encode(p)) == Ok(p))
-expect Library.builtins.map(|p| p.name) == ["Scope", "Spectrum Bars", "Echo Rings", "Liquid Drift", "Blur Corridor", "Superscope Bloom", "Flux Streaks", "Phase Scope", "Peak Meter", "Plasma Weave", "Hyperspace", "Mirror Shard", "Spectrum Fire", "Ripple Pool", "Orb Garden"] and Library.default.id == "builtin.orb-garden"
+expect Library.builtins.map(|p| p.name) == ["Scope", "Spectrum Bars", "Echo Rings", "Liquid Drift", "Blur Corridor", "Superscope Bloom", "Flux Streaks", "Phase Scope", "Peak Meter", "Plasma Weave", "Hyperspace", "Mirror Shard", "Spectrum Fire", "Ripple Pool", "Orb Garden", "Sync Test"] and Library.default.id == "builtin.orb-garden"
 
 ## Every layer of the built-ins and Ember Tunnel uses a named palette.
 expect [Library.scope, Library.spectrum_bars, Library.echo_rings, Library.ember_tunnel].all(|p| p.layers.all(|l| Library.palette_name(l.colors) != "Custom")) and Library.palette_name([]) == "Custom"

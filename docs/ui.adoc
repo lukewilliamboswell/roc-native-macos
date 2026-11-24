@@ -691,7 +691,14 @@ start after `Ended`); `Pause` holds the playhead and `Resume` continues;
 `Stop` lets go of what is scheduled and goes back to the start; `Seek(ms)`
 moves the playhead, clamped to the duration: playing goes on playing, paused
 stays paused, stopped stays stopped. `Volume(v)` is the output volume, 0 to
-1. `Close` lets go of the file and the audio engine. Commands take effect in
+1. `VisualOffset(ms)` shows the measurements a drawing surface reads, and
+`Audio.analysis` sends, `ms` milliseconds later than the sound they measure,
+-500 to +500 (positive when the picture leads what the listener hears,
+negative when it trails). The session already allows for the latency the
+output reports; the offset is for what an output does not report, such as
+a Bluetooth speaker or a TV, so keep one per `Status.output` and send it
+when the output changes (the starter's EQ panel does, under Picture sync).
+`Close` lets go of the file and the audio engine. Commands take effect in
 the order they are sent: a seek after a load seeks the new source.
 Events:: `Audio.events({})` delivers `Loaded({ track, duration_ms, frames,
 sample_rate, channels })`, `Failed({ track, error })` and `Ended({ track })`,
@@ -703,14 +710,19 @@ the decoder does not play (Core Audio's `typ?` or `fmt?`) or a slice,
 `Corrupt(why)` for a file that is not the audio it claims to be, and
 `Output(why)` when the audio output cannot start.
 Status:: `Audio.status({ every_ms })` delivers `{ track, generation, state,
-position_ms, duration_ms, volume, latency_ms, eq }` when it subscribes, on
+position_ms, duration_ms, volume, latency_ms, visual_offset_ms, output, eq }` when it subscribes, on
 every change, and every `every_ms` (16 to 60,000; the player uses 200, five
 a second) while playing; only the newest waits. `state` is `Idle`, `Loading`,
 `Stopped`, `Playing`, `Paused` or `Ended`. Times are milliseconds on the
 source's timeline: `position_ms` is where playback has rendered to, and a
-sample is heard `latency_ms` (the output's presentation latency) after it.
-`generation` changes with every load, seek, stop and restart, as a drawing
-surface's reset signal.
+sample is heard `latency_ms` after it: the output's latency as Core Audio
+reports it (the device's and its stream's, 21 ms on a MacBook Air's
+speakers), which the measurements a surface reads already allow for.
+`visual_offset_ms` is the `VisualOffset` that applies, and `output` the
+device playing, `{ name, uid }`: its name as Sound settings show it and its
+Core Audio UID, which stays the same across launches (both empty under a
+spec's manual clock). `generation` changes with every load, seek, stop and
+restart, as a drawing surface's reset signal.
 EQ:: Ten one-octave bands centred at `Audio.band_centres_hz`, 32, 64, 125,
 250, 500, 1000, 2000, 4000, 8000 and 16,000 Hz. `Gain({ band, db })` sets
 band 0 to 9 within -12 to +12 dB; `Preamp(db)`, the gain before the bands for

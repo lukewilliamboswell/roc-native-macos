@@ -362,8 +362,11 @@ a window and neither it nor an ancestor is hidden. `viewDidMoveToWindow`,
 clock has its own `NSView.displayLink(target:selector:)` (macOS 14), added to
 the main run loop in its common modes. It follows the screen the view is on
 and calls on the main thread, between engine turns. A tick draws one frame
-at `ProcessInfo.systemUptime`, a monotonic time, and marks the view for
-display. The run loop delivers only the latest refresh, so a busy main
+for the time it will be seen, on `ProcessInfo.systemUptime`'s monotonic
+clock (which the display link's and Core Audio's host times share): its
+`targetTimestamp`, plus, with Metal, how late after their targets its
+last frames were presented (xref:architecture.adoc#av-timing[Audio
+timing]), and marks the view for display. The run loop delivers only the latest refresh, so a busy main
 thread skips frames rather than queueing them. The next frame's time covers
 the gap, and since a trail's fade and motion are rates, the picture keeps
 time. Nothing here calls the engine: a tick reads native sources, never Roc.
@@ -612,8 +615,8 @@ A surface calls `latest` once for each mark that reads the source in each
 frame, so it must return at once. A producer on another thread (an audio
 tap's analysis worker, say) publishes into storage that `latest` reads
 under a short lock of its own, and never calls the registry or a view from
-its thread. `frameTime` is the frame's time: `ProcessInfo.systemUptime`
-seconds, which follow `mach_absolute_time`. Under a spec it is the
+its thread. `frameTime` is the time the frame will be seen:
+`ProcessInfo.systemUptime` seconds, which follow `mach_absolute_time`. Under a spec it is the
 controlled clock's seconds. A producer that keeps timestamped snapshots
 returns the one for that time. Returning nil draws nothing for the mark,
 and a number reads as its offset. A series where a number belongs, the
@@ -919,7 +922,7 @@ subscription, `Every(64)`), `…/status` and `…/analysis` (subscriptions,
 ....
 flowchart LR
     F["AVAudioFile"] --> P["AVAudioPlayerNode"] --> E["AVAudioUnitEQ (10 bands)"] --> M["main mixer: volume"] --> O["output"]
-    E -- "installTap, after the EQ, before the volume" --> T["preallocated chunk ring"] --> W["analysis worker: vDSP FFT"] --> H["snapshot history"]
+    E -- "render notification, after the EQ, before the volume" --> T["preallocated buffer ring"] --> W["analysis worker: vDSP FFT"] --> H["snapshot history"]
     H --> R["Audio.analysis (Latest)"]
     H --> S["SurfaceSource: audio.*"]
 ....
@@ -951,43 +954,115 @@ was playing. The player always starts at an explicit node time (the last
 render time plus 2048 frames under a real output, about 46 ms at 44.1 kHz),
 so the tap knows where every rendered frame sits on the source timeline
 without asking the player.
-Analysis:: An opt-in `installTap` on the EQ's output while a consumer holds
-it: an `Audio.analysis` subscription, or a native source sampled within the
-last second. The tap block copies each buffer into a ring of 4 preallocated
-chunks of up to 8192 frames and 2 channels and returns: it tries the ring's
-`os_unfair_lock` a bounded number of times and never blocks (a buffer that
-finds it held is dropped), calls nothing of AVFAudio's (asking the player
-from the tap deadlocks against `AVAudioPlayerNode.stop` on the main thread,
-which waits for the tap), and overwrites the oldest chunk when the worker
-is behind. A worker `Thread` takes chunks, keeps a rolling 2048-sample
-window, and every 512 samples measures it with Accelerate (`vDSP_measqv`,
-`vDSP_maxmgv`, `vDSP_hann_window`, `vDSP_ctoz`, `vDSP_fft_zrip`,
-`vDSP_zvmags`): levels, 24 band energies (each band takes the share of
-every FFT bin its range overlaps, so the bands narrower than a bin below
-about 160 Hz still read the energy there) and the waveform. A snapshot
-(generation, window-centre frame, levels, bands, a 32-point envelope and a
-1024-point waveform, mixed and of each of the first two channels) goes into a history of 32 under its own lock, which
-readers copy. A new generation clears the ring and the history. The last
-consumer's going removes the tap and stops the worker.
-Publication:: The status and the snapshot nearest the playhead are emitted
-on timers at the smallest interval their subscribers asked for, only while
-playing, and on every transport change. A native consumer samples the
-history directly (`AudioSurfaceSources`): `latest(at:)` picks the snapshot
-nearest the audible playhead (the position, extrapolated to the frame time
-when within 100 ms of now, less the output's presentation latency), and
-every transport change calls `SurfaceSources.changed` for the `audio.*`
-names. None of this runs Roc off the main thread or waits on a consumer.
-Timing:: On an Apple silicon Mac with its built-in output, the tap delivers
-100 ms chunks (2205 frames at 22.05 kHz, 4410 at 44.1 kHz, 4800 at 48 kHz)
-whatever buffer size is asked for, so the newest snapshot trails the render
-position by up to about 100 ms; the output's presentation latency was 2 ms.
-Drawing the snapshot nearest the audible playhead therefore lags the sound
-by up to one chunk.
+Analysis:: An opt-in tap on the EQ's output while a consumer holds it: an
+`Audio.analysis` subscription, or a native source sampled within the last
+second. The tap is a render notification on the EQ's audio unit
+(`AudioUnitAddRenderNotify` on `AVAudioUnitEQ.audioUnit`, AudioToolbox), so
+each render cycle's buffer, 512 frames on most outputs, arrives on the audio
+render thread as soon as it is rendered, after the EQ and before the main
+mixer's volume. AVAudioEngine's `installTap` was the first tap: it delivers
+100 ms chunks whatever buffer size is asked for, so its newest data was up
+to a chunk old and a 5 ms click often never reached a measurement at all
+(see Timing). An `AVAudioSinkNode` would need a branch of the graph of its
+own and serves only an engine rendering to a device, not the manual clock.
+The notification, called before and after each render, takes only the
+post-render call of bus 0 with a valid sample time, and copies the buffer
+list's channels (read directly, not through the CoreAudio overlay's
+wrapper) into a ring of 32 preallocated slots of up to 8192 frames and 2
+channels, then returns: it tries the ring's `os_unfair_lock` a bounded
+number of times and never blocks (a buffer that finds it held is dropped),
+allocates nothing, calls nothing of AVFAudio's (asking the player from the
+render thread deadlocks against `AVAudioPlayerNode.stop` on the main
+thread), and overwrites the oldest slot when the worker is behind. It also
+keeps each buffer's render stamp (its node sample time and host time) in a
+preallocated ring of 2048. A worker `Thread`, looking every millisecond,
+takes slots, keeps a rolling 2048-sample window, and every 512 samples
+measures it with Accelerate (`vDSP_measqv`, `vDSP_maxmgv`,
+`vDSP_hann_window`, `vDSP_ctoz`, `vDSP_fft_zrip`, `vDSP_zvmags`): levels,
+24 band energies (each band takes the share of every FFT bin its range
+overlaps, so the bands narrower than a bin below about 160 Hz still read
+the energy there) and the waveform. A snapshot (generation, window-centre
+frame, levels, bands, a 32-point envelope and a 1024-point waveform, mixed
+and of each of the first two channels) goes into a history of 128 (about
+1.4 s at 48 kHz) under its own lock, which readers copy. A new generation
+clears the ring and the history. The last consumer's going removes the
+notification and stops the worker.
+Publication:: The status and the snapshot for now are emitted on timers at
+the smallest interval their subscribers asked for, only while playing, and
+on every transport change. A native consumer samples the history directly
+(`AudioSurfaceSources`): `latest(at:)` takes the snapshot for the frame's
+time (see Timing), and every transport change calls
+`SurfaceSources.changed` for the `audio.*` names. None of this runs Roc off
+the main thread or waits on a consumer.
+[#av-timing]
+Timing:: A frame shows the sound heard when it reaches the screen.
++
+--
+* *When the frame is seen.* A display-paced surface's frame is drawn for
+  its display link's `targetTimestamp` plus the median, over its last 31
+  frames, of how far after their target Metal presented them
+  (`CAMetalDrawable.addPresentedHandler`'s `presentedTime`), within 0 to
+  100 ms; Core Graphics, which has no presented time, adds nothing. The
+  shaders' `time` and `dt` count in the same times, so the picture's motion
+  keeps the same timebase. A frame due while one presented frame has not yet
+  reached the glass is skipped, so the layer never queues a second frame:
+  queued, every later frame appeared a refresh or two after its target
+  (33 to 67 ms in the first measurements), and the picture lagged by as much.
+* *What is heard then.* The newest render stamp says that the EQ node's
+  frame `n` leaves the output at its host time plus the output latency, so
+  the frame heard at time `t` is `n + (t - latency - visual offset - host
+  time) * rate`, placed on the source timeline by the player's known start.
+  The output latency is the larger of AVAudioEngine's
+  `outputNode.presentationLatency` and Core Audio's device latency plus its
+  first output stream's latency (`kAudioDevicePropertyLatency` and
+  `kAudioStreamPropertyLatency`, read with `AudioObjectGetPropertyData`):
+  on an M2 MacBook Air's speakers the first is 1.5 ms and the second
+  21.2 ms (a 1.5 ms device latency and a 19.7 ms stream latency), so
+  `presentationLatency` alone would show the picture 20 ms early. The
+  safety offset and the IO buffer come before the time stamp, so neither
+  is added. Under the manual clock, with no host times, it is the frame
+  rendered to.
+* *Which measurement.* The snapshot whose window *ends* at the frame heard
+  (its centre half a window, 1024 frames, earlier), the nearest of the
+  history. A meter shows what has been heard; a window centred on the
+  playhead holds the next 21 ms too, and a click would flash before it
+  sounds, which viewers tolerate less than a picture that trails.
+--
++
+The harness (`host/AVTiming.swift`, xref:apps.adoc#av-sync[Measure
+audio/visual sync]) measures the result end to end on the real clock. On an
+M2 MacBook Air (60 Hz) with its speakers, playing a click every 500 ms
+through the visualizer's Sync Test:
++
+[cols="2,1,1,1,1",options="header"]
+|===
+| Pipeline | Clicks flashed | Mean | 95th percentile | Window lag
+| `installTap`, nearest window centre to the render position | 0–1 of 13 | +86 to +131 ms (when one flashed) | – | 66–91 ms
+| render notification, same choice | 13 of 13 | +1 to +30 ms | 10 to 46 ms | 14–43 ms
+| render notification, the frame drawn for when it is seen, the window ending at the sound heard then, one frame queued at most | 90 of 91 (7 runs; the one missed as the screen locked) | +7.9 ms (runs +6.8 to +10.4) | 10.4 ms (largest 21.2, earliest +4.3: none led) | 21–22 ms
+|===
++
+The window lag is how long after its window's centre was heard each frame
+was seen: half a window, 21 ms, is the least the window-end choice allows.
+Frame pacing holds with the shaded presets too: the visualizer's
+`specs/av-pacing.scm` plays the starter's song through each of the twelve
+for three seconds in a 1400 × 860-point window at the display's backing
+scale (2), and on that Mac every one drew 191–195 frames with no refresh
+missed and none skipped, frame time 16.7 ms at the 50th and 99th
+percentiles, and a GPU time a frame of 1.4–3.2 ms (50th percentile) and
+2.0–3.5 ms (99th).
+The offsets fall a refresh apart (16.7 ms), since a run's clicks keep one
+phase against the display. A measurement trusts the system's times; what a
+camera sees is checked by hand before a release
+(xref:contributing.adoc#av-sync-by-hand[Audio/visual sync by hand]).
 The manual clock:: A spec's `(audio-clock manual)` enables
 `enableManualRenderingMode(.offline)` at 48 kHz stereo: nothing plays to a
 device, and only a `(render MS)` step advances the clock, in 1024-frame
-renders, after which the host waits (at most 2 s) for the tap to deliver
-every whole chunk rendered and the worker to measure it, then publishes.
+renders. The render notification runs within each render, so after each
+one the host waits (at most 2 s) while the ring is all but full, unless a
+spec stalled the worker, and at the end until the worker has measured
+everything: every buffer rendered is measured, whatever the worker's speed,
+then the host publishes.
 `.dataPlayedBack` completions do not fire in this mode, so a render that
 reaches the end ends the source itself, through the same generation check.
 The node times follow from the frames rendered, so every spec
@@ -1301,7 +1376,7 @@ through `roc src/main.roc`, so a run mode the stubs cannot link fails the gate.
 Swift is compiled with `-disable-autolink-frameworks` and
 `-disable-force-load-symbols`, so the frameworks linked are exactly the
 catalog's. Roc then links each `X.framework/X.tbd` it finds. The resulting
-binaries load only `AppKit`, `Foundation`, `CoreGraphics`, `AVFAudio`,
+binaries load only `AppKit`, `Foundation`, `CoreGraphics`, `AVFAudio`, `AudioToolbox`, `CoreAudio`,
 `Accelerate`, `libSystem`, `libobjc` and the Swift runtime and overlays in
 `/usr/lib/swift`. `Accelerate`'s stub lists the vDSP functions under the
 umbrella's install name, which re-exports vecLib's `libvDSP` where they are

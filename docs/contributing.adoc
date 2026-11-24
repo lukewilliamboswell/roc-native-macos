@@ -500,6 +500,40 @@ blueprint run release -- test build/release
 blueprint run release -- notes 0.0.1-dryrun build/release build/release-notes.md
 ----
 
+[#av-sync-by-hand]
+=== Audio/visual sync by hand
+
+The timing harness (xref:apps.adoc#av-sync[Measure audio/visual sync])
+trusts what macOS reports: the render time stamps, the output's latency and
+the presented times. Whether the speaker and the glass agree with them only
+a camera can say, so before a release a maintainer checks it by eye, on an
+Apple silicon Mac with its built-in speakers and, where there is one, a
+Bluetooth speaker or headphones:
+
+. Build the starter (`blueprint run build -- starter`), open it, set the
+  system volume to about half, and open the EQ panel. Under Picture sync,
+  note the output named and set the offset to 0 ms.
+. Press Sync Test: the queue gains the click track and the Sync Test preset
+  shows a ring that flashes on each click, twice a second.
+. Film the screen and the speaker together with a phone's slow-motion video
+  (240 frames a second: 4.2 ms a frame), the phone close enough to hear the
+  clicks clearly, for ten clicks or more.
+. Step through the video frame by frame. For each click, count the frames
+  from the first frame the ring brightens to the first frame of the click's
+  sound on the audio track (the editor's waveform, or the frame whose sound
+  starts). Seen minus heard, in milliseconds, is the offset.
+. The release holds when, on the built-in speakers, the mean is within
+  ±30 ms, no flash comes more than 15 ms before its click, and none more
+  than 45 ms after. Record the numbers in the release's notes.
+. On a Bluetooth output, set Picture sync's offset to the mean measured
+  (a flash after its click wants a negative offset, one before it a
+  positive), film again, and check the same bounds; the offset is then kept
+  for that output.
+
+Then run the harness on the same Mac, `ROC_AV_TIMING=1 ./examples/visualizer/visualizer`
+with the Gallery's Sync Test, and note how far its report's mean is from the
+filmed one: that difference is what macOS does not report.
+
 [#repository-settings]
 === Repository settings
 

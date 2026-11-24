@@ -103,6 +103,11 @@ Store := [Music].{
 			## The file an export built, for the save panel (`Export.saving`).
 			saving: Engine.cell(Engine.outbox({})),
 
+			## The audio output playing (`Media.Status.output`), and the
+			## picture's sync offset kept for each output calibrated.
+			output: Engine.cell({ name: "", uid: "" }),
+			offsets: Engine.cell(Prefs.defaults.offsets),
+
 			## One line about the last thing that happened.
 			notice: Engine.cell("Press Play for the default song, or drop your own songs here with their .lrc or .txt lyrics."),
 		}.Engine.Cells,
@@ -136,6 +141,7 @@ Store := [Music].{
 			.with_initial(Store.cells.lyric_size, saved_prefs.lyric_size)
 			.with_initial(Store.cells.volume, saved_prefs.volume)
 			.with_initial(Store.cells.eq, saved_prefs.eq)
+			.with_initial(Store.cells.offsets, saved_prefs.offsets)
 	}
 
 	## The default song: the one the queue starts with, so the app plays
@@ -423,6 +429,48 @@ Store := [Music].{
 			[Store.cells.player.set({ ..player, status: phase, position_ms: status.position_ms, duration_ms: if (status.duration_ms > 0) status.duration_ms else player.duration_ms, reset: status.generation })]
 		}
 
+	# ------------------------------------------------------------ picture sync
+
+	## What picture sync reads: the output playing and the offsets kept.
+	Sync : { output : Media.Output, offsets : List(Prefs.Offset) }
+
+	## A status names the output playing: it is kept, and when the offset
+	## the player applies is not the one kept for that output (a new
+	## launch, or another output chosen in Sound settings), the kept one is
+	## sent.
+	output_heard : Sync, Media.Status -> List(Engine.Write(_))
+	output_heard = |{ output, offsets }, status| {
+		want = Prefs.offset_for(offsets, status.output.uid).to_f32()
+		kept = if (status.output == output) [] else [Store.cells.output.set(status.output)]
+		off = status.visual_offset_ms - want
+		kept.concat(if (status.output.uid.is_empty() or (off < 0.5 and off > -0.5)) [] else Store.send([VisualOffset(want)]))
+	}
+
+	## The offset slider moved: kept for the output playing, and applied.
+	offset_set : Sync, Str -> List(Engine.Write(_))
+	offset_set = |{ output, offsets }, typed| {
+		kept = Prefs.with_offset(offsets, output.uid, I64.from_str(typed) ?? 0)
+		[Store.cells.offsets.set(kept)].concat(Store.send([VisualOffset(Prefs.offset_for(kept, output.uid).to_f32())]))
+	}
+
+	## The Sync Test: its click track joins the queue and plays, under the
+	## Sync Test preset.
+	sync_test : Now, List(Preset.Doc) -> List(Engine.Write(_))
+	sync_test = |{ queue, player }, mine| {
+		{ queue: grown, refused: _ } = Queue.added(queue, [Store.sync_track])
+		after = match Queue.entries(grown).last() {
+			Ok(entry) => Queue.select(grown, entry.id)
+			Err(_) => grown
+		}
+		[Store.cells.queue.set(after)]
+			.concat(Store.chose(mine, Library.sync_test.id))
+			.concat(Store.moved(queue, after, { ..player, status: Playing }))
+	}
+
+	## The Sync Test's track: a click every half second (`assets/sync-test.wav`).
+	sync_track : Track
+	sync_track = { file: Bundled("sync-test.wav"), title: "Sync Test", lyrics: NoLyrics }
+
 	# ------------------------------------------------------------ the EQ
 
 	eq_changed : Eq.Settings -> List(Engine.Write(_))
@@ -625,8 +673,8 @@ Store := [Music].{
 		}
 
 	## The listener's choices, as `Prefs` saves them.
-	prefs : { lyrics : Bool, lyric_size : Prefs.LyricSize, chosen : Str, volume : I64, eq : Eq.Settings } -> Prefs.Choices
-	prefs = |s| { lyrics: s.lyrics, lyric_size: s.lyric_size, preset: s.chosen, volume: s.volume, eq: s.eq }
+	prefs : { lyrics : Bool, lyric_size : Prefs.LyricSize, chosen : Str, volume : I64, eq : Eq.Settings, offsets : List(Prefs.Offset) } -> Prefs.Choices
+	prefs = |s| { lyrics: s.lyrics, lyric_size: s.lyric_size, preset: s.chosen, volume: s.volume, eq: s.eq, offsets: s.offsets }
 }
 
 ## A song and its lyric file dropped together: the song is queued and
@@ -716,4 +764,15 @@ expect {
 		and cues.len() == 45
 		and Lyrics.shown(cues, 6_000).now == ["The Roc on the kick has a crack in its beak."]
 		and Store.opening == [LoadAsset({ track: 1, path: "polymorphic-defunctionalization.mp3" })]
+}
+
+## A status from another output sends the offset kept for it; one that
+## already applies it sends nothing.
+expect {
+	speakers = { name: "MacBook Air Speakers", uid: "BuiltIn" }
+	status = { ..Media.status_at(Media.stopped, 0), output: speakers }
+	offsets = [{ output: "BuiltIn", ms: 20 }]
+	heard = Store.store.after(Store.output_heard({ output: { name: "", uid: "" }, offsets }, status))
+	again = Store.output_heard({ output: speakers, offsets }, { ..status, visual_offset_ms: 20 })
+	heard.read(Store.cells.output) == speakers and heard.read(Store.cells.media).last() == Posted([VisualOffset(20)]) and again.len() == 0
 }

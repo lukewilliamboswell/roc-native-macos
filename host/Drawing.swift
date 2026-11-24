@@ -631,8 +631,10 @@ final class DrawingSurface: NSView {
     // MARK: Frames
 
     /// A display refresh (or a spec's `frame`): one new frame now.
-    func tick(at time: Double) {
+    func tick(at time: Double, link: (tick: Double, target: Double)? = nil) {
+        tickedBy = link
         produce(at: time)
+        tickedBy = nil
         needsDisplay = true
     }
 
@@ -641,6 +643,13 @@ final class DrawingSurface: NSView {
     func produceIfDue() {
         if due, !ticking { produce(at: FrameClock.shared.now) }
     }
+
+    /// How long after its display-link target a frame reaches the glass:
+    /// Metal's measure of its last frames, 0 for Core Graphics.
+    var presentLag: Double { metal?.presentLag ?? 0 }
+
+    /// The display-link tick being drawn, for AVTiming.
+    private var tickedBy: (tick: Double, target: Double)?
 
     /// Draw one logical frame at `time`.
     private func produce(at time: Double) {
@@ -651,8 +660,9 @@ final class DrawingSurface: NSView {
             // covers its time.
             guard render(steps, with: metal, at: time) else { return }
             snapshotIfDue(at: time)
-        } else if let trail {
-            composite(steps, trail, at: time)
+        } else {
+            if let link = tickedBy { _ = AVTiming.shared.frame(label: label, tick: link.tick, target: link.target, drawnFor: time, metal: false) }
+            if let trail { composite(steps, trail, at: time) }
         }
         last = steps
         lastTime = time
@@ -747,7 +757,9 @@ final class DrawingSurface: NSView {
                 paint = [Float(Double(c.redComponent) * a), Float(Double(c.greenComponent) * a), Float(Double(c.blueComponent) * a), Float(a)]
             }
         }
-        let drawn = metal.frame(scene, background: paint, trail: move, fade: fade, shaders: stages, label: label)
+        let timing = tickedBy.map { AVTiming.shared.frame(label: label, tick: $0.tick, target: $0.target, drawnFor: time, metal: true) } ?? 0
+        let drawn = metal.frame(scene, background: paint, trail: move, fade: fade, shaders: stages, label: label, timing: timing, aim: tickedBy?.target)
+        if !drawn { AVTiming.shared.skippedFrame() }
         if drawn, stages != nil { shaderFrames &+= 1 }
         return drawn
     }
@@ -1245,7 +1257,12 @@ final class FrameLink: NSObject {
 
     @objc func fire(_ link: CADisplayLink) {
         guard let surface else { stop(); return }
-        surface.tick(at: ProcessInfo.processInfo.systemUptime)
+        // The frame is drawn for when it will be on the screen, not for
+        // now: the refresh it targets, plus how far behind their targets
+        // its last frames reached the glass (Metal's presented times). Its
+        // sources read the sound heard then, and its shaders' time and dt
+        // count in the same refreshes.
+        surface.tick(at: link.targetTimestamp + surface.presentLag, link: (link.timestamp, link.targetTimestamp))
     }
 
     func stop() {

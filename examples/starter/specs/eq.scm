@@ -33,7 +33,7 @@
     (wait 200)
     (expect-eq :volume 50)
     (expect-snapshot :present true :loudest "7 -20, 18 -20")
-    (expect-dump (window :width 760 :height 859
+    (expect-dump (window :width 760 :height 907
                    (vstack :views 1
                      (vstack :views 9
                        (hstack :views 6
@@ -58,7 +58,7 @@
                              (text "Simple visuals" :color secondary-label :text-style caption1))
                            (text "Using Orb Garden" :color secondary-label :text-style caption1)
                            (box :border line:1:separator :fill text-background
-                             (scroll :views 15 :height 190
+                             (scroll :views 16 :height 190
                                (hstack :views 2
                                  (text "" :color accent)
                                  (button "Scope"))
@@ -103,7 +103,10 @@
                                  (button "Ripple Pool"))
                                (hstack :views 2
                                  (text "●" :color accent)
-                                 (button "Orb Garden"))))
+                                 (button "Orb Garden"))
+                               (hstack :views 2
+                                 (text "" :color accent)
+                                 (button "Sync Test"))))
                            (hstack :views 3
                              (button "New")
                              (button "Duplicate")
@@ -119,7 +122,7 @@
                            (image speaker.wave.2.fill)
                            (slider :value 50.0)))
                        (segmented :items ("Hide Panels" "Queue" "EQ" "Editor") :selected "EQ")
-                       (vstack :views 3
+                       (vstack :views 4
                          (hstack :views 4
                            (text "Equalizer" :text-style headline)
                            (spacer)
@@ -174,7 +177,16 @@
                              (hstack :views 3
                                (text "16 kHz" :color secondary-label :text-style caption1)
                                (slider :value 0.0)
-                               (text "0.0 dB" :design monospaced-digits :text-style caption1)))))
+                               (text "0.0 dB" :design monospaced-digits :text-style caption1))))
+                         (vstack :views 2
+                           (hstack :views 3
+                             (text "Picture sync" :text-style headline)
+                             (spacer)
+                             (button "Sync Test"))
+                           (hstack :views 3
+                             (text "Offset" :color secondary-label :text-style caption1)
+                             (slider :value 0.0)
+                             (text "0 ms" :design monospaced-digits :text-style caption1))))
                        (text "Added 1 song." :color secondary-label :text-style callout)
                        (shortcut)
                        (shortcut)

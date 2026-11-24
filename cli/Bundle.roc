@@ -8,6 +8,7 @@ import "../examples/starter/assets/CREDITS.md" as scaffold_assets_credits_md : S
 import "../examples/starter/assets/icon.png" as scaffold_assets_icon_png : List(U8)
 import "../examples/starter/assets/polymorphic-defunctionalization.lrc" as scaffold_assets_polymorphic_defunctionalization_lrc : Str
 import "../examples/starter/assets/polymorphic-defunctionalization.mp3" as scaffold_assets_polymorphic_defunctionalization_mp3 : List(U8)
+import "../examples/starter/assets/sync-test.wav" as scaffold_assets_sync_test_wav : List(U8)
 import "../examples/starter/fuzz/main.roc" as scaffold_fuzz_main_roc : Str
 import "../examples/starter/logic/Eq.roc" as scaffold_logic_eq_roc : Str
 import "../examples/starter/logic/Gallery.roc" as scaffold_logic_gallery_roc : Str
@@ -79,6 +80,7 @@ Bundle := [].{
 		{ path: "assets/icon.png", contents: Bytes(scaffold_assets_icon_png) },
 		{ path: "assets/polymorphic-defunctionalization.lrc", contents: Text(scaffold_assets_polymorphic_defunctionalization_lrc) },
 		{ path: "assets/polymorphic-defunctionalization.mp3", contents: Bytes(scaffold_assets_polymorphic_defunctionalization_mp3) },
+		{ path: "assets/sync-test.wav", contents: Bytes(scaffold_assets_sync_test_wav) },
 		{ path: "fuzz/main.roc", contents: Text(scaffold_fuzz_main_roc) },
 		{ path: "logic/Eq.roc", contents: Text(scaffold_logic_eq_roc) },
 		{ path: "logic/Gallery.roc", contents: Text(scaffold_logic_gallery_roc) },

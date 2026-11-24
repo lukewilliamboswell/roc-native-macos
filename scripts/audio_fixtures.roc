@@ -8,7 +8,9 @@ import cli.Path
 import cli.Stdout
 
 ## Write the audio player's recorded-case fixtures,
-## `examples/player/specs/fixtures/*.wav`, which are committed:
+## `examples/player/specs/fixtures/*.wav`, and the sync test's click track,
+## `examples/visualizer/specs/fixtures/sync-clicks.wav` and the starter's
+## `examples/starter/assets/sync-test.wav`, which are committed:
 ##
 ##     roc-stable scripts/audio_fixtures.roc
 ##
@@ -24,12 +26,22 @@ import cli.Stdout
 ##   register them.
 ## - `silence-44100.wav` and `silence-48000.wav`: 0.25 s of digital silence.
 ## - `invalid.wav`: a RIFF header over bytes that are not audio.
+## - `sync-clicks.wav` and `sync-test.wav`: 48 kHz mono, 8 s of silence with
+##   a 5 ms burst of a 1 kHz square wave at 0.9 of full scale every 500 ms,
+##   the first at 250 ms: the click track the audio/visual timing harness
+##   (host/AVTiming.swift) and the starter's Sync test play.
 main! = |_args| {
 	dir = "examples/player/specs/fixtures"
 	Path.create_all!(Path.utf8(dir))?
 	for { name, bytes } in fixtures {
 		Path.write_bytes!(Path.utf8("${dir}/${name}"), bytes)?
 		Stdout.line!("wrote ${dir}/${name} (${bytes.len().to_str()} bytes)")?
+	}
+	sync = wav(48000, 1, bursts(48000, 8 * 48000))
+	for path in ["examples/visualizer/specs/fixtures/sync-clicks.wav", "examples/starter/assets/sync-test.wav"] {
+		Path.create_all!(Path.utf8(Str.join_with(path.split_on("/").drop_last(1), "/")))?
+		Path.write_bytes!(Path.utf8(path), sync)?
+		Stdout.line!("wrote ${path} (${sync.len().to_str()} bytes)")?
 	}
 	Ok({})
 }
@@ -51,6 +63,22 @@ clicks = |rate, frames| {
 	every = rate // 4
 	width = rate // 500
 	(0.U64).until(frames).fold([], |out, i| out.append(if (i % every < width) 16384 else 0))
+}
+
+## `frames` samples at `rate`: silence with a 5 ms burst of a 1 kHz square
+## wave at 0.9 of full scale every 500 ms, the first at 250 ms.
+bursts : U64, U64 -> List(I16)
+bursts = |rate, frames| {
+	every = rate // 2
+	width = rate // 200
+	half = rate // 2000
+	(0.U64).until(frames).fold(
+		[],
+		|out, i| {
+			at = (i + every - rate // 4) % every
+			out.append(if (i < rate // 4 or at >= width) 0 else if ((at // half) % 2 == 0) 29491 else -29491)
+		},
+	)
 }
 
 ## 250 Hz and 4 kHz sines, each of amplitude 0.1 (-20 dBFS). With
@@ -99,6 +127,12 @@ expect {
 }
 
 expect clicks(2000, 1000).keep_if(|s| s != 0).len() == 8
+
+## Two bursts in a second: 5 ms each, the first at 250 ms, then 750 ms.
+expect {
+	b = bursts(4000, 4000)
+	(b.keep_if(|s| s != 0).len(), b.get(999), b.get(1000), b.get(1019), b.get(1020), b.get(3000)) == (40, Ok(0), Ok(29491), Ok(-29491), Ok(0), Ok(29491))
+}
 
 expect {
 	t = tones(48000, 4, Bool.True)
