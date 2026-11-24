@@ -27,8 +27,19 @@ roc macos.roc run
 ----
 
 `init` writes a project to build on, not a minimal one (the
-xref:apps.adoc#the-examples[examples] are smaller): an expense tracker that
-shows how a real app is laid out, with a copy of `macos.roc`, its metadata
+xref:apps.adoc#the-examples[examples] are smaller): a music player with a
+visualizer and lyrics that shows how a real app is laid out. Drop songs
+into its window with their `.lrc` or `.txt` lyrics, choose a visualizer
+preset, press Play, and turn on Lyrics (Command-L) to follow the words over
+the picture; it has a queue, an EQ, and a preset editor whose presets are
+saved, imported and exported as JSON. Its queue starts with a default song,
+_Polymorphic Defunctionalization Through Lambda Set Specialization_ by Luke
+Boswell, with timed lyrics, so it plays something at once; the song is
+licensed under CC BY 4.0, and `assets/CREDITS.md` carries its credit into
+the app (delete the song and `Store.default` to ship without it). It plays through
+the platform's `Audio` session and draws on a `Ui.surface` (see
+xref:apps.adoc#starter-seams[Where the starter meets the platform]). `init` also
+writes a copy of `macos.roc`, its metadata
 in `macos.json`, a `.gitignore` and a release workflow in
 `.github/workflows/release.yml` (see xref:apps.adoc#ship-your-app[Ship your
 app]). It is the repository's `starter` example. `run` builds `my-app.app`
@@ -45,21 +56,42 @@ code (xref:apps.adoc#hot-reloading[Hot reloading]).
 my-app/
   src/main.roc       the program: its store, window and workers
   src/Store.roc      shared state, and the decisions that change it
-  src/Home.roc       the window, composed from the store and the widgets
+  src/Player.roc     the window, composed from the store and the panels
+  src/Words.roc      the lyrics over the picture, and reading lyric files
+  src/Panels.roc     the queue and EQ panels
+  src/Editor.roc     the preset editor panel
   src/Widgets.roc    reusable widgets, which know nothing of the store
-  src/Import.roc     a worker task, and the site that asks for its jobs
-  logic/             the business logic: a package of pure Roc, no platform
+  src/Export.roc     a worker task, and the site that asks for its jobs
+  src/Media.roc      the audio session: commands out, events in
+  src/Visual.roc     the drawing surface: a scene in, a picture out
+  logic/             lyrics, the queue, presets and scenes: pure Roc, no platform
   fuzz/main.roc      roc-fuzz targets for the logic package
-  assets/icon.png    the app's icon, and any other images it draws
+  assets/            its icon, the default song and its lyrics, and their credits
   specs/             specs of the app: what its controls do, run by `test`
   AGENTS.md          how the project is laid out and worked on
   macos.json         the app's name, bundle identifier and version
 ----
 
 Every module opens with a comment saying what belongs in it, and
-`AGENTS.md` (which `CLAUDE.md` points to) says how state flows, how to add
-a screen, a widget, a worker or a fuzz target, and the mistakes to avoid,
-for whoever works on the project next, a person or an agent.
+`AGENTS.md` (which `CLAUDE.md` points to) says what Roc owns and what the
+host owns, how state flows, how to add a preset layer type, a widget, a
+panel, a worker or a fuzz target, and the mistakes to avoid, for whoever
+works on the project next, a person or an agent.
+
+[#starter-seams]
+==== Where the starter meets the platform
+
+Roc owns the player's queue, controls, presets and lyrics; the platform
+owns decoding, the EQ's processing, the audio clock, the measurements and
+the drawing. Only `src/Media.roc` and `src/Visual.roc` speak to those:
+`Media` sends `Audio` commands from an outbox and hears its events and
+status (whose position times the lyrics), and `Visual` turns a preset's
+scene (`logic/Scene.roc`) into a display-paced `Ui.surface` with a trail,
+under a `Ui.overlay` whose foreground holds the lyrics, so the words never
+enter the trail. The surface reads the measurements (`audio.waveform`,
+`audio.bands`, `audio.level` and the rest) natively, so the picture moves
+without Roc running each frame. Its specs drive both on the manual audio
+and frame clocks.
 
 The app's root module is `src/main.roc`, whose header names the platform by
 its release URL, and the logic package by its path:
@@ -72,8 +104,8 @@ app [main] {
 }
 ----
 
-`logic/main.roc` is a package header, `package [Ledger, Money] {}`, so the
-app imports `logic.Money`; the logic cannot import the platform, which keeps
+`logic/main.roc` is a package header, `package [Lyrics, Preset, Queue, ...] {}`,
+so the app imports `logic.Lyrics`; the logic cannot import the platform, which keeps
 it testable with `expect` and fuzzable on any system. `macos.json`,
 `assets/`, `specs/` and `fuzz/` stay at the top of the app's directory; the
 tool reads the root module from `src/main.roc` alone. Each release's notes give the platform's URL, so an app
@@ -167,7 +199,7 @@ not clash with another tool's `app.json`.
 
 Programs and state:: `Engine.program(|| view)` is an app with no store;
 local state comes from `Engine.state(initial, |s| ...)`, as in the counter
-and in the starter's form and cards (`src/Home.roc`, `src/Widgets.roc`).
+and in the starter's folding sections and confirm buttons (`src/Widgets.roc`).
 An app with shared state declares a store of cells and builds its view from
 their signals:
 +
@@ -330,7 +362,7 @@ The README shows each example running. What each one uses:
 |===
 | Example | Shows
 
-| `starter` | What `init` writes: an expense tracker laid out as a project, with modules in `src/` (a store with a table and decisions, a window composing them, a reusable `stat` and a `card` widget with local state, each used more than once), a worker importing a CSV file, saving to local storage, an icon, a pure logic package in `logic/` with `expect` tests, and roc-fuzz targets for it in `fuzz/`
+| `starter` | What `init` writes: a music player with a visualizer and lyrics, laid out as a project, with modules in `src/` (a store with decisions and an outbox of player commands, a window composing it, queue, EQ and preset-editor panels, `section`, `confirm_button` and `labelled_slider` widgets with local state, each used more than once), lyric files paired with songs by name and read through the bounded file API, timed lyrics following the position, presets saved to local storage, imported with a bounded read and exported by a worker's file builder and the save panel, an icon, a pure logic package in `logic/` (LRC parsing, the queue, a versioned preset format in JSON with field-level checks, scenes) with `expect` tests, roc-fuzz targets for it in `fuzz/`, the `Audio` session with a default song (`LoadAsset`), and a `Ui.surface` visualizer under a `Ui.overlay` of lyrics
 | `counter` | Local state (`Engine.state`), icon buttons, a large monospaced readout
 | `todos` | A store with a table, `table_view` rows (row templates) in a `Ui.scroll` inside a `box`, a form with Return-to-submit, a segmented filter, a Command-N shortcut, done rows greyed by `text_s`, an empty state, a shared `Theme`, saving to local storage and reading it back at boot, and `expect` tests
 | `gallery` | `tabs` over labelled sections: a dropdown, a slider and progress bar, a text area, text styles, semantic and adaptive colours, SF Symbols, Command-N/Command-K shortcuts
@@ -340,7 +372,7 @@ The README shows each example running. What each one uses:
 | `about` | Images from the app's `assets/` (`Ui.asset_image`): a PNG that is also the app's icon, and a PDF drawn as vectors
 | `file-inspector` | `Ui.file_button` and a `Ui.drop_zone` delivering `File` handles, sizes in KB and MB; for an inspected file its SHA-256 (`sha256`), its first 200 bytes as text or "binary" (`slice`, `read_bytes`), its URL (`object_url`) and "Save Copy…" (`File.save`); Clear releases the handles
 | `visualizer` | A drawing surface (`Ui.surface`) paced by the display, with a wave and a marker fed by the platform's synthetic sources, a trail that drifts and fades (`Echo`), Clear trail (`reset`), and a caption over the picture (`Ui.overlay`)
-| `player` | `Audio`: a local file played from a file button or drop zone, the transport (Play, Pause, Resume, Stop), seek and volume sliders, ten EQ sliders with a preamp, Bypass and Flat, and a level readout from the measurements while "Measure levels" is checked; its specs play generated fixtures (`scripts/audio_fixtures.roc`) without speakers
+| `player` | `Audio`: a local file played from a file button or drop zone, or a file the app ships in `assets/` (Play Sample, `LoadAsset`; Escape Assets is refused), the transport (Play, Pause, Resume, Stop), seek and volume sliders, ten EQ sliders with a preamp, Bypass and Flat, and a level readout from the measurements while "Measure levels" is checked; its specs play generated fixtures (`scripts/audio_fixtures.roc`) without speakers
 | `workers` | Worker tasks: the Mandelbrot set drawn as text by eight jobs at once, with progress, a heartbeat that keeps counting, Cancel and Zoom In (a new picture stops the old one's jobs); a Lab tab with a job that crashes (only it is lost), 24 jobs at once, an `on_cancel: Finish` job, a timed-out job, and a dropped file read and copied into a report by a job (`File.read!`, `Files.build!`), digested and saved by the page, and searched by a preparation a worker keeps
 |===
 
@@ -824,28 +856,25 @@ logic package as `src/main.roc` does, and declares its targets:
 
 [source,roc]
 ----
-target = Fuzz.suite([money_round_trip, money_parse, ledger_round_trip, ledger_import])
+target = Fuzz.suite([lrc_parse, lrc_round_trip, json_round_trip, preset_decode, preset_round_trip, queue_invariants])
 
-money_round_trip = Fuzz.target_with({
-	name: "money-round-trip",
-	generator: Fuzz.u64_in(0, Money.most),
-	test: |cents|
-		if cents > Money.most {
-			Fuzz.reject
-		} else if Money.parse(Money.format(cents)) == Ok(cents) {
-			Fuzz.keep
-		} else {
-			crash "${Money.format(cents)} did not parse back to ${cents.to_str()}"
+json_round_trip = Fuzz.target_with({
+	name: "json-round-trip",
+	generator: Fuzz.str,
+	test: |text|
+		match JsonValue.parse(text) {
+			Ok(value) => if (JsonValue.parse(JsonValue.encode(value)) == Ok(value)) Fuzz.keep else crash "${Str.inspect(text)} did not encode and parse back"
+			Err(_) => Fuzz.keep
 		},
 	show: Str.inspect,
-	examples: [Fuzz.example({ name: "zero", revision: "1", make: || 0 })],
+	examples: [Fuzz.example({ name: "deep", revision: "1", make: || Str.repeat("[", 40) })],
 })
 ----
 
 `roc macos.roc fuzz` builds it with `roc build --fuzz fuzz/main.roc` into
 `.macos/fuzz` and runs each target in turn for 10 seconds, keeping the
 inputs worth revisiting in `.roc-fuzz/corpus/<target>`;
-`roc macos.roc fuzz money-parse --time 300` runs one target for longer, and
+`roc macos.roc fuzz lrc-parse --time 300` runs one target for longer, and
 `roc macos.roc fuzz --check` runs only the examples each target declares,
 quickly, as the release workflow does. A failure prints its report and
 leaves the failing input under `.roc-fuzz/`, which

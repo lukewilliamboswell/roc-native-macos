@@ -31,6 +31,12 @@ Audio := [].{
 	##   app's own name for it, which every event and status carries. The
 	##   session holds the file while it is loaded, whatever the app does with
 	##   the handle.
+	## - `LoadAsset({ track, path })`: open a file the app ships in its
+	##   `assets/` (`"song.mp3"`, `"music/intro.m4a"`), found as
+	##   `Ui.asset_image` finds an image, and stop at its start, as `Load`
+	##   does, with the same events. A path that leaves `assets/`, or names
+	##   nothing there, is `Failed(Unsupported(…))`. It holds no file handle,
+	##   so it does not count against the app's 64.
 	## - `Play`: play from where playback stands (from the start after it
 	##   ended). `Resume`: continue after `Pause`, and nothing otherwise.
 	## - `Pause`: hold the playhead. `Stop`: let go of what is scheduled and
@@ -51,6 +57,7 @@ Audio := [].{
 	## fatal error of the host.
 	Command : [
 		Load({ track : U64, file : Engine.File }),
+		LoadAsset({ track : U64, path : Str }),
 		Play,
 		Resume,
 		Pause,
@@ -175,12 +182,13 @@ expect {
 		match endpoints.command.send(command) {
 			PortCommand({ port, message, .. }) => "${port} ${message.json}"
 		}
-	[sent(Seek(1500)), sent(Play), sent(Gain({ band: 3, db: -12 })), sent(Bypass(Bool.True))]
+	[sent(Seek(1500)), sent(Play), sent(Gain({ band: 3, db: -12 })), sent(Bypass(Bool.True)), sent(LoadAsset({ track: 2, path: "song.mp3" }))]
 		== [
 			"roc-native-macos/audio/command {\"Seek\":\"1500\"}",
 			"roc-native-macos/audio/command \"Play\"",
 			"roc-native-macos/audio/command {\"Gain\":{\"band\":3,\"db\":-12}}",
 			"roc-native-macos/audio/command {\"Bypass\":true}",
+			"roc-native-macos/audio/command {\"LoadAsset\":{\"path\":\"song.mp3\",\"track\":\"2\"}}",
 		]
 }
 

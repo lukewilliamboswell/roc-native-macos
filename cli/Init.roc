@@ -7,7 +7,7 @@ import Meta
 import Workflow
 
 ## `init [DIR]`: create an app in `DIR` (by default, this directory): the
-## starter example, an expense tracker with a logic package, fuzz targets,
+## starter example, a music player with a logic package, fuzz targets,
 ## an icon and specs. It writes only files that are not there yet, and
 ## copies this directory's `macos.roc` into a new directory so the app can
 ## run the tool from its own.
@@ -90,10 +90,10 @@ Init :: [].{
 	summary = |dir| {
 		next = if (dir == ".") "  roc macos.roc run" else "  cd ${dir}\n  roc macos.roc run"
 		lines = [
-			"Created an app on roc-native-macos ${Bundle.version}, an expense tracker to build on:",
+			"Created an app on roc-native-macos ${Bundle.version}, a music player to build on:",
 			"",
-			"  src/         the app: its program, store, window, widgets and a worker",
-			"  logic/       its business logic, a package of pure Roc with its expect tests",
+			"  src/         the app: its program, store, window, panels, widgets and a worker",
+			"  logic/       its logic (lyrics, the queue, presets), pure Roc with its expect tests",
 			"  fuzz/        roc-fuzz targets for that logic, which `roc macos.roc fuzz` runs",
 			"  assets/      its images; assets/icon.png is its icon",
 			"  specs/       specs of what it does, which `roc macos.roc test` checks",

@@ -121,7 +121,20 @@ final class AudioService: PortService {
             let f = message.files[i]
             guard let host else { return }
             let entry = host.resolve(f.token)
-            load(track: t, entry, range: (f.start, f.len))
+            if f.start != 0 || f.len != entry.size {
+                refuse(track: t, "Unsupported", "a byte range of a file; give the whole file")
+                return
+            }
+            load(track: t, path: entry.path, entry: entry)
+        case "LoadAsset":
+            // A file the app ships in assets/, found as an asset image is;
+            // a name outside assets/, or nothing there, fails the load.
+            guard let p = payload, let t = p["track"]?.uint64, case .string(let name)? = p["path"]
+            else { fatal("audio: LoadAsset needs a track and a path: \(message.json)") }
+            switch Assets.lookup(name) {
+            case .found(let path): load(track: t, path: path, entry: nil)
+            case .missing(let why): refuse(track: t, "Unsupported", why)
+            }
         case "Play": play()
         case "Resume": if state == .paused { play() }
         case "Pause": pause()
@@ -169,7 +182,25 @@ final class AudioService: PortService {
         publishStatus()
     }
 
-    private func load(track t: UInt64, _ e: FileEntry, range: (UInt64, UInt64)) {
+    /// A load that cannot start: the source is let go of, as a new load
+    /// does, and it fails with `tag` and `why`.
+    private func refuse(track t: UInt64, _ tag: String, _ why: String) {
+        newGeneration()
+        player.stop()
+        track = t
+        file = nil
+        entry = nil
+        cursor = 0
+        wantsPlay = false
+        pendingMs = nil
+        state = .idle
+        publishStatus()
+        event("Failed", fields: [("track", u64(t)), ("error", JsonText.tag(tag, JsonText.string(why)))])
+    }
+
+    /// Open the file at `path` as the new source: a file the app was given
+    /// (`e`, held while it is the source), or an asset (no entry).
+    private func load(track t: UInt64, path: String, entry e: FileEntry?) {
         newGeneration()
         player.stop()
         track = t
@@ -179,17 +210,11 @@ final class AudioService: PortService {
         wantsPlay = false
         pendingMs = nil
         let gen = generation
-        if range.0 != 0 || range.1 != e.size {
-            state = .idle
-            publishStatus()
-            event("Failed", fields: [("track", u64(t)), ("error", JsonText.tag("Unsupported", JsonText.string("a byte range of a file; give the whole file")))])
-            return
-        }
         state = .loading
         entry = e
         anchor()
         publishStatus()
-        guard let url = URL(string: "file://" + AudioService.percentEncoded(e.path)), let queue = host?.files.queue else { fatal("audio: no file URL for \(e.path)") }
+        guard let url = URL(string: "file://" + AudioService.percentEncoded(path)), let queue = host?.files.queue else { fatal("audio: no file URL for \(path)") }
         // Opening reads the header: off the main thread, on the file jobs' queue.
         queue.async {
             var opened: AVAudioFile?

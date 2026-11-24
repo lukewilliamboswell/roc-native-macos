@@ -4,20 +4,44 @@
 # differs from what the script generates for a checkout.
 import "../examples/starter/AGENTS.md" as scaffold_agents_md : Str
 import "../examples/starter/CLAUDE.md" as scaffold_claude_md : Str
+import "../examples/starter/assets/CREDITS.md" as scaffold_assets_credits_md : Str
 import "../examples/starter/assets/icon.png" as scaffold_assets_icon_png : List(U8)
+import "../examples/starter/assets/polymorphic-defunctionalization.lrc" as scaffold_assets_polymorphic_defunctionalization_lrc : Str
+import "../examples/starter/assets/polymorphic-defunctionalization.mp3" as scaffold_assets_polymorphic_defunctionalization_mp3 : List(U8)
 import "../examples/starter/fuzz/main.roc" as scaffold_fuzz_main_roc : Str
-import "../examples/starter/logic/Ledger.roc" as scaffold_logic_ledger_roc : Str
-import "../examples/starter/logic/Money.roc" as scaffold_logic_money_roc : Str
+import "../examples/starter/logic/Eq.roc" as scaffold_logic_eq_roc : Str
+import "../examples/starter/logic/JsonValue.roc" as scaffold_logic_jsonvalue_roc : Str
+import "../examples/starter/logic/Library.roc" as scaffold_logic_library_roc : Str
+import "../examples/starter/logic/Lyrics.roc" as scaffold_logic_lyrics_roc : Str
+import "../examples/starter/logic/Pairing.roc" as scaffold_logic_pairing_roc : Str
+import "../examples/starter/logic/Prefs.roc" as scaffold_logic_prefs_roc : Str
+import "../examples/starter/logic/Preset.roc" as scaffold_logic_preset_roc : Str
+import "../examples/starter/logic/Queue.roc" as scaffold_logic_queue_roc : Str
+import "../examples/starter/logic/Scene.roc" as scaffold_logic_scene_roc : Str
 import "../examples/starter/logic/main.roc" as scaffold_logic_main_roc : Str
-import "../examples/starter/specs/add.scm" as scaffold_specs_add_scm : Str
-import "../examples/starter/specs/cards.scm" as scaffold_specs_cards_scm : Str
-import "../examples/starter/specs/fixtures/expenses.csv" as scaffold_specs_fixtures_expenses_csv : Str
-import "../examples/starter/specs/import.scm" as scaffold_specs_import_scm : Str
+import "../examples/starter/specs/default.scm" as scaffold_specs_default_scm : Str
+import "../examples/starter/specs/ember.scm" as scaffold_specs_ember_scm : Str
+import "../examples/starter/specs/eq.scm" as scaffold_specs_eq_scm : Str
+import "../examples/starter/specs/fixtures/clicks.lrc" as scaffold_specs_fixtures_clicks_lrc : Str
+import "../examples/starter/specs/fixtures/clicks.wav" as scaffold_specs_fixtures_clicks_wav : List(U8)
+import "../examples/starter/specs/fixtures/ember-tunnel.json" as scaffold_specs_fixtures_ember_tunnel_json : Str
+import "../examples/starter/specs/fixtures/tones-44100.wav" as scaffold_specs_fixtures_tones_44100_wav : List(U8)
+import "../examples/starter/specs/fixtures/verses.txt" as scaffold_specs_fixtures_verses_txt : Str
+import "../examples/starter/specs/lyrics.scm" as scaffold_specs_lyrics_scm : Str
+import "../examples/starter/specs/plain.scm" as scaffold_specs_plain_scm : Str
+import "../examples/starter/specs/presets.scm" as scaffold_specs_presets_scm : Str
 import "../examples/starter/specs/problem.scm" as scaffold_specs_problem_scm : Str
-import "../examples/starter/src/Home.roc" as scaffold_src_home_roc : Str
-import "../examples/starter/src/Import.roc" as scaffold_src_import_roc : Str
+import "../examples/starter/specs/trails.scm" as scaffold_specs_trails_scm : Str
+import "../examples/starter/specs/transport.scm" as scaffold_specs_transport_scm : Str
+import "../examples/starter/src/Editor.roc" as scaffold_src_editor_roc : Str
+import "../examples/starter/src/Export.roc" as scaffold_src_export_roc : Str
+import "../examples/starter/src/Media.roc" as scaffold_src_media_roc : Str
+import "../examples/starter/src/Panels.roc" as scaffold_src_panels_roc : Str
+import "../examples/starter/src/Player.roc" as scaffold_src_player_roc : Str
 import "../examples/starter/src/Store.roc" as scaffold_src_store_roc : Str
+import "../examples/starter/src/Visual.roc" as scaffold_src_visual_roc : Str
 import "../examples/starter/src/Widgets.roc" as scaffold_src_widgets_roc : Str
+import "../examples/starter/src/Words.roc" as scaffold_src_words_roc : Str
 import "../examples/starter/src/main.roc" as scaffold_src_main_roc : Str
 
 ## What this copy of the tool ships with: the release it belongs to, that
@@ -47,20 +71,44 @@ Bundle := [].{
 	scaffold = [
 		{ path: "AGENTS.md", contents: Text(scaffold_agents_md) },
 		{ path: "CLAUDE.md", contents: Text(scaffold_claude_md) },
+		{ path: "assets/CREDITS.md", contents: Text(scaffold_assets_credits_md) },
 		{ path: "assets/icon.png", contents: Bytes(scaffold_assets_icon_png) },
+		{ path: "assets/polymorphic-defunctionalization.lrc", contents: Text(scaffold_assets_polymorphic_defunctionalization_lrc) },
+		{ path: "assets/polymorphic-defunctionalization.mp3", contents: Bytes(scaffold_assets_polymorphic_defunctionalization_mp3) },
 		{ path: "fuzz/main.roc", contents: Text(scaffold_fuzz_main_roc) },
-		{ path: "logic/Ledger.roc", contents: Text(scaffold_logic_ledger_roc) },
-		{ path: "logic/Money.roc", contents: Text(scaffold_logic_money_roc) },
+		{ path: "logic/Eq.roc", contents: Text(scaffold_logic_eq_roc) },
+		{ path: "logic/JsonValue.roc", contents: Text(scaffold_logic_jsonvalue_roc) },
+		{ path: "logic/Library.roc", contents: Text(scaffold_logic_library_roc) },
+		{ path: "logic/Lyrics.roc", contents: Text(scaffold_logic_lyrics_roc) },
+		{ path: "logic/Pairing.roc", contents: Text(scaffold_logic_pairing_roc) },
+		{ path: "logic/Prefs.roc", contents: Text(scaffold_logic_prefs_roc) },
+		{ path: "logic/Preset.roc", contents: Text(scaffold_logic_preset_roc) },
+		{ path: "logic/Queue.roc", contents: Text(scaffold_logic_queue_roc) },
+		{ path: "logic/Scene.roc", contents: Text(scaffold_logic_scene_roc) },
 		{ path: "logic/main.roc", contents: Text(scaffold_logic_main_roc) },
-		{ path: "specs/add.scm", contents: Text(scaffold_specs_add_scm) },
-		{ path: "specs/cards.scm", contents: Text(scaffold_specs_cards_scm) },
-		{ path: "specs/fixtures/expenses.csv", contents: Text(scaffold_specs_fixtures_expenses_csv) },
-		{ path: "specs/import.scm", contents: Text(scaffold_specs_import_scm) },
+		{ path: "specs/default.scm", contents: Text(scaffold_specs_default_scm) },
+		{ path: "specs/ember.scm", contents: Text(scaffold_specs_ember_scm) },
+		{ path: "specs/eq.scm", contents: Text(scaffold_specs_eq_scm) },
+		{ path: "specs/fixtures/clicks.lrc", contents: Text(scaffold_specs_fixtures_clicks_lrc) },
+		{ path: "specs/fixtures/clicks.wav", contents: Bytes(scaffold_specs_fixtures_clicks_wav) },
+		{ path: "specs/fixtures/ember-tunnel.json", contents: Text(scaffold_specs_fixtures_ember_tunnel_json) },
+		{ path: "specs/fixtures/tones-44100.wav", contents: Bytes(scaffold_specs_fixtures_tones_44100_wav) },
+		{ path: "specs/fixtures/verses.txt", contents: Text(scaffold_specs_fixtures_verses_txt) },
+		{ path: "specs/lyrics.scm", contents: Text(scaffold_specs_lyrics_scm) },
+		{ path: "specs/plain.scm", contents: Text(scaffold_specs_plain_scm) },
+		{ path: "specs/presets.scm", contents: Text(scaffold_specs_presets_scm) },
 		{ path: "specs/problem.scm", contents: Text(scaffold_specs_problem_scm) },
-		{ path: "src/Home.roc", contents: Text(scaffold_src_home_roc) },
-		{ path: "src/Import.roc", contents: Text(scaffold_src_import_roc) },
+		{ path: "specs/trails.scm", contents: Text(scaffold_specs_trails_scm) },
+		{ path: "specs/transport.scm", contents: Text(scaffold_specs_transport_scm) },
+		{ path: "src/Editor.roc", contents: Text(scaffold_src_editor_roc) },
+		{ path: "src/Export.roc", contents: Text(scaffold_src_export_roc) },
+		{ path: "src/Media.roc", contents: Text(scaffold_src_media_roc) },
+		{ path: "src/Panels.roc", contents: Text(scaffold_src_panels_roc) },
+		{ path: "src/Player.roc", contents: Text(scaffold_src_player_roc) },
 		{ path: "src/Store.roc", contents: Text(scaffold_src_store_roc) },
+		{ path: "src/Visual.roc", contents: Text(scaffold_src_visual_roc) },
 		{ path: "src/Widgets.roc", contents: Text(scaffold_src_widgets_roc) },
+		{ path: "src/Words.roc", contents: Text(scaffold_src_words_roc) },
 		{ path: "src/main.roc", contents: Text(scaffold_src_main_roc) },
 	]
 }

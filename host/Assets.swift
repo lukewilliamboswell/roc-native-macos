@@ -39,19 +39,30 @@ enum Assets {
     /// The file an asset name stands for. A name is a path inside `assets/`
     /// (`logo.png`, `icons/star.pdf`), never outside it.
     static func path(_ name: String) -> String {
+        switch lookup(name) {
+        case .found(let path): return path
+        case .missing(let why): fatal(why)
+        }
+    }
+
+    /// Where an asset name leads: the file, or why there is none, for a
+    /// caller that reports it rather than stopping (`Audio`'s `LoadAsset`).
+    enum Lookup { case found(String), missing(String) }
+
+    static func lookup(_ name: String) -> Lookup {
         let parts = name.split(separator: "/", omittingEmptySubsequences: false).map(String.init)
         if name.isEmpty || parts.contains(where: { $0.isEmpty || $0 == "." || $0 == ".." }) {
-            fatal("asset \"\(name)\" is not a name inside the app's assets/ directory (such as logo.png or icons/star.pdf)")
+            return .missing("asset \"\(name)\" is not a name inside the app's assets/ directory (such as logo.png or icons/star.pdf)")
         }
         guard let directory else {
             let looked = ProcessInfo.processInfo.environment["ROC_ASSETS"].map { ["ROC_ASSETS=\($0)"] } ?? searched
-            fatal("asset \"\(name)\": the app has no assets directory (looked in \(looked.joined(separator: ", "))). Put it in assets/ beside main.roc and build the app again.")
+            return .missing("asset \"\(name)\": the app has no assets directory (looked in \(looked.joined(separator: ", "))). Put it in assets/ beside main.roc and build the app again.")
         }
         let path = "\(directory)/\(name)"
         guard kind(path) == 0o100000 else {
-            fatal("asset \"\(name)\" is not in the app's assets (\(directory)). Put it in assets/ beside main.roc and build the app again.")
+            return .missing("asset \"\(name)\" is not in the app's assets (\(directory)). Put it in assets/ beside main.roc and build the app again.")
         }
-        return path
+        return .found(path)
     }
 
     /// An image asset, read once.

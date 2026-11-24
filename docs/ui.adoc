@@ -543,7 +543,7 @@ Commands:: `Load({ track, file })` opens a whole `File` (a slice is
 number for it, which every event and status carries. The host keeps its own
 reference to the file while it is loaded, so dropping the handle does not
 stop playback, and the handle still counts against the 64 an app holds only
-while the app holds it. `Play` plays from where playback stands (from the
+while the app holds it. `LoadAsset({ track, path })` opens a file the app ships in its `assets/` (`"song.mp3"`), found as `Ui.asset_image` finds an image (`ROC_ASSETS`, the `.app`'s `Resources/assets`, then `assets/` beside the program or in the working directory), and behaves as `Load` does, with the same events; it holds no file handle, so it never counts against the 64, and a path that leaves `assets/` or names nothing there is `Failed(Unsupported(…))`. `Play` plays from where playback stands (from the
 start after `Ended`); `Pause` holds the playhead and `Resume` continues;
 `Stop` lets go of what is scheduled and goes back to the start; `Seek(ms)`
 moves the playhead, clamped to the duration: playing goes on playing, paused

@@ -150,7 +150,7 @@ MacOS :: [].{
 	command_usage = |command| {
 		description = match command {
 			"init" =>
-				\\Create an app to build on: an expense tracker with its tests.
+				\\Create an app to build on: a music player with its tests.
 				\\
 				\\Usage: roc macos.roc init [DIR]
 				\\
@@ -394,7 +394,7 @@ MacOS :: [].{
 			NotThisMac({ bundle, mac, built }) => { code: 1, text: "Built ${bundle} for ${built}, which this Mac, one of the ${mac}, cannot run: build it with --target x64mac, or without --target for a universal app." }
 			NotUniversal(_) => { code: 1, text: "roc build did not write one Mac program for Apple silicon and one for Intel in .macos/, so they cannot be joined into the app's universal program: build again, and report it if it recurs." }
 			DevFailed({ how, code, entry }) => { code, text: "roc ${entry} ${how}: its output is above." }
-			NoCases => { code: 1, text: "There is nothing to test: specs/ holds no .scm files. `roc macos.roc init` writes specs/add.scm as an example, and `roc macos.roc test --help` describes them." }
+			NoCases => { code: 1, text: "There is nothing to test: specs/ holds no .scm files. `roc macos.roc init` writes specs/presets.scm as an example, and `roc macos.roc test --help` describes them." }
 			CasesFailed({ failed, total }) => { code: 1, text: "${failed.len().to_str()} of ${total.to_str()} specs failed: ${Str.join_with(failed, ", ")}. If the app changed on purpose, rewrite their dumps with `roc macos.roc test --update`." }
 			SpecsInvalid({ invalid, total }) => { code: 1, text: "${invalid.to_str()} of ${total.to_str()} specs could not be parsed, at the places above; `roc macos.roc test --help` describes the form." }
 			AppFailed(how) => { code: 1, text: "The app ${how}: its output is above." }

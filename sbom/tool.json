@@ -42,6 +42,20 @@
       "modified": "",
       "target": "",
       "origin": "reviewed"
+    },
+    {
+      "id": "starter-default-song",
+      "name": "Polymorphic Defunctionalization Through Lambda Set Specialization (the starter's default song and its timed lyrics)",
+      "version": "NOASSERTION",
+      "producer": "Person: Luke Boswell",
+      "license": "CC-BY-4.0",
+      "license_url": "https://creativecommons.org/licenses/by/4.0/",
+      "identity": "https://gist.github.com/lukewilliamboswell/be88b49154f602495f2821a01f995d1f",
+      "download": "https://gist.githubusercontent.com/lukewilliamboswell/be88b49154f602495f2821a01f995d1f/raw/polymorphic-defunctionalization-through-lambda-set-specialization-compact.mp3",
+      "sha256": "fe7cddae1237460fa7498b2f213666ae0fc16d89894903c8a2f40b2618d21ba5",
+      "modified": "",
+      "target": "",
+      "origin": "reviewed"
     }
   ],
   "relationships": [
@@ -65,6 +79,13 @@
       "relation": "dependsOn",
       "scope": "runtime",
       "basis": "Bundle.roc names the platform bundle of the same release, which `init` writes into a new app's header; the compiler fetches it when that app builds."
+    },
+    {
+      "from": "Subject",
+      "to": "starter-default-song",
+      "relation": "contains",
+      "scope": "",
+      "basis": "The starter scaffold in the tool's package carries the default song, assets/polymorphic-defunctionalization.mp3, and its timed lyrics, under CC BY 4.0, not the UPL; `init` copies them, with assets/CREDITS.md attributing them, into every new app."
     }
   ],
   "coverage": [
