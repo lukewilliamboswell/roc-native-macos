@@ -1,11 +1,13 @@
 import pf.Engine exposing [Elem, Signal]
 import pf.Ui
 import logic.Eq
+import logic.Prefs
 import logic.Queue
 import Store
 import Widgets
 
-## The queue and EQ panels, below the transport. Opening a panel leaves
+## The queue and EQ panels, below the transport, the EQ panel with the
+## picture's sync for the output playing. Opening a panel leaves
 ## the song playing and the picture in view, so each change is seen and
 ## heard as it is made. The preset editor is the third panel
 ## (`Editor.roc`).
@@ -87,6 +89,31 @@ Panels := [].{
 			],
 		)
 
+	## Picture sync: how much later than the sound the picture moves, for
+	## the output playing, kept for that output (`Store.offset_set`), and
+	## the Sync Test, a click track under a flashing preset to set it by.
+	## A flash before its click wants a positive offset; one after, negative.
+	sync : () -> Elem(ctx)
+		where [ctx.store : () -> Engine.Reach(ctx, _)]
+	sync = || {
+		now = { output: Store.cells.output.signal(), offsets: Store.cells.offsets.signal() }.Signal.map(|s| s)
+		ms = now.map(|s| Prefs.offset_for(s.offsets, s.output.uid))
+		Ui.vstack(
+			{ spacing: 4, align: Fill },
+			[
+				Ui.hstack(
+					{},
+					[
+						Ui.text(Store.cells.output.signal().map(|o| if (o.name.is_empty()) "Picture sync" else "Picture sync · ${o.name}"), { style: Headline, overflow: TruncateTail, squeeze: Yield }),
+						Ui.spacer(),
+						Ui.button("Sync Test", { on_press: Engine.handle_by({ now: Store.queue_and_player(), mine: Store.cells.mine.signal() }.Signal.map(|x| x), |x, _| Store.sync_test(x.now, x.mine)), size: Small }),
+					],
+				),
+				Widgets.labelled_slider("Offset", ms, Prefs.offset_range, Engine.handle_by(now, Store.offset_set), ms.map(|v| if (v > 0) "+${v.to_str()} ms" else "${v.to_str()} ms")),
+			],
+		)
+	}
+
 	## The EQ: bypass, Flat, the preamp, and the ten bands. The player
 	## applies each change as the slider moves (`Store.eq_changed`).
 	eq : () -> Elem(ctx)
@@ -118,6 +145,7 @@ Panels := [].{
 						),
 					),
 				),
+				Panels.sync(),
 			],
 		)
 	}

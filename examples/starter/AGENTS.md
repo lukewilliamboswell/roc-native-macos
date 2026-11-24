@@ -81,6 +81,7 @@ fuzz/main.roc      roc-fuzz targets for logic/: a development program, not part 
 assets/icon.png    the app's icon, also drawn in the window (Ui.asset_image("icon.png", ...))
 assets/polymorphic-defunctionalization.*  the default song (.mp3) and its timed lyrics (.lrc)
 assets/CREDITS.md  the default song's credit and licence (CC BY 4.0)
+assets/sync-test.wav  the Sync Test's click track (a click every 500 ms)
 specs/*.scm        specs: steps that drive the app's real controls, and what it then shows
 specs/fixtures/    the songs, lyrics and preset files the specs use
 macos.json         the app's name, bundle identifier and version
@@ -163,6 +164,14 @@ Some rules the player keeps, each in one place:
   file's text with a field out of range) list each field that needs
   attention, and the picture keeps the last valid draft
   (`Store.edited_text`).
+- The picture's sync offset belongs to the audio output, not to a song or
+  a preset: the EQ panel's Picture sync sets it for the output playing,
+  `logic/Prefs.roc` keeps one per output UID, and `Store.output_heard`
+  sends the kept one (`VisualOffset`) whenever a status names an output
+  whose offset is not the one that applies. Sync Test queues
+  `assets/sync-test.wav` under the Sync Test preset, a ring that flashes on
+  each click, to set it by: a flash before its click wants a positive
+  offset.
 - The queue holds at most 60 songs, leaving 4 of the platform's 64 file
   handles for lyric and preset files being read, and says how many it
   refused (`logic/Queue.roc`).

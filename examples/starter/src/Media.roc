@@ -53,6 +53,9 @@ Media := [].{
 	## Where playback stands.
 	Status : Audio.Status
 
+	## The audio output playing: its name and its UID.
+	Output : Audio.Output
+
 	## Where a song comes from: a file the listener gave the app, or a path
 	## in the app's `assets/`.
 	Source : [Picked(File), Bundled(Str)]
@@ -146,6 +149,26 @@ Media := [].{
 			player.map(|p| p.status == Playing),
 			|on| if (on) [Audio.analysis({ every_ms: 1000 })] else [],
 			Engine.ignore({}),
+		)
+
+	## The site that follows which output is playing, for picture sync: a
+	## status about once a second, each to `heard` (`Store.output_heard`),
+	## which sends the offset kept for that output when it is not the one
+	## that applies.
+	output : { reading : Signal(ctx, s), heard : (s, Status -> List(Engine.Write(st))) } -> Elem(ctx)
+		where [ctx.store : () -> Engine.Reach(ctx, st)]
+	output = |{ reading, heard }|
+		Engine.watch(
+			Engine.const({}),
+			|_| [Audio.status({ every_ms: 1000 })],
+			Engine.react_by(
+				reading,
+				|r, _, answer|
+					match answer {
+						Ok(status) => heard(r, status)
+						Err(_) => []
+					},
+			),
 		)
 
 	## A timer for the next lyric line: while playing, it fires when the

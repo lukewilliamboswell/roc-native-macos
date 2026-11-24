@@ -48,8 +48,22 @@ Library := [].{
 		shaders: NoShaders,
 	}
 
+	## Not a look but a test: a thick ring that flashes with every click of
+	## the Sync Test track (`assets/sync-test.wav`), so a listener can see
+	## whether the picture keeps time with what they hear, and set the
+	## picture's offset for their speakers (the EQ panel's Picture Sync).
+	sync_test : Preset.Doc
+	sync_test = {
+		id: "builtin.sync-test",
+		name: "Sync Test",
+		background: { r: 0, g: 0, b: 0 },
+		layers: [{ ..Preset.layer(Ring), size: 300, thickness: 200, colors: [{ r: 0xF4, g: 0xF1, b: 0xEA }], opacity: 0, mappings: [{ feature: Level, property: Opacity, from: 0, to: 100 }] }],
+		feedback: Preset.no_feedback,
+		shaders: NoShaders,
+	}
+
 	builtins : List(Preset.Doc)
-	builtins = [Library.scope, Library.spectrum_bars, Library.echo_rings]
+	builtins = [Library.scope, Library.spectrum_bars, Library.echo_rings, Library.sync_test]
 
 	## The worked example a listener makes from a blank preset: a circular
 	## waveform a fifth of the view across, which the bass swells from 20% to
@@ -194,7 +208,7 @@ Library := [].{
 ## The built-ins and the worked example are valid presets, and each reads
 ## back from its file unchanged.
 expect Library.builtins.append(Library.ember_tunnel).all(|p| Preset.problems(p).is_empty() and Preset.decode(Preset.encode(p)) == Ok(p))
-expect Library.builtins.map(|p| p.name) == ["Scope", "Spectrum Bars", "Echo Rings"]
+expect Library.builtins.map(|p| p.name) == ["Scope", "Spectrum Bars", "Echo Rings", "Sync Test"]
 
 ## Every layer of the built-ins and Ember Tunnel uses a named palette.
 expect Library.builtins.append(Library.ember_tunnel).all(|p| p.layers.all(|l| Library.palette_name(l.colors) != "Custom")) and Library.palette_name([]) == "Custom"

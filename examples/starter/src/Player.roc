@@ -54,6 +54,7 @@ Player := [].{
 				Export.site(),
 				Export.saving(),
 				Media.measuring(Store.cells.player.signal()),
+				Media.output({ reading: { output: Store.cells.output.signal(), offsets: Store.cells.offsets.signal() }.Signal.map(|s| s), heard: Store.output_heard }),
 			]
 				.concat(Player.shortcuts())
 				.concat(Player.saving())
@@ -230,7 +231,7 @@ Player := [].{
 				Engine.ignore({}),
 			),
 			Engine.watch_changes(
-				{ lyrics: Store.cells.lyrics_on.signal(), lyric_size: Store.cells.lyric_size.signal(), chosen: Store.cells.chosen.signal(), volume: Store.cells.volume.signal(), eq: Store.cells.eq.signal() }.Signal.map(|s| Prefs.encode(Store.prefs(s))),
+				{ lyrics: Store.cells.lyrics_on.signal(), lyric_size: Store.cells.lyric_size.signal(), chosen: Store.cells.chosen.signal(), volume: Store.cells.volume.signal(), eq: Store.cells.eq.signal(), offsets: Store.cells.offsets.signal() }.Signal.map(|s| Prefs.encode(Store.prefs(s))),
 				|text| [Engine.command(StorageSet(Store.prefs_key, text))],
 				Engine.ignore({}),
 			),
