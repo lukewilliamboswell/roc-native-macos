@@ -134,7 +134,7 @@ table gives other defaults. Sizes are points.
 | `FileButtonProps(ctx)` | `on_files : Engine.FilesHandler(ctx)` (required), `bezel`, `icon`, `title_display`, `size`, `width`, `squeeze`
 | `DropZoneProps(ctx)` | `on_drop : Engine.FilesHandler(ctx)` (required), `padding : Insets ?? All(16)`, `radius : U32 ?? 10`, `width : Length ?? Fill`, `height`
 | `HoverProps(ctx)` | `on_hover : HandlerOf(ctx, Bool)` (required); `hover` has no frame of its own, its child's is used
-| `SurfaceProps(ctx)` | `label : Str` (required; names it to VoiceOver), `space : Signal(ctx, Space) ?? Engine.const(Points)`, `background : Signal(ctx, Color) ?? Engine.const(Clear)`, `pacing : Signal(ctx, Pacing) ?? Engine.const(OnDemand)`, `trail : Signal(ctx, Trail) ?? Engine.const(NoTrail)`, `reset : Signal(ctx, U64) ?? Engine.const(0)` (a new value clears the trail), `width : Length ?? Fill`, `height : Length ?? Fixed(160)`, `squeeze`
+| `SurfaceProps(ctx)` | `label : Str` (required; names it to VoiceOver), `space : Signal(ctx, Space) ?? Engine.const(Points)`, `background : Signal(ctx, Color) ?? Engine.const(Clear)`, `pacing : Signal(ctx, Pacing) ?? Engine.const(OnDemand)`, `trail : Signal(ctx, Trail) ?? Engine.const(NoTrail)`, `reset : Signal(ctx, U64) ?? Engine.const(0)` (a new value clears the trail), `shader : Signal(ctx, Shader) ?? Engine.const(NoShader)` and `on_shader : [Ignored, Handled(HandlerOf(ctx, ShaderStatus))] ?? Ignored` (xref:ui.adoc#shaders[Shaders]), `width : Length ?? Fill`, `height : Length ?? Fixed(160)`, `squeeze`
 | `OverlayProps` | `horizontal : HorizontalAlign ?? Fill`, `vertical : [Top, Center, Bottom, Fill] ?? Bottom`, `padding : Insets ?? All(16)` (between the background's edges and the foreground), `width : Length ?? Fill`, `height`, `squeeze`
 |===
 
@@ -212,6 +212,13 @@ of numbers (at most 4,096). Each value `v` counts as
 
 A source is named by a stable string, such as `"audio.waveform"`. It is
 native code that registers that name (xref:architecture.adoc#surface-sources[Surface sources]).
+The playback session (xref:ui.adoc#audio[Audio]) registers
+`audio.waveform` (1024 values of the channels mixed, -1 to 1, oldest
+first), `audio.left` and `audio.right` (each channel alone, the same way; a
+mono source's are both its one channel), `audio.bands` (the 24 bands, 0 to
+1), and the numbers `audio.level`, `audio.bass`, `audio.mids` and
+`audio.treble` (0 to 1). Each reads the measurement nearest what is heard,
+-60 to 0 dB mapped to 0 to 1, rising at once and falling slowly.
 A source that is not registered, or has nothing to show yet, draws nothing,
 and its number reads as `offset`. Every app has two test sources:
 `synthetic.wave`, nine values of one sine cycle, and `synthetic.level`, a
@@ -261,6 +268,133 @@ resolution. Otherwise, and for an on-demand surface, it draws with Core
 Graphics, which keeps a large surface's trail at below the screen's backing
 scale, so it looks a little softer. See
 xref:architecture.adoc#drawing-surfaces[Drawing surfaces].
+
+[#shaders]
+=== Shaders
+
+A display-paced surface can run its own GPU code, in two stages shaped
+like a feedback visualizer's:
+
+[source,roc]
+----
+shader : Signal(ctx, Ui.Shader)   # a SurfaceProps field, NoShader by default
+Ui.Shader : [NoShader, Shaders({ warp : [None, Some(Str)], composite : [None, Some(Str)], params : List((Str, Number)) })]
+----
+
+Each frame is then drawn in this order:
+
+. *Warp.* With a `warp` stage, each pixel of the new frame is what the
+  warp returns, reading the previous frame (`f.image`): motion, decay,
+  colour drift. The warp takes the trail's place; without one, the
+  background and the trail are drawn as usual.
+. *The scene.* The marks are drawn over it.
+. *Feedback.* The result is kept as the next frame's `f.image`.
+. *Composite.* With a `composite` stage, each pixel on the screen is what
+  the composite returns, reading this frame (`f.image`): echo, gamma, glow,
+  a kaleidoscope. Its output never feeds back. With `composite` alone and no
+  trail, the frame under it is the scene over the background, drawn fresh.
+
+*What you write.* Each stage is Metal Shading Language source that defines
+one function, `float4 warp(Frame f, Params p)` or
+`float4 composite(Frame f, Params p)`, and any helper functions and
+constants it needs above it. The host compiles it at run time between its
+own header (below) and its own entry point, which calls yours once for
+each pixel. Return a premultiplied colour, each channel 0 to 1 (out of
+range is held to it, a NaN reads 0, and no channel can exceed the opacity);
+`opaque(rgb)` makes an opaque one. Lines and columns in errors count from
+the first line of your source.
+
+[source,roc]
+----
+# A warp that zooms the old picture towards the viewer, faster on a kick,
+# fading it a little each frame and drifting its hue.
+zoom =
+    \\float4 warp(Frame f, Params p) {
+    \\    float2 c = centered(f);                       // -1..1 tall, aspect wide
+    \\    float scale = 1.0 - p.push * f.bass;          // < 1 grows the picture
+    \\    float4 old = sample(f, uv_of(f, c * scale));
+    \\    float3 hsv = rgb2hsv(old.rgb);
+    \\    hsv.x += 0.3 * f.dt;                          // hue turns 0.3 a second
+    \\    return opaque(hsv2rgb(hsv) * pow(0.5, f.dt / p.half_life));
+    \\}
+
+shader: Engine.const(Shaders({ warp: Some(zoom), composite: None, params: [("push", Value(0.04)), ("half_life", Value(0.4))] }))
+----
+
+*A frame* (`Frame f`) gives each pixel:
+
+[cols="1,3",options="header"]
+|===
+| Field | Is
+
+| `f.uv` | the pixel's centre, 0 to 1 across and down from the top-left corner (y down, as a scene's)
+| `f.pixel`, `f.size`, `f.texel` | the pixel and the surface in pixels, and one pixel in uv units (`1 / size`)
+| `f.aspect` | width over height
+| `f.time`, `f.dt`, `f.frame` | seconds since these shaders started, seconds since the previous frame, and the frame's number from 0; make motion a rate of `dt` so it looks the same at 60 Hz and 120 Hz
+| `f.bass`, `f.mids`, `f.treble`, `f.level` | `audio.bass`, `audio.mids`, `audio.treble` and `audio.level`, 0 to 1 (0 with nothing playing)
+| `f.image` | the previous frame (warp) or this frame (composite); read it with the helpers below
+|===
+
+*Helpers* in the header:
+
+* `sample(f, uv)` reads `f.image` (beyond its edges, the nearest edge);
+  `sample_wrap` tiles it and `sample_mirror` tiles it mirrored;
+  `blur(f, uv, radius)` blurs over about `radius` pixels.
+* `wave(f, x)`, `left(f, x)`, `right(f, x)`: `audio.waveform`, `audio.left`
+  and `audio.right` at `x`, 0 the oldest and 1 the newest, -1 to 1 (256
+  points, interpolated); `band(f, x)`: `audio.bands` from 0 (40 Hz) to 1
+  (16 kHz), 0 to 1; `band_at(f, i)`: band `i`, 0 to 23.
+* `centered(f)`: the pixel from the centre, y from -1 at the top to 1 at
+  the bottom and x on the same scale; `uv_of(f, p)` goes back.
+  `polar(p)` is `(distance, angle)`, `cartesian(ra)` goes back, and
+  `rotate(p, angle)` turns clockwise; `PI` and `TAU`.
+* `hsv2rgb`, `rgb2hsv`, `palette(t, a, b, c, d)` (`a + b cos(TAU (c t + d))`)
+  and `opaque(rgb)`.
+* `hash(p)` (repeatable noise, 0 to 1), `noise(p)` (smooth value noise) and
+  `fbm(p)` (four octaves of it).
+
+*Params.* `params` are named numbers each stage reads as `p.NAME`, a
+`float`. Each is a scene `Number`, so `Source({ source: "audio.bass", … })`
+or `Element(…)` drives it, read once a frame without a turn of the engine.
+A name is lowercase letters, digits and `_`, not starting with a digit, at
+most 32 bytes; there are at most 16, and a source of a stage is at most
+64 KiB.
+
+*Compiling and errors.* A source compiles the first time a surface draws
+with it, off the main thread, and the result is kept for the app's life,
+keyed by the whole source, so switching back is immediate. Until it is
+ready the surface keeps drawing its last good stage, or none. `on_shader`
+hears what the stages are doing, each time it changes:
+
+[source,roc]
+----
+on_shader: Handled(Engine.handle(|status| [cells.shader.set(status)]))
+
+Ui.ShaderStatus : [NoShader, Running, Fallback, Failed(List(Ui.ShaderError))]
+Ui.ShaderError : { stage : [Warp, Composite], line : U32, column : U32, message : Str }
+----
+
+`Failed` lists each stage's first errors at their line and column in that
+stage's source; line 0 is outside it, such as a missing `warp` function or
+a bad param name. A stage that fails keeps drawing its last good source (or
+none), and the other stage runs. Bad source never stops the app.
+
+*The GPU's limits.* A frame the GPU is more than two frames behind on is
+skipped, so a slow shader makes the picture slow, never the window. A shader
+that runs for seconds is stopped by macOS's GPU watchdog: that frame is
+lost, the surface drops both stages and draws its marks and trail alone, and
+`on_shader` hears `Failed` with line 0 and the GPU's reason, until the app
+gives it new sources. Keep loops bounded and short: a full-surface stage
+runs once for every pixel, millions a frame on a Retina display.
+
+*Where shaders do not run.* Shaders run only with the Metal renderer, on a
+display-paced surface while it is shown. With Core Graphics (an on-demand
+surface, a Mac without a GPU, `ROC_SURFACE_RENDERER=cg`, a spec that does
+not ask for Metal), the surface draws its marks and its trail as if it had
+no shaders, and `on_shader` hears `Fallback`. Give a shaded surface a scene
+and a trail that look reasonable alone: they are its simpler picture.
+
+`examples/visualizer`'s `Shaders` mode has a test of each stage.
 
 === Overlays
 

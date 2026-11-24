@@ -476,6 +476,25 @@ final class DrawingSurface: NSView {
     /// While display-paced and drawing with Metal (SurfaceMetal.swift).
     private var metal: MetalSurface?
 
+    /// The shaders the app asks for, the programs drawing now (the last
+    /// good of each stage), each stage's errors, and the status last
+    /// reported (SurfaceShaders.swift).
+    private var shaders = ShaderRequest()
+    private var warpProgram: ShaderProgram?
+    private var compositeProgram: ShaderProgram?
+    private var shaderErrors = StageErrors()
+    /// The frame time these shaders started at, and the frames since.
+    private var shaderEpoch: Double?
+    private var shaderFrames: UInt32 = 0
+    private var reported: String?
+    private var shadersDirty = false
+    /// Reports the shader status (`none`, `running`, `fallback`, or
+    /// `failed` and an error a line) as the `shader` event's payload.
+    var onShaderStatus: ((String) -> Void)?
+    /// The next frame time a `ROC_SURFACE_SHOTS` snapshot is due, and how many.
+    private var nextShot: Double?
+    private var shots = 0
+
     init() {
         super.init(frame: .zero)
         wantsLayer = true
@@ -492,7 +511,7 @@ final class DrawingSurface: NSView {
     override var isFlipped: Bool { true }
 
     /// The attributes a surface reads (all of them paint only).
-    static let attributes = ["scene", "space", "background", "pacing", "trail", "reset", "label"]
+    static let attributes = ["scene", "space", "background", "pacing", "trail", "reset", "label", "shader-warp", "shader-composite", "shader-params"]
 
     func apply(_ name: String, _ value: String?) {
         let word = value ?? ""
@@ -541,6 +560,27 @@ final class DrawingSurface: NSView {
         case "label":
             label = word
             setAccessibilityLabel(word.isEmpty ? nil : word)
+        case "shader-warp", "shader-composite", "shader-params":
+            var next = shaders
+            if name == "shader-warp" { next.warp = word }
+            if name == "shader-composite" { next.composite = word }
+            if name == "shader-params" {
+                next.params = ShaderRequest.parseParams(word)
+                next.paramsWord = word
+            }
+            let restart = next.warp != shaders.warp || next.composite != shaders.composite
+            shaders = next
+            if restart {
+                // New sources start from an empty history and time 0.
+                shaderEpoch = nil
+                metal?.clear()
+            }
+            // Once for all three attributes of a turn: after it, or at the
+            // next frame, whichever is first.
+            if !shadersDirty {
+                shadersDirty = true
+                DispatchQueue.main.async { [weak self] in self?.settleShaders() }
+            }
         default:
             break
         }
@@ -582,9 +622,13 @@ final class DrawingSurface: NSView {
 
     /// Draw one logical frame at `time`.
     private func produce(at time: Double) {
+        settleShaders()
         let steps = DrawingSurface.resolve(marks, at: time)
         if let metal {
-            render(steps, with: metal, at: time)
+            // A frame the GPU is too far behind for is skipped; the next
+            // covers its time.
+            guard render(steps, with: metal, at: time) else { return }
+            snapshotIfDue(at: time)
         } else if let trail {
             composite(steps, trail, at: time)
         }
@@ -650,12 +694,17 @@ final class DrawingSurface: NSView {
     }
 
     /// A frame with Metal: the same order as `composite`, at the full
-    /// backing resolution.
-    private func render(_ steps: [DrawStep], with metal: MetalSurface, at time: Double) {
+    /// backing resolution; a warp shader takes the trail's place, and a
+    /// composite shader maps the result to the screen. False when the
+    /// frame was skipped.
+    private func render(_ steps: [DrawStep], with metal: MetalSurface, at time: Double) -> Bool {
         layoutMetal()
         var move: Affine?
         var fade = 1.0
-        if let trail, let lastTime {
+        let stages = shaderFrame(at: time, metal: metal)
+        if stages?.warp != nil {
+            // The warp shader replaces the trail.
+        } else if let trail, let lastTime {
             let dt = max(0, time - lastTime)
             let cx = Double(bounds.width) / 2, cy = Double(bounds.height) / 2
             let angle = trail.turn * dt, zoom = pow(trail.zoom, dt)
@@ -676,7 +725,152 @@ final class DrawingSurface: NSView {
                 paint = [Float(Double(c.redComponent) * a), Float(Double(c.greenComponent) * a), Float(Double(c.blueComponent) * a), Float(a)]
             }
         }
-        metal.frame(scene, background: paint, trail: move, fade: fade)
+        let drawn = metal.frame(scene, background: paint, trail: move, fade: fade, shaders: stages, label: label)
+        if drawn, stages != nil { shaderFrames &+= 1 }
+        return drawn
+    }
+
+    // MARK: Shaders
+
+    /// This frame's shader inputs, or nil when no stage is ready.
+    private func shaderFrame(at time: Double, metal: MetalSurface) -> ShaderFrame? {
+        guard warpProgram != nil || compositeProgram != nil, let target = metal.target else { return nil }
+        if shaderEpoch == nil {
+            shaderEpoch = time
+            shaderFrames = 0
+        }
+        let elapsed = Float(max(0, time - (shaderEpoch ?? time)))
+        var dt: Float = 0
+        if let lastTime { dt = Float(max(0, time - lastTime)) }
+        let w = Float(target.width), h = Float(target.height)
+        let uniforms: [Float] = [
+            w, h, 1 / w, 1 / h, w / h, elapsed, dt, Float(bitPattern: shaderFrames),
+            DrawingSurface.scalar("audio.bass", at: time), DrawingSurface.scalar("audio.mids", at: time),
+            DrawingSurface.scalar("audio.treble", at: time), DrawingSurface.scalar("audio.level", at: time),
+        ]
+        // Each param read once, by name, in each program's own order.
+        var values: [String: Float] = [:]
+        for (name, number) in shaders.params { values[name] = Float(paramValue(number, at: time)) }
+        return ShaderFrame(
+            warp: warpProgram, composite: compositeProgram, uniforms: uniforms,
+            warpParams: (warpProgram?.params ?? []).map { values[$0] ?? 0 },
+            compositeParams: (compositeProgram?.params ?? []).map { values[$0] ?? 0 },
+            audio: DrawingSurface.audioBlock(at: time))
+    }
+
+    /// A param's number at `time`, as a scene's numbers read.
+    private func paramValue(_ n: SceneNumber, at time: Double) -> Double {
+        guard let name = n.source else { return n.offset }
+        guard let sample = SurfaceSources.shared.source(name)?.latest(at: time) else { return n.offset }
+        switch sample {
+        case let .scalar(v): return n.index == nil ? n.offset + n.scale * Double(v) : n.offset
+        case let .series(values):
+            guard let i = n.index else { fatal("surface source \(name) gave a series where a shader param needs a number") }
+            return i < values.count ? n.offset + n.scale * Double(values[i]) : n.offset
+        }
+    }
+
+    /// The shader attributes changed since the programs were brought in line.
+    private func settleShaders() {
+        guard shadersDirty else { return }
+        shadersDirty = false
+        updateShaders()
+    }
+
+    /// Bring the programs in line with what the app asks for and the
+    /// renderer in use, and report the status when it changes. A stage
+    /// still compiling keeps its last good program (or none) and calls
+    /// back here when done; a spec waits for it.
+    func updateShaders() {
+        guard shaders.wanted else {
+            warpProgram = nil
+            compositeProgram = nil
+            shaderErrors = StageErrors()
+            report("none")
+            return
+        }
+        guard let metal else {
+            // Core Graphics: the marks and the trail alone. A display-paced
+            // surface that would draw with Metal but is off the clock
+            // (hidden, or not yet in a window) says nothing new.
+            if !displayPaced || ticking || !SurfaceRenderer.usesMetal { report("fallback") }
+            return
+        }
+        var pending = false
+        for stage in [ShaderStage.warp, .composite] {
+            let source = stage == .warp ? shaders.warp : shaders.composite
+            if source.isEmpty {
+                set(stage, nil)
+                shaderErrors[stage] = nil
+                continue
+            }
+            if let problem = shaders.paramProblem {
+                shaderErrors[stage] = [ShaderError(stage: stage, line: 0, column: 0, message: problem)]
+                continue
+            }
+            switch metal.renderer.program(stage, source, params: shaders.names) {
+            case let .ready(program):
+                set(stage, program)
+                shaderErrors[stage] = nil
+            case let .failed(errors):
+                // The last good program keeps drawing.
+                shaderErrors[stage] = errors
+            case let .pending(compile):
+                // A spec's compiles are never pending.
+                pending = true
+                compile.finished.append { [weak self] in self?.updateShaders() }
+            }
+        }
+        if pending { return }
+        let errors = (shaderErrors[.warp] ?? []) + (shaderErrors[.composite] ?? [])
+        report(errors.isEmpty ? "running" : (["failed"] + errors.map { $0.word }).joined(separator: "\n"))
+    }
+
+    private func set(_ stage: ShaderStage, _ program: ShaderProgram?) {
+        let old = stage == .warp ? warpProgram : compositeProgram
+        if old === program { return }
+        if stage == .warp { warpProgram = program } else { compositeProgram = program }
+        if stage == .warp, old == nil || program == nil { metal?.clear() }
+        wantFrame()
+    }
+
+    /// The GPU failed a frame that ran a shader: drop both stages until
+    /// the app sends new sources, and say why.
+    private func shaderFault(_ why: String) {
+        guard warpProgram != nil || compositeProgram != nil else { return }
+        warpProgram = nil
+        compositeProgram = nil
+        for stage in [ShaderStage.warp, .composite] where !(stage == .warp ? shaders.warp : shaders.composite).isEmpty {
+            shaderErrors[stage] = [ShaderError(stage: stage, line: 0, column: 0, message: "the GPU stopped the frame (\(why)); the surface draws without its shaders until they change")]
+        }
+        metal?.clear()
+        let errors = (shaderErrors[.warp] ?? []) + (shaderErrors[.composite] ?? [])
+        report((["failed"] + errors.map { $0.word }).joined(separator: "\n"))
+    }
+
+    private func report(_ status: String) {
+        guard status != reported else { return }
+        // The first `none` of a surface without shaders says nothing.
+        if reported == nil, status == "none" { reported = status; return }
+        reported = status
+        onShaderStatus?(status)
+    }
+
+    /// The status word a dump shows: running, failed, fallback or pending.
+    var shaderWord: String? {
+        guard shaders.wanted else { return nil }
+        guard let r = reported, r != "none" else { return "pending" }
+        return r.split(separator: "\n").first.map(String.init)
+    }
+
+    /// `ROC_SURFACE_SHOTS`: this frame as a PNG, every two seconds of frame time.
+    private func snapshotIfDue(at time: Double) {
+        guard let dir = SurfaceDiagnostics.shots, let target = metal?.target else { return }
+        guard let due = nextShot else { nextShot = time + SurfaceDiagnostics.every; return }
+        guard time >= due else { return }
+        nextShot = time + SurfaceDiagnostics.every
+        shots += 1
+        target.writePNG("\(dir)/\(SurfaceDiagnostics.fileName(label))-\(shots).png")
     }
 
     /// The Metal layer to the view's size and backing scale.
@@ -690,6 +884,7 @@ final class DrawingSurface: NSView {
         let wants = ticking && SurfaceRenderer.usesMetal
         if wants, metal == nil {
             metal = MetalSurface.make(over: layer)
+            metal?.onShaderFault = { [weak self] why in self?.shaderFault(why) }
             releaseHistory()
             layoutMetal()
             needsDisplay = true
@@ -698,6 +893,7 @@ final class DrawingSurface: NSView {
             metal = nil
             wantFrame()
         }
+        updateShaders()
     }
 
     /// Which renderer draws this surface.
@@ -805,6 +1001,7 @@ final class DrawingSurface: NSView {
             }
         }
         func number(_ n: SceneNumber) -> Bool { n.source == source }
+        if shaders.params.contains(where: { number($0.1) }) { return true }
         return marks.contains { mark in
             switch mark {
             case let .fill(s, _, _): return shape(s)
@@ -869,7 +1066,8 @@ final class DrawingSurface: NSView {
         let pacing = displayPaced ? "display" : "on-demand"
         let held = metal.map { $0.target?.hasHistory ?? false } ?? (current != nil)
         let history = trail == nil ? "" : " :trail \(held ? "held" : "empty")"
-        return "\(Host.quote(label)) :width \(Int(bounds.width)) :height \(Int(bounds.height)) :pacing \(pacing)\(displayPaced ? " :ticking \(ticking ? "#t" : "#f")" : "")\(history)"
+        let shading = shaderWord.map { " :shader \($0)" } ?? ""
+        return "\(Host.quote(label)) :width \(Int(bounds.width)) :height \(Int(bounds.height)) :pacing \(pacing)\(displayPaced ? " :ticking \(ticking ? "#t" : "#f")" : "")\(history)\(shading)"
     }
 
     /// The last frame's scene, one form a line, for a spec's dump: the
@@ -1123,6 +1321,17 @@ extension Host {
             guard let chosen = SurfaceRenderer.named(f.first ?? "") else { return .failed("renderer is metal, cg or auto, not \(f.first ?? "")", nil) }
             SurfaceRenderer.choice = chosen
             for s in allSurfaces() { s.updateRenderer() }
+        case "require-metal":
+            // The rest of the spec needs a GPU: without one (or with
+            // `ROC_SURFACE_RENDERER=cg`, to check this) the run ends here,
+            // and the tool judges nothing after it.
+            let forced = ProcessInfo.processInfo.environment["ROC_SURFACE_RENDERER"] == "cg"
+            guard MetalRenderer.device != nil, !forced else {
+                emit("@\(line.k) skip \(forced ? "ROC_SURFACE_RENDERER=cg" : "no Metal device")")
+                emit("@done")
+                NSApp.terminate(nil)
+                return .handedOver
+            }
         case "bench-surfaces":
             // N frames of a trail at three sizes with each renderer,
             // reported on standard error and never judged.

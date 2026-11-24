@@ -275,7 +275,16 @@ extension Host {
         case "ui-file-button", "ui-drop-zone":
             view = makeFileView(name)  // Files.swift
         case "ui-surface":
-            view = DrawingSurface()  // Drawing.swift
+            let surface = DrawingSurface()  // Drawing.swift
+            // The shader status, as the surface's `shader` event, after the
+            // turn or frame that changed it.
+            surface.onShaderStatus = { [weak self, weak n] status in
+                DispatchQueue.main.async {
+                    guard let self, let n, n.view != nil else { return }
+                    self.dispatch("shader", at: n, text: status)
+                }
+            }
+            view = surface
             watchSurfaceSources()
         case "ui-overlay":
             view = Overlay()  // Drawing.swift

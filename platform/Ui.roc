@@ -897,9 +897,50 @@ Ui := [].{
 	## rate.
 	Trail : [NoTrail, Trail({ half_life_ms : F64, zoom : F64, turn : F64, shift : Point })]
 
+	## A surface's own GPU shaders, in two stages (docs/ui.adoc, "Shaders").
+	## Each is Metal Shading Language source defining one function,
+	## `float4 warp(Frame f, Params p)` or `float4 composite(Frame f, Params p)`,
+	## and any helpers above it; the host supplies the header (`Frame`,
+	## `Params` and the helpers) and the entry point around it.
+	##
+	## Each frame, `warp` makes the new frame from the previous one (`f.image`)
+	## in place of the trail, the scene's marks are drawn over it, and the
+	## result is the next frame's `f.image`. `composite` then maps that frame
+	## (its `f.image`) to the screen without feeding back. With `composite`
+	## alone, the frame under it is the scene over the background (and the
+	## trail, if there is one), drawn fresh.
+	##
+	## `params` name numbers the stages read as `p.NAME` (a `float`): each a
+	## `Number`, so a native source can drive it, read once per frame in the
+	## host without a turn of the engine. A name is lowercase letters, digits
+	## and `_`, not starting with a digit, at most 32 bytes, and there are at
+	## most 16.
+	##
+	## Shaders run only with the Metal renderer, on a display-paced surface.
+	## Elsewhere the surface draws its marks and its trail, as without them:
+	## `on_shader` reports which (`Fallback`).
+	Shader : [NoShader, Shaders({ warp : [None, Some(Str)], composite : [None, Some(Str)], params : List((Str, Number)) })]
+
+	## Which stage an error is in.
+	ShaderStage : [Warp, Composite]
+
+	## A compile error at the line and column of the stage's own source,
+	## counting from 1; 0 for an error outside it (a missing function, too
+	## long a source, a bad param name, the GPU stopping a frame).
+	ShaderError : { stage : ShaderStage, line : U32, column : U32, message : Str }
+
+	## What a surface's shaders are doing, reported by `on_shader` whenever
+	## it changes: none asked for (`NoShader`); both stages compiled and
+	## drawing (`Running`); drawing with Core Graphics, so the marks and the
+	## trail alone (`Fallback`); or a stage that does not compile (`Failed`),
+	## while the surface keeps drawing that stage's last good source, or none.
+	ShaderStatus : [NoShader, Running, Fallback, Failed(List(ShaderError))]
+
 	## How a drawing surface draws. `label` names it to VoiceOver. A change of
 	## `reset` (any new value) clears the trail; it is also cleared when the
 	## surface is first shown and whenever its size or backing scale changes.
+	## `shader` adds GPU stages to it (`Shader`), and `on_shader`, when
+	## `Handled(handler)`, hears what they are doing (`ShaderStatus`).
 	SurfaceProps(ctx) := {
 		label : Str,
 		space : Signal(ctx, Space) ?? Engine.const(Points),
@@ -907,6 +948,8 @@ Ui := [].{
 		pacing : Signal(ctx, Pacing) ?? Engine.const(OnDemand),
 		trail : Signal(ctx, Trail) ?? Engine.const(NoTrail),
 		reset : Signal(ctx, U64) ?? Engine.const(0),
+		shader : Signal(ctx, Shader) ?? Engine.const(NoShader),
+		on_shader : [Ignored, Handled(HandlerOf(ctx, ShaderStatus))] ?? Ignored,
 		width : Length ?? Fill,
 		height : Length ?? Fixed(160),
 		squeeze : Squeeze ?? Standard,
@@ -927,8 +970,18 @@ Ui := [].{
 				Engine.attr_s("pacing", props.pacing.map(pacing_word)),
 				Engine.attr_s("trail", props.trail.map(trail_word)),
 				Engine.attr_s("reset", props.reset.map(|n| n.to_str())),
+				Engine.attr_s("shader-params", props.shader.map(shader_params_text)),
+				Engine.attr_s("shader-warp", props.shader.map(|s| shader_source(s, Warp))),
+				Engine.attr_s("shader-composite", props.shader.map(|s| shader_source(s, Composite))),
 				Engine.attr_s("scene", scene.map(scene_text)),
-			].concat(frame_attrs(Engine.const({ width: props.width, height: props.height, squeeze: props.squeeze }))),
+			]
+				.concat(
+					match props.on_shader {
+						Handled(handler) => [Engine.on("shader", handler.from_payload_by(Engine.const({}), |_, word| shader_status(word)))]
+						Ignored => []
+					},
+				)
+				.concat(frame_attrs(Engine.const({ width: props.width, height: props.height, squeeze: props.squeeze }))),
 			[],
 		)
 
@@ -1310,6 +1363,50 @@ trail_word = |trail|
 		Trail({ half_life_ms, zoom, turn, shift }) => "trail ${num(half_life_ms)} ${num(zoom)} ${num(turn)} ${num(shift.x)} ${num(shift.y)}"
 	}
 
+## A stage's source, or empty for none.
+shader_source : Ui.Shader, Ui.ShaderStage -> Str
+shader_source = |shader, stage|
+	match shader {
+		NoShader => ""
+		Shaders({ warp, composite, .. }) =>
+			match (if (stage == Warp) warp else composite) {
+				Some(source) => source
+				None => ""
+			}
+	}
+
+## The params, one `NAME NUMBER` a line, NUMBER as a scene's.
+shader_params_text : Ui.Shader -> Str
+shader_params_text = |shader|
+	match shader {
+		NoShader => ""
+		Shaders({ params, .. }) => Str.join_with(params.map(|(name, number)| "${name} ${number_word(number)}"), "\n")
+	}
+
+## The `shader` event's payload: `none`, `running`, `fallback`, or `failed`
+## and then one `STAGE LINE COLUMN MESSAGE` a line.
+shader_status : Str -> Ui.ShaderStatus
+shader_status = |word|
+	match word.split_on("\n") {
+		["running"] => Running
+		["fallback"] => Fallback
+		["failed", .. as lines] => Failed(lines.map(shader_error))
+		_ => NoShader
+	}
+
+shader_error : Str -> Ui.ShaderError
+shader_error = |line|
+	match line.split_on(" ") {
+		[stage, row, column, .. as words] =>
+			{
+				stage: if (stage == "composite") Composite else Warp,
+				line: U32.from_str(row) ?? 0,
+				column: U32.from_str(column) ?? 0,
+				message: Str.join_with(words, " "),
+			}
+		_ => { stage: Warp, line: 0, column: 0, message: line }
+	}
+
 ## A scene, one mark per line (docs/architecture.adoc, "Drawing surfaces").
 scene_text : List(Ui.Mark) -> Str
 scene_text = |marks| Str.join_with(marks.map(mark_line), "\n")
@@ -1415,6 +1512,22 @@ expect {
 expect {
 	actual = "${space_word(Points)}|${space_word(Fit({ width: 400, height: 300 }))}|${pacing_word(Display)}|${trail_word(NoTrail)}|${trail_word(Trail({ half_life_ms: 300, zoom: 1.25, turn: 0, shift: { x: 100, y: -2 } }))}"
 	actual == "points|fit 400 300|display|none|trail 300 1.25 0 100 -2"
+}
+
+## A surface's shaders in their attributes, and its status read back.
+expect {
+	shader : Ui.Shader
+	shader = Shaders({ warp: Some("float4 warp(Frame f, Params p) { return sample(f, f.uv); }"), composite: None, params: [("zoom", Value(1.5)), ("push", Source({ source: "audio.bass", scale: 0.2, offset: 1 }))] })
+	attrs = (shader_source(shader, Warp), shader_source(shader, Composite), shader_params_text(shader), shader_params_text(NoShader))
+	statuses = ["none", "running", "fallback", "failed\nwarp 3 12 use of undeclared identifier 'x'\ncomposite 0 0 too long"].map(shader_status)
+	attrs == ("float4 warp(Frame f, Params p) { return sample(f, f.uv); }", "", "zoom 1.5\npush @audio.bass:0.2:1", "")
+		and statuses
+			== [
+				NoShader,
+				Running,
+				Fallback,
+				Failed([{ stage: Warp, line: 3, column: 12, message: "use of undeclared identifier 'x'" }, { stage: Composite, line: 0, column: 0, message: "too long" }]),
+			]
 }
 
 ## Image scalings in their grammar.

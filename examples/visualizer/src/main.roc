@@ -1,6 +1,6 @@
 app [main] { pf: platform "../../../platform/main.roc" }
 
-import pf.Engine exposing [Elem]
+import pf.Engine exposing [Elem, Signal]
 import pf.Ui
 
 ## A visualizer: a drawing surface fed by the platform's synthetic sources,
@@ -10,7 +10,11 @@ import pf.Ui
 ## fade (a trail); `Bands` draws the wave as bars, with a marker riding one
 ## value of it, another bound past its end, which reads 0, and a line as
 ## thick as the level. The caption is native text over the surface, which
-## the trail never draws.
+## the trail never draws. `Shaders` runs the surface's own GPU stages over
+## Echo's marks (`Ui.Shader`): a warp that drags the previous frame right, a
+## composite that inverts the colours, one whose red follows a param bound
+## to a source, and a warp that does not compile; the line beside them says
+## what the shaders are doing.
 main : Engine.Program(_)
 main = Engine.program_store({}, |_boot| store, |_boot| view())
 
@@ -21,6 +25,8 @@ store = Engine.store(
 		shown: Engine.cell(Bool.True),
 		caption: Engine.cell(Bool.False),
 		resets: Engine.cell(0.U64),
+		test: Engine.cell("Warp"),
+		status: Engine.cell("Shaders: none"),
 	}.Engine.Cells,
 )
 
@@ -33,7 +39,18 @@ view = || {
 	Ui.vstack(
 		{ spacing: 12, align: Fill },
 		[
-			Ui.segmented(mode, { choices: ["Scope", "Echo", "Bands"], on_change: Engine.handle(|chosen| [cells.mode.set(chosen)]) }),
+			Ui.segmented(mode, { choices: ["Scope", "Echo", "Bands", "Shaders"], on_change: Engine.handle(|chosen| [cells.mode.set(chosen)]) }),
+			Engine.when(
+				mode.map(|m| m == "Shaders"),
+				|| Ui.hstack(
+					{ spacing: 12 },
+					[
+						Ui.segmented(cells.test.signal(), { choices: tests, on_change: Engine.handle(|chosen| [cells.test.set(chosen)]) }),
+						Ui.text(cells.status.signal(), { style: Caption1, color: SecondaryLabel, overflow: Wrap, width: Fill }),
+					],
+				),
+				|| Engine.text(""),
+			),
 			Ui.hstack(
 				{ spacing: 12, align: Top, width: Fill },
 				[
@@ -55,14 +72,18 @@ view = || {
 ## The surface, with the caption over it while it is on.
 plot : Engine.Signal(Engine.StoreRoot(_), Str) -> Elem(Engine.StoreRoot(_))
 plot = |mode| {
+	chosen = { mode, test: cells.test.signal() }.Signal
 	surface = Ui.surface(
 		mode.map(scene),
 		{
 			label: "Visualizer",
 			space: mode.map(space),
+			background: chosen.map(|{ mode: m, test }| if (m == "Shaders" and test == "Invert") black else Clear),
 			pacing: Engine.const(Display),
 			trail: mode.map(trail),
 			reset: cells.resets.signal(),
+			shader: chosen.map(|{ mode: m, test }| if (m == "Shaders") shader(test) else NoShader),
+			on_shader: Handled(Engine.handle(|status| [cells.status.set(describe(status))])),
 			width: FillAtLeast(360),
 			height: Fixed(160),
 		},
@@ -75,15 +96,15 @@ plot = |mode| {
 	Ui.overlay({ vertical: Bottom, padding: All(8) }, surface, caption)
 }
 
-## Scope draws a 640 by 160 scene fitted to the surface; Echo and Bands
-## draw in points.
+## Scope draws a 640 by 160 scene fitted to the surface; the others draw
+## in points.
 space : Str -> Ui.Space
 space = |mode| if (mode == "Scope") Fit({ width: 640, height: 160 }) else Points
 
 ## The marks of a mode, from the surface's top-left corner.
 scene : Str -> List(Ui.Mark)
 scene = |mode|
-	if mode == "Echo" {
+	if mode == "Echo" or mode == "Shaders" {
 		[
 			Fill(Rect({ x: 20, y: 20, width: 20, height: 20 }), red),
 			Stroke(Ring({ source: "synthetic.wave", x: 240, y: 80, radius: 36, depth: 16, low: -1, high: 1 }), { color: Orange, width: Value(2) }),
@@ -112,12 +133,86 @@ scene = |mode|
 	}
 
 ## Echo's trail: half gone in 100 ms, drifting right at 100 points a second.
+## The shader tests keep it, so where shaders do not run (Core Graphics)
+## they draw Echo; a warp shader takes its place.
 trail : Str -> Ui.Trail
 trail = |mode|
-	if mode == "Echo" {
+	if mode == "Echo" or mode == "Shaders" {
 		Trail({ half_life_ms: 100, zoom: 1, turn: 0, shift: { x: 100, y: 0 } })
 	} else {
 		NoTrail
+	}
+
+## The shader tests.
+tests : List(Str)
+tests = ["Warp", "Invert", "Param", "Broken"]
+
+## Each test's stages. `Warp` drags the previous frame a tenth of the width
+## right each frame, with no fade, so a mark smears right; `Invert` maps
+## each colour to its opposite on the way to the screen; `Param` paints the
+## screen as red as `synthetic.level`, read each frame through a param;
+## `Broken` names something that does not exist on its third line.
+shader : Str -> Ui.Shader
+shader = |test|
+	match test {
+		"Warp" =>
+			Shaders({
+				warp: Some(
+					\\// Each pixel takes the colour `shift` of the width to its left.
+					\\float4 warp(Frame f, Params p) {
+					\\    return sample(f, f.uv - float2(p.shift, 0.0));
+					\\}
+				),
+				composite: None,
+				params: [("shift", Value(0.1))],
+			})
+
+		"Invert" =>
+			Shaders({
+				warp: None,
+				composite: Some(
+					\\// The opposite colour: red shows cyan, and black white.
+					\\float4 composite(Frame f, Params p) {
+					\\    float4 c = sample(f, f.uv);
+					\\    return float4(c.a - c.rgb, c.a);
+					\\}
+				),
+				params: [],
+			})
+
+		"Param" =>
+			Shaders({
+				warp: None,
+				composite: Some(
+					\\// Red as strong as the level param, everywhere.
+					\\float4 composite(Frame f, Params p) {
+					\\    return opaque(float3(p.level, 0.0, 0.0));
+					\\}
+				),
+				params: [("level", Source({ source: "synthetic.level", scale: 1, offset: 0 }))],
+			})
+
+		_ =>
+			Shaders({
+				warp: Some(
+					\\// A mistake on line 3: there is no `brightness`.
+					\\float4 warp(Frame f, Params p) {
+					\\    return sample(f, f.uv) * brightness;
+					\\}
+				),
+				composite: None,
+				params: [],
+			})
+	}
+
+## What the shaders are doing, as the line beside the tests says it.
+describe : Ui.ShaderStatus -> Str
+describe = |status|
+	match status {
+		NoShader => "Shaders: none"
+		Running => "Shaders: running"
+		Fallback => "Shaders: not on this renderer, so the marks and the trail alone"
+		Failed(errors) => Str.join_with(errors.map(|e| "${if (e.stage == Warp) "warp" else "composite"} line ${e.line.to_str()}:${e.column.to_str()}: ${e.message}"), "; ")
 	}
 
 red : Ui.Color
@@ -134,3 +229,6 @@ white = Adaptive({ light: 0xffffff, dark: 0xffffff })
 
 ## The scenes encode as the host reads them.
 expect scene("Echo").len() == 2 and scene("Scope").len() == 5 and scene("Bands").len() == 10
+
+## A compile error reads with its stage, line and column.
+expect describe(Failed([{ stage: Warp, line: 3, column: 30, message: "use of undeclared identifier 'brightness'" }])) == "warp line 3:30: use of undeclared identifier 'brightness'"
