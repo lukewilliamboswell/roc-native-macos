@@ -31,11 +31,12 @@ view = || {
 	contacts = cells.contacts.signal()
 	shown = contacts.map2(cells.selected.signal(), picked)
 	Ui.vstack(
-		{ spacing: 12, align: Fill, width: AtLeast(700) },
+		{ spacing: 12, align: Fill, padding: All(6), width: AtLeast(700) },
 		[
 			Ui.hstack(
-				{ spacing: 8 },
+				{ spacing: 10, align: Center },
 				[
+					Ui.text("Contacts", { style: Title2, weight: Semibold }),
 					Ui.image("magnifyingglass", { color: SecondaryLabel }),
 					Ui.text_field(cells.search.signal(), { placeholder: "Search names and cities", on_input: Engine.handle(|typed| [cells.search.set(typed)]), bezel: Rounded, width: Fill }),
 					Ui.text(contacts.map2(cells.search.signal(), matching), { style: Caption1, color: SecondaryLabel, design: MonospacedDigits }),
@@ -50,7 +51,7 @@ view = || {
 
 					## The detail pane for the selected contact.
 					Ui.box(
-						{ padding: All(24), border: Line({ color: Separator, width: 1 }), width: Fill, height: Fill },
+						{ fill: TextBackground, padding: All(24), border: Line({ color: Separator, width: 1 }), radius: 14, width: Fill, height: Fill },
 						Engine.when(
 							shown.map(|s| s == Nobody),
 							|| Ui.vstack(
@@ -80,14 +81,14 @@ view = || {
 
 ## One detail line: a symbol and its text.
 line : Str, Signal(ctx, Str) -> Elem(ctx)
-line = |symbol, value| Ui.hstack({ spacing: 8 }, [Ui.image(symbol, { color: SecondaryLabel }), Ui.text(value, { color: SecondaryLabel })])
+line = |symbol, value| Ui.hstack({ spacing: 8 }, [Ui.image(symbol, { color: SecondaryLabel }), Ui.text(value, { color: Label, overflow: Wrap, width: Fill })])
 
 ## One row: selecting it selects this contact.
 row : Signal(r, U64), State(r, Contact) -> Elem(r)
 	where [r.store : () -> Engine.Reach(r, _)]
 row = |key, contact|
 	Ui.row(
-		{ on_select: Engine.handle_by(key, |id, _| [cells.selected.set(Picked(id))]), spacing: 10, padding: Axes({ horizontal: 4, vertical: 3 }) },
+		{ on_select: Engine.handle_by(key, |id, _| [cells.selected.set(Picked(id))]), spacing: 10, padding: Axes({ horizontal: 6, vertical: 5 }) },
 		[
 			Ui.image("person.crop.circle.fill", { style: Title2, color: SecondaryLabel }),
 			Ui.vstack(

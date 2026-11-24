@@ -6,10 +6,11 @@
     (wait 200)
     (select (list-row "Ada A. Liskov"))
     (expect-tree (list-row "Ada A. Liskov") (row :views 2 (image _) (vstack :views 2 (text "Ada A. Liskov" _ _) _)))
-    (expect-dump (window :width 740 :height 474
+    (expect-dump (window :width 740 :height 486
                    (vstack :views 1
                      (vstack :views 2
-                       (hstack :views 3
+                       (hstack :views 4
+                         (text "Contacts" :text-style title2 :weight semibold)
                          (image magnifyingglass)
                          (text-field "ada")
                          (text "371 of 10000" :color secondary-label :design monospaced-digits :text-style caption1))
@@ -31,14 +32,14 @@
                                (text "Ada A. Liskov" :text-style headline)
                                (text "ada.liskov54@example.com · Lisbon" :color secondary-label :text-style caption1)))
                            (more))
-                         (box :border line:1:separator
+                         (box :border line:1:separator :fill text-background
                            (vstack :views 5
                              (image person.crop.circle.fill)
                              (text "Ada A. Liskov" :text-style title1 :weight semibold)
                              (divider)
                              (hstack :views 2
                                (image envelope)
-                               (text "ada.liskov54@example.com" :color secondary-label))
+                               (text "ada.liskov54@example.com"))
                              (hstack :views 2
                                (image mappin.and.ellipse)
-                               (text "Lisbon" :color secondary-label)))))))))))
+                               (text "Lisbon")))))))))))

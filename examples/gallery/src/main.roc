@@ -37,7 +37,7 @@ Theme : {
 
 theme : Theme
 theme = {
-	section: { padding: All(14), border: Line({ color: Separator, width: 1 }), width: Fill },
+	section: { fill: TextBackground, padding: All(14), border: Line({ color: Separator, width: 1 }), radius: 12, width: Fill },
 	heading: { style: Subheadline, weight: Semibold, color: SecondaryLabel },
 	caption: { style: Caption1, color: SecondaryLabel },
 }
@@ -45,7 +45,7 @@ theme = {
 view : () -> Elem(Engine.StoreRoot(_))
 view = ||
 	Ui.vstack(
-		{ spacing: 16, align: Fill, width: AtLeast(520) },
+		{ spacing: 16, align: Fill, padding: All(6), width: AtLeast(520) },
 		[
 			Ui.hstack(
 				{ spacing: 10 },
@@ -55,7 +55,7 @@ view = ||
 						{ spacing: 2 },
 						[
 							Ui.text("Gallery", { style: Title2, weight: Semibold }),
-							Ui.text("Native AppKit controls driven by the roc-signals engine", theme.caption),
+							Ui.text("Controls, typography, colors, and shortcuts", theme.caption),
 						],
 					),
 				],
@@ -79,7 +79,7 @@ page = |name|
 section : Str, Elem(ctx) -> Elem(ctx)
 section = |title, content|
 	Ui.vstack(
-		{ spacing: 6, align: Fill },
+		{ spacing: 8, align: Fill },
 		[
 			Ui.text(Engine.const(title), theme.heading),
 			Ui.box(theme.section, content),

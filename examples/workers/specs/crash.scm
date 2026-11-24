@@ -11,7 +11,7 @@
     (click (button "Run 24 jobs"))
     (await-work)
     (expect-workers :limit 1 :running 0 :queued 0 :answered 24 :lost 1 :stopped 0 :timed-out 0 :dropped 0)
-    (expect-dump (window :width 600 :height 283
+    (expect-dump (window :width 600 :height 295
                    (vstack :views 1
                      (vstack :views 2
                        (hstack :views 3

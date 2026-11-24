@@ -2,14 +2,14 @@
 ; end stops there, and one with a wide range takes a value far up it.
 (test "ranges"
   (steps
-    (expect-dump (window :width 560 :height 519
+    (expect-dump (window :width 560 :height 539
                    (vstack :views 1
                      (vstack :views 4
                        (hstack :views 2
                          (image square.grid.2x2.fill)
                          (vstack :views 2
                            (text "Gallery" :text-style title2 :weight semibold)
-                           (text "Native AppKit controls driven by the roc-signals engine" :color secondary-label :text-style caption1)))
+                           (text "Controls, typography, colors, and shortcuts" :color secondary-label :text-style caption1)))
                        (vstack :views 2
                          (hstack :views 3
                            (spacer)
@@ -18,7 +18,7 @@
                          (vstack :views 4
                            (vstack :views 2
                              (text "CHOICE" :color secondary-label :text-style subheadline :weight semibold)
-                             (box :border line:1:separator
+                             (box :border line:1:separator :fill text-background
                                (vstack :views 2
                                  (hstack :views 3
                                    (image leaf.fill)
@@ -27,7 +27,7 @@
                                  (text "You picked Apple" :color accent))))
                            (vstack :views 2
                              (text "LEVEL" :color secondary-label :text-style subheadline :weight semibold)
-                             (box :border line:1:separator
+                             (box :border line:1:separator :fill text-background
                                (vstack :views 2
                                  (hstack :views 3
                                    (image speaker.wave.2.fill)
@@ -36,7 +36,7 @@
                                  (progress :value 40 :max 100))))
                            (vstack :views 2
                              (text "RANGES" :color secondary-label :text-style subheadline :weight semibold)
-                             (box :border line:1:separator
+                             (box :border line:1:separator :fill text-background
                                (vstack :views 2
                                  (hstack :views 3
                                    (text "Gain")
@@ -48,7 +48,7 @@
                                    (text "200" :design monospaced-digits)))))
                            (vstack :views 2
                              (text "ACTIVITY" :color secondary-label :text-style subheadline :weight semibold)
-                             (box :border line:1:separator
+                             (box :border line:1:separator :fill text-background
                                (hstack :views 2
                                  (checkbox "Working" :checked #f)
                                  (progress idle))))))
@@ -57,14 +57,14 @@
     (slide (slider 2) -13)
     (slide (slider 3) 750)
     (expect-text (text "-12") "-12")
-    (expect-dump (window :width 560 :height 519
+    (expect-dump (window :width 560 :height 539
                    (vstack :views 1
                      (vstack :views 4
                        (hstack :views 2
                          (image square.grid.2x2.fill)
                          (vstack :views 2
                            (text "Gallery" :text-style title2 :weight semibold)
-                           (text "Native AppKit controls driven by the roc-signals engine" :color secondary-label :text-style caption1)))
+                           (text "Controls, typography, colors, and shortcuts" :color secondary-label :text-style caption1)))
                        (vstack :views 2
                          (hstack :views 3
                            (spacer)
@@ -73,7 +73,7 @@
                          (vstack :views 4
                            (vstack :views 2
                              (text "CHOICE" :color secondary-label :text-style subheadline :weight semibold)
-                             (box :border line:1:separator
+                             (box :border line:1:separator :fill text-background
                                (vstack :views 2
                                  (hstack :views 3
                                    (image leaf.fill)
@@ -82,7 +82,7 @@
                                  (text "You picked Apple" :color accent))))
                            (vstack :views 2
                              (text "LEVEL" :color secondary-label :text-style subheadline :weight semibold)
-                             (box :border line:1:separator
+                             (box :border line:1:separator :fill text-background
                                (vstack :views 2
                                  (hstack :views 3
                                    (image speaker.wave.2.fill)
@@ -91,7 +91,7 @@
                                  (progress :value 40 :max 100))))
                            (vstack :views 2
                              (text "RANGES" :color secondary-label :text-style subheadline :weight semibold)
-                             (box :border line:1:separator
+                             (box :border line:1:separator :fill text-background
                                (vstack :views 2
                                  (hstack :views 3
                                    (text "Gain")
@@ -103,7 +103,7 @@
                                    (text "750" :design monospaced-digits)))))
                            (vstack :views 2
                              (text "ACTIVITY" :color secondary-label :text-style subheadline :weight semibold)
-                             (box :border line:1:separator
+                             (box :border line:1:separator :fill text-background
                                (hstack :views 2
                                  (checkbox "Working" :checked #f)
                                  (progress idle))))))
