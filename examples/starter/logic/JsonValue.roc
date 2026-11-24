@@ -3,13 +3,14 @@
 ## and `JsonValue.encode` writes one back, indented, so a preset a person
 ## exports is readable and editable by hand.
 ##
-## Numbers are whole (`-12`, `300`): every number the app stores is a whole
-## count of some unit (percent, per-mille, milliseconds, tenths of a dB),
-## so a fraction or an exponent is refused with where it was, rather than
-## rounded. Objects keep their keys in order, as written. Nesting deeper
+## A whole number (`-12`, `300`) is an `Int`, and one with a fraction
+## (`0.0025`, `-1.5`) a `Dec`, kept exactly as written; an exponent is
+## refused with where it was. Most numbers the app stores are whole counts
+## of a unit (percent, per-mille, milliseconds), and a shader's params are
+## fractions. Objects keep their keys in order, as written. Nesting deeper
 ## than `JsonValue.deepest` is refused, so a hostile file cannot exhaust the
 ## stack; the size of a file is bounded where it is read.
-JsonValue := [Null, Bool(Bool), Int(I64), Text(Str), Array(List(JsonValue)), Object(List((Str, JsonValue)))].{
+JsonValue := [Null, Bool(Bool), Int(I64), Dec(Dec), Text(Str), Array(List(JsonValue)), Object(List((Str, JsonValue)))].{
 
 	## Two values are equal when they are the same kind with equal parts,
 	## an object's fields in the same order.
@@ -19,6 +20,7 @@ JsonValue := [Null, Bool(Bool), Int(I64), Text(Str), Array(List(JsonValue)), Obj
 			(Null, Null) => Bool.True
 			(Bool(x), Bool(y)) => x == y
 			(Int(x), Int(y)) => x == y
+			(Dec(x), Dec(y)) => x == y
 			(Text(x), Text(y)) => x == y
 			(Array(xs), Array(ys)) => xs.len() == ys.len() and List.map2(xs, ys, JsonValue.is_eq).all(|same| same)
 			(Object(xs), Object(ys)) => xs.len() == ys.len() and List.map2(xs, ys, |(kx, vx), (ky, vy)| kx == ky and JsonValue.is_eq(vx, vy)).all(|same| same)
@@ -73,7 +75,8 @@ JsonValue := [Null, Bool(Bool), Int(I64), Text(Str), Array(List(JsonValue)), Obj
 		}
 	}
 
-	## A whole number: an optional minus, then digits with no leading zero.
+	## A number: an optional minus, digits with no leading zero, then
+	## optionally a dot and more digits (a `Dec`).
 	number : List(U8), U64 -> Try({ value : JsonValue, next : U64 }, Problem)
 	number = |bytes, at| {
 		digits_from = if (bytes.get(at) == Ok('-')) at + 1 else at
@@ -88,9 +91,25 @@ JsonValue := [Null, Bool(Bool), Int(I64), Text(Str), Array(List(JsonValue)), Obj
 		if count > 1 and bytes.get(digits_from) == Ok('0') {
 			return Err({ at, what: "a number has a leading zero" })
 		}
-		match bytes.get($end) {
-			Ok(byte) if byte == '.' or byte == 'e' or byte == 'E' => return Err({ at, what: "numbers here are whole" })
-			_ => {}
+		if bytes.get($end) == Ok('.') {
+			var $frac = $end + 1
+			while JsonValue.is_digit(bytes.get($frac)) {
+				$frac = $frac + 1
+			}
+			if $frac == $end + 1 {
+				return Err({ at, what: "a number's dot needs digits after it" })
+			}
+			if JsonValue.is_exponent(bytes.get($frac)) {
+				return Err({ at, what: "write numbers without an exponent" })
+			}
+			spelled = Str.from_utf8(bytes.sublist({ start: at, len: $frac - at })) ?? ""
+			return match Dec.from_str(spelled) {
+				Ok(d) => Ok({ value: JsonValue.Dec(d), next: $frac })
+				Err(_) => Err({ at, what: "the number is too large" })
+			}
+		}
+		if JsonValue.is_exponent(bytes.get($end)) {
+			return Err({ at, what: "write numbers without an exponent" })
 		}
 		text = Str.from_utf8(bytes.sublist({ start: at, len: $end - at })) ?? ""
 		match I64.from_str(text) {
@@ -98,6 +117,9 @@ JsonValue := [Null, Bool(Bool), Int(I64), Text(Str), Array(List(JsonValue)), Obj
 			Err(_) => Err({ at, what: "the number is too large" })
 		}
 	}
+
+	is_exponent : Try(U8, _) -> Bool
+	is_exponent = |got| got == Ok('e') or got == Ok('E')
 
 	is_digit : Try(U8, _) -> Bool
 	is_digit = |got|
@@ -289,6 +311,7 @@ JsonValue := [Null, Bool(Bool), Int(I64), Text(Str), Array(List(JsonValue)), Obj
 			Null => "null"
 			Bool(b) => if (b) "true" else "false"
 			Int(n) => n.to_str()
+			Dec(d) => JsonValue.decimal(d)
 			Text(s) => JsonValue.quoted(s)
 			Array([]) => "[]"
 			Array(items) =>
@@ -314,6 +337,13 @@ JsonValue := [Null, Bool(Bool), Int(I64), Text(Str), Array(List(JsonValue)), Obj
 			Object(_) => Bool.False
 			_ => Bool.True
 		}
+
+	## A `Dec` as text that reads back as one: always with a dot.
+	decimal : Dec -> Str
+	decimal = |d| {
+		spelled = d.to_str()
+		if (spelled.contains(".")) spelled else "${spelled}.0"
+	}
 
 	## A string in quotes, with what JSON requires escaped.
 	quoted : Str -> Str
@@ -364,7 +394,8 @@ expect {
 expect JsonValue.encode(JsonValue.Object([("a", JsonValue.Array([JsonValue.Int(1), JsonValue.Int(2)])), ("b", JsonValue.Object([]))])) == "{\n  \"a\": [1, 2],\n  \"b\": {}\n}"
 
 ## What is not JSON, or not whole numbers, is refused with where.
-expect JsonValue.parse("1.5") == Err({ at: 0, what: "numbers here are whole" })
+expect JsonValue.parse("1.5") == Ok(JsonValue.Dec(1.5)) and JsonValue.parse("-0.0025") == Ok(JsonValue.Dec(-0.0025)) and JsonValue.parse("1e3") == Err({ at: 0, what: "write numbers without an exponent" }) and JsonValue.parse("1.") == Err({ at: 0, what: "a number's dot needs digits after it" })
+expect [0.004, -12.5, 60.0, 0.975, 1.0, 0.0].all(|d| JsonValue.parse(JsonValue.encode(JsonValue.Dec(d))) == Ok(JsonValue.Dec(d)))
 expect JsonValue.parse("[1,]").is_err() and JsonValue.parse("{\"a\" 1}").is_err() and JsonValue.parse("01").is_err() and JsonValue.parse("").is_err()
 expect JsonValue.parse("{\"a\": 1, \"a\": 2}").is_err() and JsonValue.parse("\"\\ud800\"").is_err() and JsonValue.parse("[1] x").is_err()
 expect JsonValue.parse(Str.repeat("[", 40)).is_err() and JsonValue.parse("${Str.repeat("[", 20)}${Str.repeat("]", 20)}").is_ok()

@@ -683,6 +683,12 @@ final class AudioService: PortService {
             } catch { fatal("audio: offline render failed: \(AudioService.describe(error))") }
             if let data = out.floatChannelData { rendered.append(contentsOf: UnsafeBufferPointer(start: data[0], count: Int(out.frameLength))) }
             left -= Int(n)
+            // Offline, the tap delivers as fast as this loop renders, far
+            // faster than the worker measures: wait while its ring is all
+            // but full, so no chunk is overwritten. A dropped chunk restarts
+            // the rolling window, and where it restarted would depend on the
+            // worker's speed, so a spec's measurements would not repeat.
+            if tapped { awaitAnalysisRoom() }
             if state == .playing, frame() >= durationFrames { finish(generation) }
         }
         // Let the tap deliver every whole chunk rendered, and the worker
@@ -700,6 +706,15 @@ final class AudioService: PortService {
         }
         publishStatus()
         publishSnapshot()
+    }
+
+    /// Under the manual clock: wait, at most 2 s, until the analysis ring
+    /// has room for another chunk, unless a spec stalled the worker.
+    private func awaitAnalysisRoom() {
+        let deadline = Bench.now() + 2
+        while Bench.now() < deadline, !analysis.isStalled, analysis.counters().waiting >= AudioAnalysis.slotCount - 1 {
+            Thread.sleep(forTimeInterval: 0.001)
+        }
     }
 
     // MARK: Errors

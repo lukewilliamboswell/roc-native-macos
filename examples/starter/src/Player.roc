@@ -40,7 +40,7 @@ Player := [].{
 					[
 						Ui.drop_zone(
 							{ on_drop: Engine.handle_by(Store.queue_and_player(), |now, received| Store.received(now, received.files, received.refused)), padding: All(2) },
-							Engine.derive(Player.drawing(), |scene| Visual.view(scene, Store.cells.player.signal().map(|p| p.reset), Words.overlay())),
+							Engine.derive(Player.drawing(), |scene| Visual.view(scene, Store.cells.player.signal().map(|p| p.reset), Engine.handle(Store.shader_heard), Words.overlay())),
 						),
 						Player.presets(),
 					],
@@ -142,7 +142,21 @@ Player := [].{
 		Ui.vstack(
 			{ spacing: 4, align: Fill, width: Fixed(190) },
 			[
-				Ui.text("Presets", { style: Headline }),
+				Ui.hstack(
+					{},
+					[
+						Ui.text("Presets", { style: Headline }),
+						Ui.spacer(),
+
+						## Shaders need the Metal renderer; elsewhere a preset draws its
+						## layers alone, and says so.
+						Engine.when(
+							Store.cells.shader_status.signal().map(|s| s == Fallback),
+							|| Ui.text("Simple visuals", { style: Caption1, color: SecondaryLabel }),
+							|| Engine.text(""),
+						),
+					],
+				),
 				Engine.each(
 					{ mine: Store.cells.mine.signal(), chosen }.Signal.map(|x| Library.all(x.mine).map(|p| { id: p.id, name: p.name, on: p.id == x.chosen })),
 					|row| row.id,
