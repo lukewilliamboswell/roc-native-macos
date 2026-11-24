@@ -139,8 +139,9 @@ Player := [].{
 	presets : () -> Elem(Engine.StoreRoot(_))
 	presets = || {
 		chosen = Store.cells.chosen.signal()
+		items = { mine: Store.cells.mine.signal(), chosen }.Signal.map(|x| Library.all(x.mine).map(|p| { id: p.id, name: p.name, on: p.id == x.chosen }))
 		Ui.vstack(
-			{ spacing: 4, align: Fill, width: Fixed(190) },
+			{ spacing: 8, align: Fill, width: Fixed(190) },
 			[
 				Ui.hstack(
 					{},
@@ -157,19 +158,29 @@ Player := [].{
 						),
 					],
 				),
-				Engine.each(
-					{ mine: Store.cells.mine.signal(), chosen }.Signal.map(|x| Library.all(x.mine).map(|p| { id: p.id, name: p.name, on: p.id == x.chosen })),
-					|row| row.id,
-					|row| {
-						item = row.item()
-						Ui.hstack(
-							{ spacing: 4 },
-							[
-								Ui.text(item.map(|i| if (i.on) "●" else ""), { color: Accent, width: Fixed(12) }),
-								Ui.button(item.map(|i| i.name), { on_press: Engine.handle_by({ i: item, mine: Store.cells.mine.signal() }.Signal.map(|x| x), |x, _| Store.chose(x.mine, x.i.id)), bezel: Borderless, squeeze: Yield }),
-							],
-						)
-					},
+				Ui.text(
+					items.map(|rows| rows.find_first(|p| p.on).map_ok(|p| "Using ${p.name}") ?? ""),
+					{ style: Caption1, color: SecondaryLabel, overflow: TruncateTail, width: Fill },
+				),
+				Ui.box(
+					{ fill: TextBackground, border: Line({ color: Separator, width: 1 }), radius: 12, padding: All(4), width: Fill },
+					Ui.scroll(
+						{ opening_height: 190, height: Fixed(190), spacing: 2 },
+						Engine.each(
+							items,
+							|row| row.id,
+							|row| {
+								item = row.item()
+								Ui.hstack(
+									{ spacing: 4, padding: Axes({ horizontal: 4, vertical: 3 }) },
+									[
+										Ui.text(item.map(|i| if (i.on) "●" else ""), { color: Accent, width: Fixed(12) }),
+										Ui.button(item.map(|i| i.name), { on_press: Engine.handle_by({ i: item, mine: Store.cells.mine.signal() }.Signal.map(|x| x), |x, _| Store.chose(x.mine, x.i.id)), bezel: Borderless, squeeze: Yield }),
+									],
+								)
+							},
+						),
+					),
 				),
 				Ui.hstack(
 					{ spacing: 4 },
@@ -191,11 +202,11 @@ Player := [].{
 		queue = Store.cells.queue.signal()
 		both = { q: queue, p: player }.Signal.map(|x| x)
 		Ui.box(
-			{ padding: Axes({ horizontal: 12, vertical: 8 }), border: Line({ color: Separator, width: 1 }) },
+			{ fill: ControlBackground, radius: 12, padding: Axes({ horizontal: 12, vertical: 10 }), border: Line({ color: Separator, width: 1 }) },
 			Ui.hstack(
 				{ spacing: 8 },
 				[
-					Ui.text(player.map(Player.times), { design: MonospacedDigits, width: Fixed(110) }),
+					Ui.text(player.map(Player.times), { weight: Medium, design: MonospacedDigits, width: Fixed(110) }),
 					Ui.slider(player.map(Player.permille), { range: { min: 0, max: 1000 }, on_input: Engine.handle_by(player, Store.sought), enabled: player.map(|p| p.duration_ms > 0), width: Fill }),
 					Ui.button("Previous", { on_press: Engine.handle_by(Store.queue_and_player(), |now, _| Store.previous(now)), icon: Symbol("backward.fill"), title_display: Hidden, bezel: Borderless }),
 					Ui.button(player.map(|p| if (p.status == Playing) "Pause" else "Play"), { on_press: Engine.handle_by(both, |x, _| Store.play_pause(x.q, x.p)), icon: Symbol("playpause.fill"), enabled: queue.map(|q| Queue.len(q) > 0) }),

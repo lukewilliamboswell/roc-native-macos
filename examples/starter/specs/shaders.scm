@@ -25,7 +25,7 @@
     (frame 100)
     (frame 100)
     (expect-allocations-at-most 0)
-    (expect-dump (window :width 760 :height 535
+    (expect-dump (window :width 760 :height 539
                    (vstack :views 1
                      (vstack :views 8
                        (hstack :views 6
@@ -55,62 +55,65 @@
                                (opacity 1.000)
                                (restore))
                              (vstack :views 0)))
-                         (vstack :views 17
+                         (vstack :views 4
                            (hstack :views 2
                              (text "Presets" :text-style headline)
                              (spacer))
-                           (hstack :views 2
-                             (text "" :color accent)
-                             (button "Scope"))
-                           (hstack :views 2
-                             (text "" :color accent)
-                             (button "Spectrum Bars"))
-                           (hstack :views 2
-                             (text "" :color accent)
-                             (button "Echo Rings"))
-                           (hstack :views 2
-                             (text "" :color accent)
-                             (button "Liquid Drift"))
-                           (hstack :views 2
-                             (text "" :color accent)
-                             (button "Blur Corridor"))
-                           (hstack :views 2
-                             (text "" :color accent)
-                             (button "Superscope Bloom"))
-                           (hstack :views 2
-                             (text "" :color accent)
-                             (button "Flux Streaks"))
-                           (hstack :views 2
-                             (text "" :color accent)
-                             (button "Phase Scope"))
-                           (hstack :views 2
-                             (text "" :color accent)
-                             (button "Peak Meter"))
-                           (hstack :views 2
-                             (text "●" :color accent)
-                             (button "Plasma Weave"))
-                           (hstack :views 2
-                             (text "" :color accent)
-                             (button "Hyperspace"))
-                           (hstack :views 2
-                             (text "" :color accent)
-                             (button "Mirror Shard"))
-                           (hstack :views 2
-                             (text "" :color accent)
-                             (button "Spectrum Fire"))
-                           (hstack :views 2
-                             (text "" :color accent)
-                             (button "Ripple Pool"))
-                           (hstack :views 2
-                             (text "" :color accent)
-                             (button "Orb Garden"))
+                           (text "Using Plasma Weave" :color secondary-label :text-style caption1)
+                           (box :border line:1:separator :fill text-background
+                             (scroll :views 15 :height 190
+                               (hstack :views 2
+                                 (text "" :color accent)
+                                 (button "Scope"))
+                               (hstack :views 2
+                                 (text "" :color accent)
+                                 (button "Spectrum Bars"))
+                               (hstack :views 2
+                                 (text "" :color accent)
+                                 (button "Echo Rings"))
+                               (hstack :views 2
+                                 (text "" :color accent)
+                                 (button "Liquid Drift"))
+                               (hstack :views 2
+                                 (text "" :color accent)
+                                 (button "Blur Corridor"))
+                               (hstack :views 2
+                                 (text "" :color accent)
+                                 (button "Superscope Bloom"))
+                               (hstack :views 2
+                                 (text "" :color accent)
+                                 (button "Flux Streaks"))
+                               (hstack :views 2
+                                 (text "" :color accent)
+                                 (button "Phase Scope"))
+                               (hstack :views 2
+                                 (text "" :color accent)
+                                 (button "Peak Meter"))
+                               (hstack :views 2
+                                 (text "●" :color accent)
+                                 (button "Plasma Weave"))
+                               (hstack :views 2
+                                 (text "" :color accent)
+                                 (button "Hyperspace"))
+                               (hstack :views 2
+                                 (text "" :color accent)
+                                 (button "Mirror Shard"))
+                               (hstack :views 2
+                                 (text "" :color accent)
+                                 (button "Spectrum Fire"))
+                               (hstack :views 2
+                                 (text "" :color accent)
+                                 (button "Ripple Pool"))
+                               (hstack :views 2
+                                 (text "" :color accent)
+                                 (button "Orb Garden"))))
                            (hstack :views 3
                              (button "New")
                              (button "Duplicate")
                              (button "Edit"))))
                        (box :border line:1:separator
                          (hstack :views 8
-                           (text "0:00 / 2:59" :design monospaced-digits)
+                           (text "0:00 / 2:59" :design monospaced-digits :weight medium)
                            (slider :value 0.0)
                            (button "Previous")
                            (button "Play")
