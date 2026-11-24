@@ -305,7 +305,8 @@ jobs:
           export XDG_CACHE_HOME="$tmp/roc-cache"
           for dir in "$top"/examples/*/; do
             name=$(basename "$dir")
-            # An app's entry is src/main.roc, or main.roc at its top.
+            # An example's entry is src/main.roc (the starter), or main.roc
+            # at its top (the one-file examples).
             entry=main.roc
             if [ -f "$dir/src/main.roc" ]; then entry=src/main.roc; fi
             sed -i "s#platform \"https://[^\"]*/$bundle\"#platform \"$url\"#" "$dir/$entry"
@@ -335,13 +336,15 @@ jobs:
           cp -R "$beginner/starter/starter.app" "$apps/starter.app"
           # Each other archived example with assets/ is built through
           # macos.roc too, which copies them into <name>.app and makes its
-          # icon from assets/icon.png with no Apple tool. cross-run runs its
-          # cases on the program inside the bundle, which finds its images
-          # there.
+          # icon from assets/icon.png with no Apple tool. A one-file example's
+          # main.roc moves to src/main.roc first, where the tool reads an
+          # app's root module. cross-run runs its cases on the program inside
+          # the bundle, which finds its images there.
           for dir in "$top"/examples/*/; do
             name=$(basename "$dir")
             [ -d "$dir/assets" ] || continue
             if [ -e "$apps/$name.app" ]; then continue; fi
+            if [ ! -f "$dir/src/main.roc" ]; then mkdir -p "$dir/src" && mv "$dir/main.roc" "$dir/src/main.roc"; fi
             cp "$beginner/macos.roc" "$dir/macos.roc"
             (cd "$dir" && roc macos.roc build)
             test -d "$dir/$name.app/Contents/Resources/assets" \

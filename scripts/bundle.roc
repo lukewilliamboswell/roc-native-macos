@@ -255,9 +255,9 @@ package_app! = |dir| {
 }
 
 ## The repository's example with assets, as an author would have it beside
-## the tool: `main.roc` naming the served bundle, `assets/` and `tests/`.
-## Its `main.roc` is at its top, the layout 0.0.1's `init` wrote, which the
-## tool still builds, tests and runs.
+## the tool: its one-file `main.roc`, naming the served bundle, as
+## `src/main.roc`, where the tool reads an app's root module, with
+## `assets/` and `tests/`.
 ## `macos.roc build` and `test` it, check the bundle it made, and run its
 ## case on the program inside the bundle, then under `macos.roc dev`.
 assets_app! : Str, Str, Str => Try({}, Str)
@@ -267,8 +267,10 @@ assets_app! = |root, dir, url| {
 	cache = "${dir}/cache"
 	source = Path.read_utf8!(Path.utf8("${root}/examples/${name}/main.roc")) ? |error| "could not read examples/${name}/main.roc: ${Str.inspect(error)}"
 	served = Bundle.released_main(source, url) ? |_| "examples/${name}/main.roc does not name ../../platform/main.roc"
-	Path.create_all!(Path.utf8("${app_dir}/tests")) ? |error| "could not create ${app_dir}/tests: ${Str.inspect(error)}"
-	Path.write_utf8!(Path.utf8("${app_dir}/main.roc"), served) ? |error| "could not write ${app_dir}/main.roc: ${Str.inspect(error)}"
+	for sub in ["tests", "src"] {
+		Path.create_all!(Path.utf8("${app_dir}/${sub}")) ? |error| "could not create ${app_dir}/${sub}: ${Str.inspect(error)}"
+	}
+	Path.write_utf8!(Path.utf8("${app_dir}/src/main.roc"), served) ? |error| "could not write ${app_dir}/src/main.roc: ${Str.inspect(error)}"
 	Path.copy_dir!(Path.utf8("${root}/examples/${name}/assets"), Path.utf8("${app_dir}/assets")) ? |error| "could not copy examples/${name}/assets: ${Str.inspect(error)}"
 	for file in [".script", ".expected"].map(|ext| "${Bundle.assets_case}${ext}") {
 		Path.copy!(Path.utf8("${root}/examples/${name}/tests/${file}"), Path.utf8("${app_dir}/tests/${file}")) ? |error| "could not copy ${file}: ${Str.inspect(error)}"
@@ -302,7 +304,7 @@ assets_app! = |root, dir, url| {
 	if ran.status != Exited(0) or !Recorded.matches(expected, printed) {
 		return Err("${name}.app's own program did not print tests/${Bundle.assets_case}.expected; it printed:\n${printed}")
 	}
-	# `macos.roc dev`: `roc main.roc` here, which finds assets/ in this directory.
+	# `macos.roc dev`: `roc ../src/main.roc` from .macos/, pointed at assets/ here.
 	note!("RUN roc macos.roc dev (in ${name}/) with tests/${Bundle.assets_case}.script")
 	dev = Cmd.new("roc")
 		.args(["macos.roc", "dev"].map(OsStr.from_str))
@@ -315,7 +317,7 @@ assets_app! = |root, dir, url| {
 		.run!() ? |error| "roc macos.roc dev did not finish: ${Str.inspect(error)}"
 	dev_printed = Str.from_utf8_lossy(dev.stdout_bytes)
 	match dev_printed.split_on("\n") {
-		[first, .. as rest] if dev.status == Exited(0) and first.starts_with("Running main.roc") and Recorded.matches(expected, Str.join_with(rest, "\n")) => Ok({})
+		[first, .. as rest] if dev.status == Exited(0) and first.starts_with("Running src/main.roc") and Recorded.matches(expected, Str.join_with(rest, "\n")) => Ok({})
 		_ => Err("roc macos.roc dev (in ${name}/) did not print tests/${Bundle.assets_case}.expected after its first line; it printed:\n${dev_printed}")
 	}
 }

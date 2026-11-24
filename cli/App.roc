@@ -26,29 +26,19 @@ App := [].{
 	work : Str
 	work = ".macos"
 
-	## Where `init` puts the app's root module.
+	## The app's root module, where `init` puts it. Everything else the tool
+	## reads (`assets/`, `macos.json`, `tests/`, `fuzz/`) is at the top of the
+	## app's directory.
 	nested_entry : Str
 	nested_entry = "src/main.roc"
 
-	## Where apps made by 0.0.1's `init` keep it, which the tool still reads.
-	top_entry : Str
-	top_entry = "main.roc"
-
-	## The app's root module: `src/main.roc`, or `main.roc` at the top of the
-	## app's directory. Everything else the tool reads (`assets/`,
-	## `macos.json`, `tests/`, `fuzz/`) is at the top in either layout.
+	## The app's root module, `src/main.roc`, if there is one.
 	entry! : () => Try(Str, _)
-	entry! = || App.entry_of(Path.exists!(Path.utf8(App.nested_entry))?, Path.exists!(Path.utf8(App.top_entry))?)
+	entry! = || App.entry_of(Path.exists!(Path.utf8(App.nested_entry))?)
 
-	## Which root module there is, given whether each exists.
-	entry_of : Bool, Bool -> Try(Str, [NoMainRoc, TwoEntries])
-	entry_of = |nested, top|
-		match (nested, top) {
-			(Bool.True, Bool.True) => Err(TwoEntries)
-			(Bool.True, _) => Ok(App.nested_entry)
-			(_, Bool.True) => Ok(App.top_entry)
-			_ => Err(NoMainRoc)
-		}
+	## The root module, given whether it exists.
+	entry_of : Bool -> Try(Str, [NoMainRoc])
+	entry_of = |exists| if (exists) Ok(App.nested_entry) else Err(NoMainRoc)
 
 	## The Roc targets of the platform: Apple silicon and Intel Macs, in the
 	## order they are built.
@@ -241,8 +231,7 @@ App := [].{
 		}
 	}
 
-	## Start `roc src/main.roc` (or `roc main.roc` in an app made by 0.0.1),
-	## from `.macos/` (`dev_run`), with this terminal, until it ends: Roc's
+	## Start `roc src/main.roc`, from `.macos/` (`dev_run`), with this terminal, until it ends: Roc's
 	## run mode, which rebuilds the app when a file it reads is saved and swaps
 	## the new code in, for Command-R (*Reload*) to remount. The bare program
 	## finds the app's `assets/`; `macos.json` and the icon belong to the
@@ -358,9 +347,8 @@ App := [].{
 
 expect [App.app_name("My App"), App.app_name("counter"), App.app_name("todo_list"), App.app_name("..")] == ["my-app", "counter", "todo-list", "app"]
 
-## An app made by `init` has `src/main.roc`; one made before has `main.roc`
-## at its top; both at once is ambiguous.
-expect [App.entry_of(Bool.True, Bool.False), App.entry_of(Bool.False, Bool.True), App.entry_of(Bool.True, Bool.True), App.entry_of(Bool.False, Bool.False)] == [Ok("src/main.roc"), Ok("main.roc"), Err(TwoEntries), Err(NoMainRoc)]
+## An app's root module is `src/main.roc`, where `init` puts it.
+expect [App.entry_of(Bool.True), App.entry_of(Bool.False)] == [Ok("src/main.roc"), Err(NoMainRoc)]
 
 ## `--target` takes the Mac targets alone; a build names its Macs.
 expect [App.target_of("arm64mac"), App.target_of("x64mac"), App.target_of("x64v1mac")] == [Ok(Native("arm64mac")), Ok(Native("x64mac")), Err(UnknownTarget("x64v1mac"))]
@@ -395,7 +383,7 @@ expect {
 		and text.contains("<key>CFBundleVersion</key><string>7</string>")
 }
 
-## `dev` runs `roc ../main.roc` from `.macos/`, so Roc's `.zig-cache/` lands
-## there, and points the app at `assets/` beside `main.roc` unless
-## `ROC_ASSETS` is set.
-expect [App.dev_run("src/main.roc", Bool.False), App.dev_run("main.roc", Bool.True)] == [{ dir: ".macos", args: ["../src/main.roc"], env: [("ROC_ASSETS", "../assets")] }, { dir: ".macos", args: ["../main.roc"], env: [] }]
+## `dev` runs `roc ../src/main.roc` from `.macos/`, so Roc's `.zig-cache/`
+## lands there, and points the app at its `assets/` unless `ROC_ASSETS` is
+## set.
+expect [App.dev_run("src/main.roc", Bool.False), App.dev_run("src/main.roc", Bool.True)] == [{ dir: ".macos", args: ["../src/main.roc"], env: [("ROC_ASSETS", "../assets")] }, { dir: ".macos", args: ["../src/main.roc"], env: [] }]

@@ -24,9 +24,8 @@ import Package
 ## roc macos.roc package       # dist/my-app-<version>.zip, to share
 ## ```
 ##
-## The app's root module is `src/main.roc`, where `init` puts it, or
-## `main.roc` at the top of the app's directory, where apps made by 0.0.1
-## keep it (`App.entry!`). Everything else is at the top in both layouts.
+## The app's root module is `src/main.roc`, where `init` puts it
+## (`App.entry!`). Everything else is at the top of the app's directory.
 MacOS :: [].{
 
 	## What the user asked for.
@@ -129,10 +128,10 @@ MacOS :: [].{
 		\\  roc macos.roc ci package       Package it in CI, signing it as the secrets allow.
 		\\  roc macos.roc ci release       Attach dist/*.zip to the pushed tag's GitHub release.
 		\\
-		\\<name> is the app's directory, which holds src/main.roc (or main.roc, in an app
-		\\made by 0.0.1). The app's metadata is in macos.json there: its name, bundle
-		\\identifier (by default com.example.<name>), version, build number, copyright,
-		\\category and oldest macOS. build, run and package take each as a flag too,
+		\\<name> is the app's directory, which holds src/main.roc. The app's metadata
+		\\is in macos.json there: its name, bundle identifier (by default
+		\\com.example.<name>), version, build number, copyright, category and oldest
+		\\macOS. build, run and package take each as a flag too,
 		\\such as --version 1.2.0, which overrides the file, and --target arm64mac or
 		\\--target x64mac, which builds for that Mac alone. Images and other files go
 		\\in assets/, and assets/icon.png is the app's icon. `roc macos.roc COMMAND
@@ -166,7 +165,7 @@ MacOS :: [].{
 				\\
 				\\Usage: roc macos.roc build [--target arm64mac|x64mac] [METADATA FLAGS]
 				\\
-				\\Run from the app's directory, containing src/main.roc (or main.roc). It works
+				\\Run from the app's directory, containing src/main.roc. It works
 				\\on macOS, Linux and Windows alike: the platform carries everything the link
 				\\needs. The app is built for Apple silicon and for Intel Macs (roc build
 				\\--target=arm64mac, then --target=x64mac), and the two programs are joined
@@ -196,7 +195,7 @@ MacOS :: [].{
 				\\Usage: roc macos.roc dev
 				\\
 				\\Run from the app's directory, on a Mac. It runs
-				\\`roc src/main.roc` (`roc main.roc` in an app made by 0.0.1), from .macos/:
+				\\`roc src/main.roc`, from .macos/:
 				\\Roc builds the app with its development backend and starts it, with no
 				\\.app, and watches the modules and packages it imports. When you save a
 				\\change that compiles, Roc rebuilds the app and
@@ -267,9 +266,9 @@ MacOS :: [].{
 				\\
 				\\Usage: roc macos.roc test [--update]
 				\\
-				\\Run from the app's directory. It runs `roc test src/main.roc` (or
-				\\`roc test main.roc`), which runs the expects of every module of the app and
-				\\of the packages it names by path, such as logic/; that works on any system.
+				\\Run from the app's directory. It runs `roc test src/main.roc`, which runs
+				\\the expects of every module of the app and of the packages it names by
+				\\path, such as logic/; that works on any system.
 				\\Then, on a Mac, it builds the app for that Mac and runs its recorded cases.
 				\\Each tests/<case>.script holds steps (click:+;dump;quit), which drive the
 				\\app's real controls without taking focus, and tests/<case>.expected what the
@@ -369,8 +368,7 @@ MacOS :: [].{
 			NoZips => { code: 1, text: "There is no zip in ${Package.dist}/ to attach: run `roc macos.roc ci package` first, or download its artifact there." }
 			LinkInBundle(path) => { code: 1, text: "${path} is a symbolic link, which package does not zip: copy the file it names into assets/ instead." }
 			RocMissing => { code: 1, text: "The Roc compiler is not on your PATH as `roc`, so the app cannot be built. Install Roc ${Bundle.roc_version} (or a later nightly) and put it on your PATH as `roc`." }
-			NoMainRoc => { code: 1, text: "There is no src/main.roc or main.roc here, so there is no app to build. Run this from your app's directory, or create an app with `roc macos.roc init my-app`." }
-			TwoEntries => { code: 1, text: "This directory holds both src/main.roc and main.roc, and an app has one root module: keep src/main.roc, where init puts it, and move or remove main.roc." }
+			NoMainRoc => { code: 1, text: "There is no src/main.roc here, so there is no app to build. Run this from your app's directory, or create an app with `roc macos.roc init my-app`." }
 			ExpectsFailed(entry) => { code: 1, text: "roc test ${entry} failed, so the recorded cases did not run: its report is above. Fix the expect, or the code it checks, and run test again." }
 			NoFuzzTargets => { code: 1, text: "There is no fuzz/main.roc here, so there is nothing to fuzz: it is an app on roc-fuzz's platform that checks the app's logic package, as `roc macos.roc init` writes one, and `roc macos.roc fuzz --help` describes it." }
 			FuzzNotHere(system) => { code: 1, text: "roc-fuzz runs on Apple silicon Macs and on Linux x64, and this is ${system}, so fuzz cannot run here. `roc macos.roc test` runs the expect tests on any system." }

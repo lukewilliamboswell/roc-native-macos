@@ -25,7 +25,7 @@ Init :: [].{
 		scaffold = Bundle.scaffold.map(
 			|file|
 				match file.contents {
-					Text(text) if file.path == App.nested_entry or file.path == App.top_entry => { path: file.path, contents: Text(Init.with_platform(text, Bundle.platform_url)) }
+					Text(text) if file.path == App.nested_entry => { path: file.path, contents: Text(Init.with_platform(text, Bundle.platform_url)) }
 					Text(text) => { path: file.path, contents: Text(text) }
 					Bytes(bytes) => { path: file.path, contents: Bytes(bytes) }
 				},

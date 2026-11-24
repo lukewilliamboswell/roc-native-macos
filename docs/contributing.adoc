@@ -155,8 +155,8 @@ xref:contributing.adoc#the-tool[The tool]), and with an empty package cache
 build`, `roc macos.roc test` (the starter's `expect`s and recorded cases)
 and `roc macos.roc fuzz --check` (its roc-fuzz targets) in
 `build/bundle-test/my-app/`, and packages it twice. It also builds and tests
-`examples/about`, whose `main.roc` is at its top as 0.0.1's `init` wrote it,
-with its assets, through the tool, and runs one of its cases under
+`examples/about`, its one-file `main.roc` copied to `src/main.roc` where
+the tool reads it, with its assets, through the tool, and runs one of its cases under
 `roc macos.roc dev`. The `bundle` stage of `check` does the same with
 `--prebuilt`. The empty cache means basic-cli and the platform's own
 dependency (roc-parser) are downloaded from GitHub on every run.
@@ -188,7 +188,7 @@ roc-native-android's `android.roc` and roc-signals' `signals.roc`):
 | `cli/main.roc` | the package root, exposing `MacOS`
 | `cli/MacOS.roc` | the command line: parsing, `help` and `COMMAND --help`, and every failure put into one sentence (`explain`; exit code 2 for misuse)
 | `cli/Init.roc` | `init`: the starter scaffold (`examples/starter`), never overwriting a file
-| `cli/App.roc` | the app's root module (`src/main.roc`, or `main.roc` in an app made by 0.0.1), and `build` and `run`: `roc build --target=arm64mac` and `--target=x64mac`, joined into the universal `.macos/<name>` (or with `--target` one of them alone), then `<name>.app` with its `Info.plist`
+| `cli/App.roc` | the app's root module (`src/main.roc`), and `build` and `run`: `roc build --target=arm64mac` and `--target=x64mac`, joined into the universal `.macos/<name>` (or with `--target` one of them alone), then `<name>.app` with its `Info.plist`
 | `cli/Universal.roc` | the universal (fat) Mach-O file, written byte for byte as `lipo -create` writes it, with no Apple tool
 | `cli/Cases.roc` | `test`: `roc test` on the root module, then each `tests/<case>.script` run with `ROC_SCRIPT` against `.macos/<name>`, built for this Mac's own target alone
 | `cli/Fuzz.roc` | `fuzz`: `roc build --fuzz fuzz/main.roc` into `.macos/fuzz`, then each roc-fuzz target it lists, run or (`--check`) checked

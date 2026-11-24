@@ -479,8 +479,8 @@ examples! = |roc, named| {
 	Ok({})
 }
 
-## An example's entry, as `macos.roc` finds an app's: `src/main.roc`, or
-## `main.roc` at its top.
+## An example's entry: `src/main.roc` (the starter), or `main.roc` at its
+## top (the one-file examples).
 entry! : Str => Str
 entry! = |dir| if (Path.exists!(Path.utf8("${dir}/src/main.roc")) ?? Bool.False) "src/main.roc" else "main.roc"
 
