@@ -36,25 +36,33 @@ view = || {
 	request = cells.request.signal()
 	outcome = cells.outcome.signal()
 	Ui.vstack(
-		{ spacing: 14, align: Fill, width: AtLeast(520) },
+		{ spacing: 14, align: Fill, padding: All(6), width: AtLeast(520) },
 		[
 			Ui.text("HTTP fetch", { style: Title2, weight: Semibold }),
-			Ui.form(
-				{ on_submit: Engine.handle_by(starting(), |next, _| started(next)), align: Fill },
-				[
-					Ui.hstack(
-						{},
-						[
-							Ui.image("globe", { color: SecondaryLabel }),
-							Ui.text_field(cells.url.signal(), { placeholder: "https://…", on_input: Engine.handle(|typed| [cells.url.set(typed)]), bezel: Rounded, width: Fill }),
-							Ui.submit_button("Fetch", { icon: Symbol("arrow.down.circle") }),
-							Ui.button("Cancel", { on_press: Engine.handle_by(request, |r, _| cancelled(r)), enabled: request.map(|r| r.active) }),
-						],
-					),
-				],
+			Ui.box(
+				{ fill: ControlBackground, radius: 12, padding: All(12), width: Fill },
+				Ui.vstack(
+					{ spacing: 8, align: Fill },
+					[
+						Ui.form(
+							{ on_submit: Engine.handle_by(starting(), |next, _| started(next)), align: Fill },
+							[
+								Ui.hstack(
+									{},
+									[
+										Ui.image("globe", { color: SecondaryLabel }),
+										Ui.text_field(cells.url.signal(), { placeholder: "https://…", on_input: Engine.handle(|typed| [cells.url.set(typed)]), bezel: Rounded, width: Fill }),
+										Ui.submit_button("Fetch", { icon: Symbol("arrow.down.circle") }),
+										Ui.button("Cancel", { on_press: Engine.handle_by(request, |r, _| cancelled(r)), enabled: request.map(|r| r.active) }),
+									],
+								),
+							],
+						),
+						Ui.checkbox("Time out after 2 s", { checked: cells.timeout.signal(), on_change: Engine.handle(|on| [cells.timeout.set(on)]) }),
+					],
+				),
 			),
-			Ui.checkbox("Time out after 2 s", { checked: cells.timeout.signal(), on_change: Engine.handle(|on| [cells.timeout.set(on)]) }),
-			Ui.divider(),
+			Ui.text("Response", { style: Headline }),
 			Ui.hstack(
 				{ spacing: 10 },
 				[
@@ -64,7 +72,7 @@ view = || {
 				],
 			),
 			Ui.box(
-				{ fill: TextBackground, border: Line({ color: Separator, width: 1 }), padding: All(10), width: Fill },
+				{ fill: TextBackground, border: Line({ color: Separator, width: 1 }), padding: All(14), radius: 12, width: Fill },
 				Ui.text_s(
 					cells.preview.signal().map(|p| if (p.is_empty()) "The start of the body appears here." else p),
 					cells.preview.signal().map(|p| { style: Callout, design: Monospaced, overflow: WrapUpTo(8), width: Fill, color: if (p.is_empty()) TertiaryLabel else Label }),

@@ -48,7 +48,7 @@ view = || {
 	status = cells.status.signal()
 	loaded = status.map(|s| s.state != Idle and s.state != Loading)
 	Ui.vstack(
-		{ spacing: 14, align: Fill, width: AtLeast(560) },
+		{ spacing: 10, align: Fill, padding: All(6), width: AtLeast(600) },
 		[
 			Ui.hstack(
 				{},
@@ -62,44 +62,66 @@ view = || {
 				],
 			),
 			Ui.drop_zone(
-				{ on_drop: Engine.handle_by(cells.track.signal(), received) },
+				{ on_drop: Engine.handle_by(cells.track.signal(), received), padding: All(10) },
 				Ui.text("Drop an audio file here", { style: Headline, color: SecondaryLabel, align: Center, width: Fill }),
 			),
-			Ui.text({ name: cells.name.signal(), status }.Signal.map(|{ name, status: s }| headline(name, s)), { design: MonospacedDigits }),
-			Ui.slider(status.map(|s| s.position_ms.to_i64_wrap()), { range: { min: 0, max: 60_000 }, on_input: Engine.handle(seeked), enabled: loaded, width: Fill }),
-			Ui.hstack(
-				{ spacing: 8 },
-				[
-					Ui.button("Play", { on_press: Engine.handle(|_| send([Play])), enabled: loaded, icon: Symbol("play.fill") }),
-					Ui.button("Pause", { on_press: Engine.handle(|_| send([Pause])), enabled: loaded, icon: Symbol("pause.fill") }),
-					Ui.button("Resume", { on_press: Engine.handle(|_| send([Resume])), enabled: loaded }),
-					Ui.button("Stop", { on_press: Engine.handle(|_| send([Stop])), enabled: loaded, icon: Symbol("stop.fill") }),
-					Ui.spacer(),
-					Ui.text("Volume", caption),
-					Ui.slider(status.map(|s| whole(s.volume * 100)), { range: { min: 0, max: 100 }, on_input: Engine.handle(|typed| send([Volume(number(typed) / 100)])), width: Fixed(120) }),
-				],
+			Ui.box(
+				{ fill: ControlBackground, radius: 12, padding: All(12), width: Fill },
+				Ui.vstack(
+					{ spacing: 8, align: Fill },
+					[
+						Ui.text({ name: cells.name.signal(), status }.Signal.map(|{ name, status: s }| headline(name, s)), { style: Headline, design: MonospacedDigits, overflow: TruncateMiddle, width: Fill }),
+						Ui.slider(status.map(|s| s.position_ms.to_i64_wrap()), { range: { min: 0, max: 60_000 }, on_input: Engine.handle(seeked), enabled: loaded, width: Fill }),
+						Ui.hstack(
+							{ spacing: 8 },
+							[
+								Ui.button("Play", { on_press: Engine.handle(|_| send([Play])), enabled: loaded, icon: Symbol("play.fill") }),
+								Ui.button("Pause", { on_press: Engine.handle(|_| send([Pause])), enabled: loaded, icon: Symbol("pause.fill") }),
+								Ui.button("Resume", { on_press: Engine.handle(|_| send([Resume])), enabled: loaded }),
+								Ui.button("Stop", { on_press: Engine.handle(|_| send([Stop])), enabled: loaded, icon: Symbol("stop.fill") }),
+								Ui.spacer(),
+								Ui.text("Volume", caption),
+								Ui.slider(status.map(|s| whole(s.volume * 100)), { range: { min: 0, max: 100 }, on_input: Engine.handle(|typed| send([Volume(number(typed) / 100)])), width: Fixed(120) }),
+							],
+						),
+					],
+				),
 			),
-			Ui.divider(),
-			Ui.hstack(
-				{},
-				[
-					Ui.text("Equalizer", { style: Headline }),
-					Ui.spacer(),
-					Ui.checkbox("Bypass", { checked: status.map(|s| s.eq.bypass), on_change: Engine.handle(|on| send([Bypass(on)])) }),
-					Ui.button("Flat", { on_press: Engine.handle(|_| send([Flat])) }),
-				],
+			Ui.box(
+				{ fill: ControlBackground, radius: 12, padding: All(12), width: Fill },
+				Ui.vstack(
+					{ spacing: 8, align: Fill },
+					[
+						Ui.hstack(
+							{},
+							[
+								Ui.text("Equalizer", { style: Headline }),
+								Ui.spacer(),
+								Ui.checkbox("Bypass", { checked: status.map(|s| s.eq.bypass), on_change: Engine.handle(|on| send([Bypass(on)])) }),
+								Ui.button("Flat", { on_press: Engine.handle(|_| send([Flat])) }),
+							],
+						),
+						Ui.vstack({ spacing: 2, align: Fill }, band_sliders(status)),
+					],
+				),
 			),
-			Ui.vstack({ spacing: 2, align: Fill }, band_sliders(status)),
-			Ui.divider(),
-			Ui.hstack(
-				{},
-				[
-					Ui.checkbox("Measure levels", { checked: cells.measuring.signal(), on_change: Engine.handle(|on| [cells.measuring.set(on), cells.level.set(Nothing)]) }),
-					Ui.spacer(),
-					Ui.text(cells.level.signal().map(readout), { design: MonospacedDigits }),
-				],
+			Ui.box(
+				{ fill: ControlBackground, radius: 12, padding: All(12), width: Fill },
+				Ui.vstack(
+					{ spacing: 8, align: Fill },
+					[
+						Ui.hstack(
+							{},
+							[
+								Ui.checkbox("Measure levels", { checked: cells.measuring.signal(), on_change: Engine.handle(|on| [cells.measuring.set(on), cells.level.set(Nothing)]) }),
+								Ui.spacer(),
+								Ui.text(cells.level.signal().map(readout), { design: MonospacedDigits }),
+							],
+						),
+						Ui.progress(cells.level.signal().map(meter), { max: 60, width: Fill }),
+					],
+				),
 			),
-			Ui.progress(cells.level.signal().map(meter), { max: 60, width: Fill }),
 			Ui.text(cells.event.signal(), caption),
 			# The commands each press posted, sent in order.
 			Engine.on_post(cells.outbox.signal(), |commands| commands.map(Audio.send), Engine.ignore({})),

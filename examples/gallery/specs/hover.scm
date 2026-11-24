@@ -4,14 +4,14 @@
     (choose "Styles")
     (hover (hover-target 3))
     (hover (hover-target 10))
-    (expect-dump (window :width 560 :height 424
+    (expect-dump (window :width 560 :height 440
                    (vstack :views 1
                      (vstack :views 4
                        (hstack :views 2
                          (image square.grid.2x2.fill)
                          (vstack :views 2
                            (text "Gallery" :text-style title2 :weight semibold)
-                           (text "Native AppKit controls driven by the roc-signals engine" :color secondary-label :text-style caption1)))
+                           (text "Controls, typography, colors, and shortcuts" :color secondary-label :text-style caption1)))
                        (vstack :views 2
                          (hstack :views 3
                            (spacer)
@@ -20,7 +20,7 @@
                          (vstack :views 2
                            (vstack :views 2
                              (text "TEXT STYLES" :color secondary-label :text-style subheadline :weight semibold)
-                             (box :border line:1:separator
+                             (box :border line:1:separator :fill text-background
                                (vstack :views 6
                                  (text "Large Title" :text-style large-title)
                                  (text "Title 1" :text-style title1)
@@ -30,7 +30,7 @@
                                  (text "Monospaced 0123456789" :design monospaced))))
                            (vstack :views 2
                              (text "COLOURS" :color secondary-label :text-style subheadline :weight semibold)
-                             (box :border line:1:separator
+                             (box :border line:1:separator :fill text-background
                                (vstack :views 2
                                  (hstack :views 10
                                    (hover
@@ -67,14 +67,14 @@
                        (shortcut)
                        (shortcut)))))
     (leave)
-    (expect-dump (window :width 560 :height 424
+    (expect-dump (window :width 560 :height 440
                    (vstack :views 1
                      (vstack :views 4
                        (hstack :views 2
                          (image square.grid.2x2.fill)
                          (vstack :views 2
                            (text "Gallery" :text-style title2 :weight semibold)
-                           (text "Native AppKit controls driven by the roc-signals engine" :color secondary-label :text-style caption1)))
+                           (text "Controls, typography, colors, and shortcuts" :color secondary-label :text-style caption1)))
                        (vstack :views 2
                          (hstack :views 3
                            (spacer)
@@ -83,7 +83,7 @@
                          (vstack :views 2
                            (vstack :views 2
                              (text "TEXT STYLES" :color secondary-label :text-style subheadline :weight semibold)
-                             (box :border line:1:separator
+                             (box :border line:1:separator :fill text-background
                                (vstack :views 6
                                  (text "Large Title" :text-style large-title)
                                  (text "Title 1" :text-style title1)
@@ -93,7 +93,7 @@
                                  (text "Monospaced 0123456789" :design monospaced))))
                            (vstack :views 2
                              (text "COLOURS" :color secondary-label :text-style subheadline :weight semibold)
-                             (box :border line:1:separator
+                             (box :border line:1:separator :fill text-background
                                (vstack :views 2
                                  (hstack :views 10
                                    (hover

@@ -34,9 +34,9 @@
     (expect-snapshot :present true :at "170.7" :rate 48000 :rms -120 :peak -120 :finite true :loudest "none")
     (expect-sources :waveform "1024 0.00 0.00" :bands "24 0.00 0.00" :level "0.00" :bass "0.00" :mids "0.00" :treble "0.00")
     (wait 200)
-    (expect-dump (window :width 600 :height 583
+    (expect-dump (window :width 640 :height 581
                    (vstack :views 1
-                     (vstack :views 12
+                     (vstack :views 6
                        (hstack :views 6
                          (image music.note)
                          (text "Player" :text-style title2 :weight semibold)
@@ -46,71 +46,75 @@
                          (file-button "Choose Audio…"))
                        (drop-zone
                          (text "Drop an audio file here" :color secondary-label :text-style headline))
-                       (text "silence-48000.wav · Playing · 0:00.20 / 0:00.25" :design monospaced-digits)
-                       (slider :value 200.0)
-                       (hstack :views 7
-                         (button "Play")
-                         (button "Pause")
-                         (button "Resume")
-                         (button "Stop")
-                         (spacer)
-                         (text "Volume" :color secondary-label :text-style caption1)
-                         (slider :value 50.0))
-                       (divider)
-                       (hstack :views 4
-                         (text "Equalizer" :text-style headline)
-                         (spacer)
-                         (checkbox "Bypass" :checked #f)
-                         (button "Flat"))
-                       (vstack :views 11
-                         (hstack :views 3
-                           (text "32" :color secondary-label :text-style caption1)
-                           (slider :value 0.0)
-                           (text "0 dB" :color secondary-label :design monospaced-digits :text-style caption1))
-                         (hstack :views 3
-                           (text "64" :color secondary-label :text-style caption1)
-                           (slider :value 0.0)
-                           (text "0 dB" :color secondary-label :design monospaced-digits :text-style caption1))
-                         (hstack :views 3
-                           (text "125" :color secondary-label :text-style caption1)
-                           (slider :value 0.0)
-                           (text "0 dB" :color secondary-label :design monospaced-digits :text-style caption1))
-                         (hstack :views 3
-                           (text "250" :color secondary-label :text-style caption1)
-                           (slider :value 0.0)
-                           (text "0 dB" :color secondary-label :design monospaced-digits :text-style caption1))
-                         (hstack :views 3
-                           (text "500" :color secondary-label :text-style caption1)
-                           (slider :value 0.0)
-                           (text "0 dB" :color secondary-label :design monospaced-digits :text-style caption1))
-                         (hstack :views 3
-                           (text "1k" :color secondary-label :text-style caption1)
-                           (slider :value 0.0)
-                           (text "0 dB" :color secondary-label :design monospaced-digits :text-style caption1))
-                         (hstack :views 3
-                           (text "2k" :color secondary-label :text-style caption1)
-                           (slider :value 0.0)
-                           (text "0 dB" :color secondary-label :design monospaced-digits :text-style caption1))
-                         (hstack :views 3
-                           (text "4k" :color secondary-label :text-style caption1)
-                           (slider :value 0.0)
-                           (text "0 dB" :color secondary-label :design monospaced-digits :text-style caption1))
-                         (hstack :views 3
-                           (text "8k" :color secondary-label :text-style caption1)
-                           (slider :value 0.0)
-                           (text "0 dB" :color secondary-label :design monospaced-digits :text-style caption1))
-                         (hstack :views 3
-                           (text "16k" :color secondary-label :text-style caption1)
-                           (slider :value 0.0)
-                           (text "0 dB" :color secondary-label :design monospaced-digits :text-style caption1))
-                         (hstack :views 3
-                           (text "Preamp" :color secondary-label :text-style caption1)
-                           (slider :value 0.0)
-                           (text "0 dB" :color secondary-label :design monospaced-digits :text-style caption1)))
-                       (divider)
-                       (hstack :views 3
-                         (checkbox "Measure levels" :checked #t)
-                         (spacer)
-                         (text "level -120 dB · peak -120 dB" :design monospaced-digits))
-                       (progress :value 0 :max 60)
+                       (box
+                         (vstack :views 3
+                           (text "silence-48000.wav · Playing · 0:00.20 / 0:00.25" :design monospaced-digits :text-style headline)
+                           (slider :value 200.0)
+                           (hstack :views 7
+                             (button "Play")
+                             (button "Pause")
+                             (button "Resume")
+                             (button "Stop")
+                             (spacer)
+                             (text "Volume" :color secondary-label :text-style caption1)
+                             (slider :value 50.0))))
+                       (box
+                         (vstack :views 2
+                           (hstack :views 4
+                             (text "Equalizer" :text-style headline)
+                             (spacer)
+                             (checkbox "Bypass" :checked #f)
+                             (button "Flat"))
+                           (vstack :views 11
+                             (hstack :views 3
+                               (text "32" :color secondary-label :text-style caption1)
+                               (slider :value 0.0)
+                               (text "0 dB" :color secondary-label :design monospaced-digits :text-style caption1))
+                             (hstack :views 3
+                               (text "64" :color secondary-label :text-style caption1)
+                               (slider :value 0.0)
+                               (text "0 dB" :color secondary-label :design monospaced-digits :text-style caption1))
+                             (hstack :views 3
+                               (text "125" :color secondary-label :text-style caption1)
+                               (slider :value 0.0)
+                               (text "0 dB" :color secondary-label :design monospaced-digits :text-style caption1))
+                             (hstack :views 3
+                               (text "250" :color secondary-label :text-style caption1)
+                               (slider :value 0.0)
+                               (text "0 dB" :color secondary-label :design monospaced-digits :text-style caption1))
+                             (hstack :views 3
+                               (text "500" :color secondary-label :text-style caption1)
+                               (slider :value 0.0)
+                               (text "0 dB" :color secondary-label :design monospaced-digits :text-style caption1))
+                             (hstack :views 3
+                               (text "1k" :color secondary-label :text-style caption1)
+                               (slider :value 0.0)
+                               (text "0 dB" :color secondary-label :design monospaced-digits :text-style caption1))
+                             (hstack :views 3
+                               (text "2k" :color secondary-label :text-style caption1)
+                               (slider :value 0.0)
+                               (text "0 dB" :color secondary-label :design monospaced-digits :text-style caption1))
+                             (hstack :views 3
+                               (text "4k" :color secondary-label :text-style caption1)
+                               (slider :value 0.0)
+                               (text "0 dB" :color secondary-label :design monospaced-digits :text-style caption1))
+                             (hstack :views 3
+                               (text "8k" :color secondary-label :text-style caption1)
+                               (slider :value 0.0)
+                               (text "0 dB" :color secondary-label :design monospaced-digits :text-style caption1))
+                             (hstack :views 3
+                               (text "16k" :color secondary-label :text-style caption1)
+                               (slider :value 0.0)
+                               (text "0 dB" :color secondary-label :design monospaced-digits :text-style caption1))
+                             (hstack :views 3
+                               (text "Preamp" :color secondary-label :text-style caption1)
+                               (slider :value 0.0)
+                               (text "0 dB" :color secondary-label :design monospaced-digits :text-style caption1)))))
+                       (box
+                         (vstack :views 2
+                           (hstack :views 3
+                             (checkbox "Measure levels" :checked #t)
+                             (spacer)
+                             (text "level -120 dB · peak -120 dB" :design monospaced-digits))
+                           (progress :value 0 :max 60)))
                        (text "Loaded: 0:00.25, 48000 Hz, 1 channel" :color secondary-label :text-style caption1)))))))
