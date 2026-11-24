@@ -274,6 +274,20 @@ extension Host {
             view = spacer
         case "ui-file-button", "ui-drop-zone":
             view = makeFileView(name)  // Files.swift
+        case "ui-surface":
+            let surface = DrawingSurface()  // Drawing.swift
+            // The shader status, as the surface's `shader` event, after the
+            // turn or frame that changed it.
+            surface.onShaderStatus = { [weak self, weak n] status in
+                DispatchQueue.main.async {
+                    guard let self, let n, n.view != nil else { return }
+                    self.dispatch("shader", at: n, text: status)
+                }
+            }
+            view = surface
+            watchSurfaceSources()
+        case "ui-overlay":
+            view = Overlay()  // Drawing.swift
         default:
             fatal("<\(name)> is not a native element this host knows")
         }
@@ -298,6 +312,8 @@ extension Host {
     static func paintOnly(_ name: String) -> Bool {
         switch name {
         case "fill", "border", "radius", "color": return true
+        // A drawing surface's scene and look redraw it alone (Drawing.swift).
+        case "scene", "background", "pacing", "trail", "reset", "space", "label": return true
         default: return false
         }
     }
@@ -308,6 +324,8 @@ extension Host {
     /// attributes use the closed grammar in docs/architecture.adoc; a word
     /// outside it is a fatal error.
     func applyAttr(_ n: Node, _ name: String, _ value: String?) {
+        // Drawing surfaces and overlays (Drawing.swift).
+        if applyDrawingAttr(n, name, value) { return }
         switch (n.view, name) {
         // Frame: any element
         case (let view?, "width"):
@@ -460,10 +478,15 @@ extension Host {
             case "false": control.isEnabled = false
             case let other: fatal("enabled \(other) is not true or false")
             }
+        // A slider clamps its value to its range, and attributes arrive in
+        // any order: a new range applies the engine's value again, as a new
+        // pop-up's choices select its value again.
         case (let slider as NSSlider, "min"):
             slider.minValue = Double(value ?? "") ?? 0
+            applyAttr(n, "value", n.attrs["value"])
         case (let slider as NSSlider, "max"):
             slider.maxValue = Double(value ?? "") ?? 100
+            applyAttr(n, "value", n.attrs["value"])
         case (let slider as NSSlider, "value"):
             let v = Double(value ?? "") ?? 0
             if slider.doubleValue != v { slider.doubleValue = v }
@@ -830,6 +853,24 @@ extension Host {
 
     func markText(_ n: Node) { markChildren(n) }
 
+    /// The most content the window may show: its screen's visible frame
+    /// (less the menu bar and the Dock) less the title bar. A spec's window
+    /// is on a virtual screen instead (`SpecScreen`), so the same steps size
+    /// the window the same way on any display.
+    func windowRoom() -> NSSize {
+        let unbounded = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
+        if driven { return SpecScreen.room }
+        guard let screen = window.screen else { return unbounded }
+        return window.contentRect(forFrameRect: screen.visibleFrame).size
+    }
+
+    /// Size the window again for the room it has now: after it moves to
+    /// another screen, or a screen's arrangement or resolution changes.
+    func refit() {
+        relayout = true
+        sync()
+    }
+
     /// Bring every view touched by the batch up to date: a text-bearing
     /// control shows its subtree's text, a stack arranges its children's
     /// views, a list applies its row changes. Then size the window: to fit
@@ -871,12 +912,16 @@ extension Host {
             // with them their heights (`Label`).
             content.layoutSubtreeIfNeeded()
             content.layoutSubtreeIfNeeded()
-            let fit = content.fittingSize
+            // What the content needs, measured on the page's document
+            // alone; the window gives it that, within the room its screen
+            // has, and the page scrolls what does not fit.
+            let fit = document.fittingSize
             let current = content.frame.size
+            let room = windowRoom()
             let height = flexibleNow && flexible ? max(fit.height, current.height) : fit.height
-            let size = NSSize(width: max(fit.width, window.contentLayoutRect.width), height: height)
-            if size != current { window.setContentSize(size) }
-        }
+            let size = NSSize(width: min(max(fit.width, window.contentLayoutRect.width), room.width), height: min(height, room.height))
+            window.contentMinSize = NSSize(width: min(fit.width, room.width), height: min(fit.height, room.height))
+            if size != current { window.setContentSize(size) }        }
         // The window now has room for each new scroll area's opening
         // height; from here on the window decides it.
         for box in unsettled {
@@ -926,6 +971,9 @@ extension Host {
             // A framed box that gains or loses its child changes how its
             // stack places it (Frames.swift).
             if framedViews.contains(ObjectIdentifier(surface)), let parent = owner.parent { markChildren(parent) }
+        case let overlay as Overlay:
+            let kids = owner.children.filter { $0.name != nil }
+            overlay.hold(kids.first.flatMap(shownView), kids.dropFirst().first.flatMap(shownView))
         case let button as NSButton where owner.name == "ui-button" || owner.name == "ui-file-button":
             button.title = owner.textContent
             setTitleDisplay(button, owner.attrs["title-display"] ?? "visible")

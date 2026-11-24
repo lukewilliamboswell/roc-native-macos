@@ -22,7 +22,7 @@ platform ""
 	requires {
 		[Store : st] for main : Engine.Program(st)
 	}
-	exposes [Engine, Files, Layout, Ui, Wire, Worker]
+	exposes [Audio, Engine, Files, Layout, Ui, Wire, Worker]
 	packages { engine: "https://github.com/lukewilliamboswell/roc-signals/releases/download/0.8.0-rc2/engine-GKiw1oqhZ1Q3sWgo1mSinHwACzFUCU8cCZPRY7SXYSgh.tar.zst" }
 	provides {
 		"roc_engine_ask": ask_for_host!,
@@ -48,9 +48,12 @@ platform ""
 	targets: {
 		inputs_dir: "targets/",
 		arm64mac: { inputs: ["libhost.a", app] },
+		x64mac: { inputs: ["libhost.a", app] },
+		x64v1mac: { inputs: ["libhost.a", app] },
 	}
 
 import engine.EngineHost
+import Audio
 import Effects
 import Engine
 import Files

@@ -6,26 +6,29 @@ import Bundle
 import Meta
 import Workflow
 
-## `init [DIR]`: create an app, a counter with two recorded cases, in `DIR`
-## (by default, this directory). It writes only files that are not there
-## yet, and copies this directory's `macos.roc` into a new directory so the
-## app can run the tool from its own.
+## `init [DIR]`: create an app in `DIR` (by default, this directory): the
+## starter example, a music player with a logic package, fuzz targets,
+## an icon and specs. It writes only files that are not there yet, and
+## copies this directory's `macos.roc` into a new directory so the app can
+## run the tool from its own.
 Init :: [].{
 
-	## What `init` writes: a file's path in the app, and its text or the
-	## file it is copied from.
-	Step : { path : Str, contents : [Text(Str), CopyOf(Str)] }
+	## What `init` writes: a file's path in the app, and its text, its bytes
+	## or the file it is copied from.
+	Step : { path : Str, contents : [Text(Str), Bytes(List(U8)), CopyOf(Str)] }
 
 	## Every file `init` writes into `dir`, for the app whose name is `name`.
-	## `main.roc` names the release's platform.
+	## The app's root module names the release's platform.
 	plan : Str, Str -> List(Step)
 	plan = |dir, name| {
 		tool = if (dir == ".") [] else [{ path: "macos.roc", contents: CopyOf("macos.roc") }]
 		scaffold = Bundle.scaffold.map(
-			|file| {
-				text = if (file.path == "main.roc") Init.with_platform(file.text, Bundle.platform_url) else file.text
-				{ path: file.path, contents: Text(text) }
-			},
+			|file|
+				match file.contents {
+					Text(text) if file.path == App.nested_entry => { path: file.path, contents: Text(Init.with_platform(text, Bundle.platform_url)) }
+					Text(text) => { path: file.path, contents: Text(text) }
+					Bytes(bytes) => { path: file.path, contents: Bytes(bytes) }
+				},
 		)
 		tool.concat(scaffold).concat([
 			{ path: Meta.file, contents: Text(Meta.starter(name)) },
@@ -57,6 +60,7 @@ Init :: [].{
 			}
 			match step.contents {
 				Text(text) => Path.write_utf8!(Path.utf8(target), text)?
+				Bytes(bytes) => Path.write_bytes!(Path.utf8(target), bytes)?
 				CopyOf(source) => Path.copy!(Path.utf8(source), Path.utf8(target))?
 			}
 		}
@@ -85,15 +89,39 @@ Init :: [].{
 	summary : Str -> Str
 	summary = |dir| {
 		next = if (dir == ".") "  roc macos.roc run" else "  cd ${dir}\n  roc macos.roc run"
-		"Created a counter app on roc-native-macos ${Bundle.version}:\n\n  main.roc     the app: its state, view and program\n  tests/       recorded runs of it, which `roc macos.roc test` checks\n  macos.json   its name, bundle identifier and version\n  macos.roc    the tool, which builds, runs, tests and packages it\n  .gitignore   keeps build output out of version control\n  .github/     a workflow that packages it when you push a tag such as v1.0.0\n\nNext, run the app (on an Apple silicon Mac; `build` and `package` work anywhere):\n\n${next}\n\nWhile you edit main.roc, `roc macos.roc dev` runs it with hot reloading."
+		lines = [
+			"Created an app on roc-native-macos ${Bundle.version}, a music player to build on:",
+			"",
+			"  src/         the app: its program, store, window, panels, widgets and a worker",
+			"  logic/       its logic (lyrics, the queue, presets), pure Roc with its expect tests",
+			"  assets/      its images; assets/icon.png is its icon",
+			"  tests/       specs of what it does (tests/specs/, which `roc macos.roc test` checks),",
+			"               the files they use (tests/fixtures/) and roc-fuzz targets for the",
+			"               logic (tests/fuzz/, which `roc macos.roc fuzz` runs)",
+			"  macos.json   its name, bundle identifier and version",
+			"  macos.roc    the tool, which builds, runs, tests and packages it",
+			"  .gitignore   keeps build output out of version control",
+			"  .github/     a workflow that tests and packages it when you push a tag such as v1.0.0",
+			"",
+			"Next, run the app (on a Mac; `build` and `package` work anywhere):",
+			"",
+			next,
+			"",
+			"While you edit it, `roc macos.roc dev` runs it with hot reloading.",
+		]
+		Str.join_with(lines, "\n")
 	}
 }
 
 gitignore =
-	\\# Written by `roc macos.roc`: the build directory, the app and its zip.
+	\\# Written by `roc macos.roc`: the build directory, the app and its zip,
+	\\# and roc-fuzz's corpus and reports.
 	\\/.macos/
 	\\/*.app/
 	\\/dist/
+	\\/.roc-fuzz/
+	\\# Written by Roc's watcher when you run `roc src/main.roc` yourself.
+	\\/.zig-cache/
 	\\
 
 ## The scaffold names the release's platform, not a path.
@@ -103,15 +131,35 @@ expect {
 }
 
 ## A new directory gets a copy of the tool; this directory already has it.
-## Every plan writes the app, its recorded cases and the `.gitignore`.
+## Every plan writes the app in src/, its logic package, fuzz targets, icon,
+## specs and the `.gitignore`.
 expect {
 	new = Init.plan("my-app", "my-app").map(|step| step.path)
 	here = Init.plan(".", "my-app").map(|step| step.path)
 	new.first() == Ok("macos.roc")
-		and here.first() == Ok("main.roc")
 		and new.drop_first(1) == here
-		and [".gitignore", "macos.json", ".github/workflows/release.yml"].all(|path| here.contains(path))
-		and here.any(|path| path.starts_with("tests/") and path.ends_with(".script"))
+		and ["src/main.roc", "logic/main.roc", "tests/fuzz/main.roc", "assets/icon.png", ".gitignore", "macos.json", ".github/workflows/release.yml"].all(|path| here.contains(path))
+		and here.any(|path| path.starts_with("tests/specs/") and path.ends_with(".scm"))
+}
+
+## The app's root module names the release's platform; the fuzz targets keep
+## roc-fuzz's, and the icon is written as the bytes it is.
+expect {
+	steps = Init.plan(".", "my-app")
+	contents = |path| steps.keep_if(|step| step.path == path).first().map_ok(|step| step.contents)
+	root = match contents("src/main.roc") {
+		Ok(Text(text)) => text.contains("pf: platform \"${Bundle.platform_url}\"")
+		_ => Bool.False
+	}
+	fuzz = match contents("tests/fuzz/main.roc") {
+		Ok(Text(text)) => text.contains("roc-fuzz/releases/download/")
+		_ => Bool.False
+	}
+	icon = match contents("assets/icon.png") {
+		Ok(Bytes(bytes)) => bytes.take_first(4) == [0x89, 'P', 'N', 'G']
+		_ => Bool.False
+	}
+	root and fuzz and icon
 }
 
 ## The starter metadata names the app.
@@ -120,4 +168,4 @@ expect {
 	starter == Ok(Text(Meta.starter("my-app"))) and Meta.starter("my-app").contains("\"id\": \"com.example.my-app\"")
 }
 
-expect [Init.place("my-app/", "main.roc"), Init.place(".", "tests/a.script")] == ["my-app/main.roc", "tests/a.script"]
+expect [Init.place("my-app/", "main.roc"), Init.place(".", "tests/specs/a.scm")] == ["my-app/main.roc", "tests/specs/a.scm"]

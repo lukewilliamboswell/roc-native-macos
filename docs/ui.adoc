@@ -91,6 +91,8 @@ Handlers are fields too: `Ui.button("Save", { on_press: h })`.
 | `file_button` | `Signal(ctx, Str), FileButtonProps(ctx) -> Elem(ctx)` | `NSButton` opening an `NSOpenPanel`
 | `drop_zone` | `DropZoneProps(ctx), Elem(ctx) -> Elem(ctx)` | a dashed drop target around one child, accent while files are over it
 | `hover` | `HoverProps(ctx), Elem(ctx) -> Elem(ctx)` | none: its child's own view, which hears the pointer enter and leave
+| `surface` | `Signal(ctx, List(Mark)), SurfaceProps(ctx) -> Elem(ctx)` | one view drawing a scene of shapes with Core Graphics; see xref:ui.adoc#drawing[Drawing]
+| `overlay` | `OverlayProps, Elem(ctx), Elem(ctx) -> Elem(ctx)` | a background (a `surface`, say) with a foreground of native views over it
 | `divider` | `() -> Elem(ctx)` | `NSBox` separator
 | `spacer` | `() -> Elem(ctx)` | empty space that grows; spacers in one stack share it equally
 |===
@@ -132,7 +134,297 @@ table gives other defaults. Sizes are points.
 | `FileButtonProps(ctx)` | `on_files : Engine.FilesHandler(ctx)` (required), `bezel`, `icon`, `title_display`, `size`, `width`, `squeeze`
 | `DropZoneProps(ctx)` | `on_drop : Engine.FilesHandler(ctx)` (required), `padding : Insets ?? All(16)`, `radius : U32 ?? 10`, `width : Length ?? Fill`, `height`
 | `HoverProps(ctx)` | `on_hover : HandlerOf(ctx, Bool)` (required); `hover` has no frame of its own, its child's is used
+| `SurfaceProps(ctx)` | `label : Str` (required; names it to VoiceOver), `space : Signal(ctx, Space) ?? Engine.const(Points)`, `background : Signal(ctx, Color) ?? Engine.const(Clear)`, `pacing : Signal(ctx, Pacing) ?? Engine.const(OnDemand)`, `trail : Signal(ctx, Trail) ?? Engine.const(NoTrail)`, `reset : Signal(ctx, U64) ?? Engine.const(0)` (a new value clears the trail), `shader : Signal(ctx, Shader) ?? Engine.const(NoShader)` and `on_shader : [Ignored, Handled(HandlerOf(ctx, ShaderStatus))] ?? Ignored` (xref:ui.adoc#shaders[Shaders]), `width : Length ?? Fill`, `height : Length ?? Fixed(160)`, `squeeze`
+| `OverlayProps` | `horizontal : HorizontalAlign ?? Fill`, `vertical : [Top, Center, Bottom, Fill] ?? Bottom`, `padding : Insets ?? All(16)` (between the background's edges and the foreground), `width : Length ?? Fill`, `height`, `squeeze`
 |===
+
+[#drawing]
+== Drawing
+
+`Ui.surface` draws a scene: an ordered list of marks, in one native view.
+The scene is a signal, so a plot that follows state is a `map`:
+
+[source,roc]
+----
+Ui.surface(
+    points.map(|ps| [
+        Fill(Rect({ x: 0, y: 0, width: 320, height: 160 }), Adaptive({ light: 0xf4f4f4, dark: 0x202020 })),
+        Stroke(Polyline(ps), { color: Green, width: Value(2) }),
+    ]),
+    { label: "Temperature", space: Engine.const(Fit({ width: 320, height: 160 })) },
+)
+----
+
+A new scene redraws that one view. There is no view per shape and no layout
+pass, so a scene can change at every turn.
+
+*Marks*, drawn in order:
+
+* `Fill(shape, color)` and `Stroke(shape, { color, width })` draw a shape.
+  Strokes have round joins and caps. The width is a number
+  (xref:ui.adoc#surface-sources[Native sources]), `Value(2)` or one a source
+  drives; a width below 0 draws nothing.
+* `Translate(x, y)`, `Rotate(radians)`, `Scale(x, y)` and
+  `Matrix({ a, b, c, d, tx, ty })` move everything drawn after them.
+  `Opacity(amount)` multiplies its opacity.
+* `Save` keeps the current transform and opacity, and the matching `Restore`
+  returns to them.
+
+*Shapes:* `Rect` and `Oval` of an `Area` (`{ x, y, width, height }`),
+`Polyline` and `Polygon` of `Point`s, and `Path` of segments (`MoveTo`,
+`LineTo`, `QuadTo`, `CurveTo`, `Close`).
+
+*Coordinates.* With the default `space: Points`, one unit is one point,
+from the surface's top-left corner, with y down and positive angles
+clockwise. Points are AppKit's units: the surface draws at the screen's
+backing scale (2 pixels a point on a Retina display), so lines stay sharp.
+With `Fit({ width, height })`, a `width` by `height` scene is scaled to the
+largest size that fits the surface without distortion, and centred. It
+follows the surface as the window resizes, and line widths scale with it.
+Whatever falls outside the surface is clipped.
+
+*Bounds.* A coordinate, size or width must be a finite number within
+±1,000,000 units. A frame may draw at most 65,536 points, counting every
+series. A scene outside these bounds, or a `Restore` without a `Save`,
+stops the app with an error naming the line of the scene.
+
+[#surface-sources]
+=== Native sources
+
+A number in a scene is a constant, `Value(n)`,
+`Source({ source, scale, offset })`: the latest scalar of a native source,
+read as `offset + scale * value`, or
+`Element({ source, index, scale, offset })`: the value at `index` (from 0)
+of a source's latest series, read the same way, so one band of
+`"audio.bands"` can move a mark. An index past the end of the series reads
+0, so the number is `offset`. Four shapes draw sources' latest series
+of numbers (at most 4,096). Each value `v` counts as
+`t = (v - low) / (high - low)`:
+
+* `Wave({ source, area, low, high })` is a polyline across the area, with
+  `t` 0 on its bottom edge and 1 on its top.
+* `Ring({ source, x, y, radius, depth, low, high })` is a closed polyline
+  around a centre, starting at the top and going clockwise, each point
+  `radius + depth * t` out.
+* `Bars({ source, area, low, high, gap })` is one bar per value, `gap`
+  apart, each rising from the bottom edge to `t` of the height (`t` is held
+  between 0 and 1).
+* `Lissajous({ across, down, area, low, high })` plots one series against
+  another, value by value: `t` of `across` from the area's left edge (0) to
+  its right (1), and `t` of `down` from its bottom edge to its top. With
+  `audio.left` and `audio.right`, turned 45 degrees with `Rotate`, it is a
+  stereo vectorscope.
+
+A source is named by a stable string, such as `"audio.waveform"`. It is
+native code that registers that name (xref:architecture.adoc#surface-sources[Surface sources]).
+The playback session (xref:ui.adoc#audio[Audio]) registers
+`audio.waveform` (1024 values of the channels mixed, -1 to 1, oldest
+first), `audio.left` and `audio.right` (each channel alone, the same way; a
+mono source's are both its one channel), `audio.bands` (the 24 bands, 0 to
+1), and the numbers `audio.level`, `audio.bass`, `audio.mids` and
+`audio.treble` (0 to 1). Each reads the measurement nearest what is heard,
+-60 to 0 dB mapped to 0 to 1, rising at once and falling slowly.
+A source that is not registered, or has nothing to show yet, draws nothing,
+and its number reads as `offset`. Every app has two test sources:
+`synthetic.wave`, nine values of one sine cycle, and `synthetic.level`, a
+number from 0 up to 1. They move on with time, and a spec steps
+them (xref:apps.adoc#surfaces-and-audio[Drawing surfaces and audio]).
+
+*Pacing.* `pacing: OnDemand` (the default) draws a new frame when the
+scene, its look or its size changes. `Display` also draws one at every
+refresh of the display, reading its sources each time, with no turn of the
+engine. It does this only while the surface is in a window and not hidden,
+so removing it stops the work. A refresh the Mac was too busy for is skipped,
+not queued. Each frame has a time on a monotonic clock, and the next frame
+covers the time since. On a display-paced surface, a scene change shows
+from the next refresh.
+
+=== Trails
+
+`trail: Trail({ half_life_ms, zoom, turn, shift })` draws each new frame over
+the previous one. The previous frame first fades, so that after
+`half_life_ms` it has half its opacity. It also grows by `zoom` each second
+(1 for none), turns by `turn` radians a second (both about the surface's
+centre), and moves `shift` points a second. Then the scene is drawn over it.
+These are rates, so a trail lasts as long at 60 Hz as at 120 Hz:
+
+[source,roc]
+----
+# Rings that zoom away and fade by half every 300 ms.
+trail: Engine.const(Trail({ half_life_ms: 300, zoom: 1.4, turn: 0, shift: { x: 0, y: 0 } }))
+----
+
+Each frame is drawn in this order:
+
+. The background colour.
+. The previous frame, moved and faded. Where the moved frame no longer
+  covers the surface, the background shows.
+. The scene.
+
+A repaint of the same frame (a window drawn again) never fades it again.
+
+The trail starts empty when the surface first appears, and empties again
+when its size or backing scale changes, when `trail` is turned on or off,
+and whenever `reset` takes a new value. Bump a counter in `reset` to clear it
+on a seek or a new track. The trail is kept in two bitmaps however long it
+lasts, and they are released when the surface is removed. A display-paced
+surface draws with Metal when the Mac has a GPU, at the screen's full
+resolution. Otherwise, and for an on-demand surface, it draws with Core
+Graphics, which keeps a large surface's trail at below the screen's backing
+scale, so it looks a little softer. See
+xref:architecture.adoc#drawing-surfaces[Drawing surfaces].
+
+[#shaders]
+=== Shaders
+
+A display-paced surface can run its own GPU code, in two stages shaped
+like a feedback visualizer's:
+
+[source,roc]
+----
+shader : Signal(ctx, Ui.Shader)   # a SurfaceProps field, NoShader by default
+Ui.Shader : [NoShader, Shaders({ warp : [None, Some(Str)], composite : [None, Some(Str)], params : List((Str, Number)) })]
+----
+
+Each frame is then drawn in this order:
+
+. *Warp.* With a `warp` stage, each pixel of the new frame is what the
+  warp returns, reading the previous frame (`f.image`): motion, decay,
+  colour drift. The warp takes the trail's place; without one, the
+  background and the trail are drawn as usual.
+. *The scene.* The marks are drawn over it.
+. *Feedback.* The result is kept as the next frame's `f.image`.
+. *Composite.* With a `composite` stage, each pixel on the screen is what
+  the composite returns, reading this frame (`f.image`): echo, gamma, glow,
+  a kaleidoscope. Its output never feeds back. With `composite` alone and no
+  trail, the frame under it is the scene over the background, drawn fresh.
+
+*What you write.* Each stage is Metal Shading Language source that defines
+one function, `float4 warp(Frame f, Params p)` or
+`float4 composite(Frame f, Params p)`, and any helper functions and
+constants it needs above it. The host compiles it at run time between its
+own header (below) and its own entry point, which calls yours once for
+each pixel. Return a premultiplied colour, each channel 0 to 1 (out of
+range is held to it, a NaN reads 0, and no channel can exceed the opacity);
+`opaque(rgb)` makes an opaque one. Lines and columns in errors count from
+the first line of your source.
+
+[source,roc]
+----
+# A warp that zooms the old picture towards the viewer, faster on a kick,
+# fading it a little each frame and drifting its hue.
+zoom =
+    \\float4 warp(Frame f, Params p) {
+    \\    float2 c = centered(f);                       // -1..1 tall, aspect wide
+    \\    float scale = 1.0 - p.push * f.bass;          // < 1 grows the picture
+    \\    float4 old = sample(f, uv_of(f, c * scale));
+    \\    float3 hsv = rgb2hsv(old.rgb);
+    \\    hsv.x += 0.3 * f.dt;                          // hue turns 0.3 a second
+    \\    return opaque(hsv2rgb(hsv) * pow(0.5, f.dt / p.half_life));
+    \\}
+
+shader: Engine.const(Shaders({ warp: Some(zoom), composite: None, params: [("push", Value(0.04)), ("half_life", Value(0.4))] }))
+----
+
+*A frame* (`Frame f`) gives each pixel:
+
+[cols="1,3",options="header"]
+|===
+| Field | Is
+
+| `f.uv` | the pixel's centre, 0 to 1 across and down from the top-left corner (y down, as a scene's)
+| `f.pixel`, `f.size`, `f.texel` | the pixel and the surface in pixels, and one pixel in uv units (`1 / size`)
+| `f.aspect` | width over height
+| `f.time`, `f.dt`, `f.frame` | seconds since these shaders started, seconds since the previous frame, and the frame's number from 0; make motion a rate of `dt` so it looks the same at 60 Hz and 120 Hz
+| `f.bass`, `f.mids`, `f.treble`, `f.level` | `audio.bass`, `audio.mids`, `audio.treble` and `audio.level`, 0 to 1 (0 with nothing playing)
+| `f.image` | the previous frame (warp) or this frame (composite); read it with the helpers below
+|===
+
+*Helpers* in the header:
+
+* `sample(f, uv)` reads `f.image` (beyond its edges, the nearest edge);
+  `sample_wrap` tiles it and `sample_mirror` tiles it mirrored;
+  `blur(f, uv, radius)` blurs over about `radius` pixels.
+* `wave(f, x)`, `left(f, x)`, `right(f, x)`: `audio.waveform`, `audio.left`
+  and `audio.right` at `x`, 0 the oldest and 1 the newest, -1 to 1 (256
+  points, interpolated); `band(f, x)`: `audio.bands` from 0 (40 Hz) to 1
+  (16 kHz), 0 to 1; `band_at(f, i)`: band `i`, 0 to 23.
+* `centered(f)`: the pixel from the centre, y from -1 at the top to 1 at
+  the bottom and x on the same scale; `uv_of(f, p)` goes back.
+  `polar(p)` is `(distance, angle)`, `cartesian(ra)` goes back, and
+  `rotate(p, angle)` turns clockwise; `PI` and `TAU`.
+* `hsv2rgb`, `rgb2hsv`, `palette(t, a, b, c, d)` (`a + b cos(TAU (c t + d))`)
+  and `opaque(rgb)`.
+* `hash(p)` (repeatable noise, 0 to 1), `noise(p)` (smooth value noise) and
+  `fbm(p)` (four octaves of it).
+
+*Params.* `params` are named numbers each stage reads as `p.NAME`, a
+`float`. Each is a scene `Number`, so `Source({ source: "audio.bass", … })`
+or `Element(…)` drives it, read once a frame without a turn of the engine.
+A name is lowercase letters, digits and `_`, not starting with a digit, at
+most 32 bytes; there are at most 16, and a source of a stage is at most
+64 KiB.
+
+*Compiling and errors.* A source compiles the first time a surface draws
+with it, off the main thread, and the result is kept for the app's life,
+keyed by the whole source, so switching back is immediate. Until it is
+ready the surface keeps drawing its last good stage, or none. `on_shader`
+hears what the stages are doing, each time it changes:
+
+[source,roc]
+----
+on_shader: Handled(Engine.handle(|status| [cells.shader.set(status)]))
+
+Ui.ShaderStatus : [NoShader, Running, Fallback, Failed(List(Ui.ShaderError))]
+Ui.ShaderError : { stage : [Warp, Composite], line : U32, column : U32, message : Str }
+----
+
+`Failed` lists each stage's first errors at their line and column in that
+stage's source; line 0 is outside it, such as a missing `warp` function or
+a bad param name. A stage that fails keeps drawing its last good source (or
+none), and the other stage runs. Bad source never stops the app.
+
+*The GPU's limits.* A frame the GPU is more than two frames behind on is
+skipped, so a slow shader makes the picture slow, never the window. A shader
+that runs for seconds is stopped by macOS's GPU watchdog: that frame is
+lost, the surface drops both stages and draws its marks and trail alone, and
+`on_shader` hears `Failed` with line 0 and the GPU's reason, until the app
+gives it new sources. Keep loops bounded and short: a full-surface stage
+runs once for every pixel, millions a frame on a Retina display.
+
+*Where shaders do not run.* Shaders run only with the Metal renderer, on a
+display-paced surface while it is shown. With Core Graphics (an on-demand
+surface, a Mac without a GPU, `ROC_SURFACE_RENDERER=cg`, a spec that does
+not ask for Metal), the surface draws its marks and its trail as if it had
+no shaders, and `on_shader` hears `Fallback`. Give a shaded surface a scene
+and a trail that look reasonable alone: they are its simpler picture.
+
+`examples/visualizer`'s `Shaders` mode has a test of each stage, and its
+`Gallery` plays a file through twelve visualizations kept as data in
+`src/Presets.roc`: each a name, a description, its shaders (commented, to
+learn from), its params with their ranges, and the scene and trail it
+draws with Core Graphics. Another app adopts them by copying that module.
+
+=== Overlays
+
+`Ui.overlay(props, background, foreground)` puts native views over a
+surface: captions, lyrics, a legend. The background fills the overlay and
+sizes it. The foreground sits inside `padding`, placed by `horizontal` and
+`vertical`: `Fill` stretches it to that side, and the others hug it. The
+foreground is ordinary AppKit views, so its text wraps, it can scroll (put a
+`Ui.scroll` in it), and VoiceOver reads it. It is never part of the
+surface's picture, so it never enters a trail:
+
+[source,roc]
+----
+Ui.overlay(
+    { vertical: Bottom, padding: All(12) },
+    visualizer,
+    Engine.when(show_lyrics, || Ui.box({ fill: Adaptive({ light: 0x000000, dark: 0x000000 }) }, Ui.text(line, { overflow: Wrap, align: Center, width: Fill })), || Engine.text("")),
+)
+----
+
+The background must always be an element. The foreground may come and go.
 
 [#ui-looks]
 == Looks
@@ -250,6 +542,7 @@ checkbox its `checked` signal. Write the new value in the handler, as
 `Ui.text_field(cells.url.signal(), { on_input: Engine.handle(|typed| [cells.url.set(typed)]) })`
 does.
 
+[#the-window]
 == The window
 
 Without a scroll area or a list, the window fits its content exactly; give
@@ -258,6 +551,15 @@ area or list appears, the window opens tall enough for its
 `opening_height`, and from then on grows only when the content around it
 needs more room. The user can resize the window; the scroll area takes the
 slack, within its `height`.
+
+The window never grows past its screen: it keeps within the screen's
+visible frame (less the menu bar and the Dock), and fits it again when it
+moves to another screen or the screens change. Content that needs more
+than that is not cut off: the whole window scrolls, as a page does, and the
+window can be made no smaller than its content needs or its screen has
+room for. A layout that suits small screens gives what is tall a scroll
+area of its own, so that part scrolls, not the window, as the starter's
+panels do.
 
 == Lists
 
@@ -348,7 +650,118 @@ outcome. Uploads, fetched files and pasted files are not built.
 
 Workers:: See xref:ui.adoc#workers[Workers] below.
 
-Not built:: ports and crypto keys.
+Audio:: See xref:ui.adoc#audio[Audio] below.
+
+Not built:: crypto keys, and ports of an app's own: the host serves the
+platform's audio ports and no others.
+
+[#audio]
+== Audio
+
+`Audio` plays one local audio file natively, with a transport, a 10-band
+EQ and opt-in measurements of the signal. The host serves it as typed ports
+(roc-signals' `Port`), so an app declares them once, sends commands from an
+effect plan and follows subscriptions from watch sites:
+
+[source,roc]
+----
+import pf.Audio
+import pf.Engine
+
+main = Engine.program_store({}, |_| store, |_| view()).with_ports(Audio.ports)
+
+## A press posts commands, in order, to an outbox cell…
+play = Engine.handle(|_| [cells.outbox.update(|box| box.post([Play]))])
+load = Engine.handle_by(cells.track.signal(), |track, { files, .. }|
+    match files.first() {
+        Ok(file) => [cells.track.set(track + 1), cells.outbox.update(|box| box.post([Load({ track: track + 1, file })]))]
+        Err(_) => []
+    })
+
+## …which one site sends.
+Engine.on_post(cells.outbox.signal(), |commands| commands.map(Audio.send), Engine.ignore({}))
+
+## What happened, where playback stands, and (while checked) measurements.
+Engine.watch(Engine.const({}), |_| [Audio.events({})], Engine.react(|_, event| …))
+Engine.watch(Engine.const({}), |_| [Audio.status({ every_ms: 200 })], Engine.react(|_, status| …))
+Engine.watch_latest(cells.measuring.signal(), |on| if (on) [Audio.analysis({ every_ms: 100 })] else [], Engine.react(|_, snapshot| …))
+----
+
+`examples/player` is a whole player: a file button and a drop zone, the
+transport, a seek and a volume slider, the EQ's sliders, Bypass and Flat,
+and a level readout.
+
+Commands:: `Load({ track, file })` opens a whole `File` (a slice is
+`Failed(Unsupported(…))`) and stops at its start; `track` is the app's own
+number for it, which every event and status carries. The host keeps its own
+reference to the file while it is loaded, so dropping the handle does not
+stop playback, and the handle still counts against the 64 an app holds only
+while the app holds it. `LoadAsset({ track, path })` opens a file the app ships in its `assets/` (`"song.mp3"`), found as `Ui.asset_image` finds an image (`ROC_ASSETS`, the `.app`'s `Resources/assets`, then `assets/` beside the program or in the working directory), and behaves as `Load` does, with the same events; it holds no file handle, so it never counts against the 64, and a path that leaves `assets/` or names nothing there is `Failed(Unsupported(…))`. `Play` plays from where playback stands (from the
+start after `Ended`); `Pause` holds the playhead and `Resume` continues;
+`Stop` lets go of what is scheduled and goes back to the start; `Seek(ms)`
+moves the playhead, clamped to the duration: playing goes on playing, paused
+stays paused, stopped stays stopped. `Volume(v)` is the output volume, 0 to
+1. `VisualOffset(ms)` shows the measurements a drawing surface reads, and
+`Audio.analysis` sends, `ms` milliseconds later than the sound they measure,
+-500 to +500 (positive when the picture leads what the listener hears,
+negative when it trails). The session already allows for the latency the
+output reports; the offset is for what an output does not report, such as
+a Bluetooth speaker or a TV, so keep one per `Status.output` and send it
+when the output changes (the starter's EQ panel does, under Picture sync).
+`Close` lets go of the file and the audio engine. Commands take effect in
+the order they are sent: a seek after a load seeks the new source.
+Events:: `Audio.events({})` delivers `Loaded({ track, duration_ms, frames,
+sample_rate, channels })`, `Failed({ track, error })` and `Ended({ track })`,
+up to 64 waiting while the app is busy. `Ended` is natural completion,
+delivered once per start: a seek, a stop or a new load discards any
+completion of what came before, so an `Ended` never names an older source.
+An error is recoverable (load another file): `Unsupported(why)` for a format
+the decoder does not play (Core Audio's `typ?` or `fmt?`) or a slice,
+`Corrupt(why)` for a file that is not the audio it claims to be, and
+`Output(why)` when the audio output cannot start.
+Status:: `Audio.status({ every_ms })` delivers `{ track, generation, state,
+position_ms, duration_ms, volume, latency_ms, visual_offset_ms, output, eq }` when it subscribes, on
+every change, and every `every_ms` (16 to 60,000; the player uses 200, five
+a second) while playing; only the newest waits. `state` is `Idle`, `Loading`,
+`Stopped`, `Playing`, `Paused` or `Ended`. Times are milliseconds on the
+source's timeline: `position_ms` is where playback has rendered to, and a
+sample is heard `latency_ms` after it: the output's latency as Core Audio
+reports it (the device's and its stream's, 21 ms on a MacBook Air's
+speakers), which the measurements a surface reads already allow for.
+`visual_offset_ms` is the `VisualOffset` that applies, and `output` the
+device playing, `{ name, uid }`: its name as Sound settings show it and its
+Core Audio UID, which stays the same across launches (both empty under a
+spec's manual clock). `generation` changes with every load, seek, stop and
+restart, as a drawing surface's reset signal.
+EQ:: Ten one-octave bands centred at `Audio.band_centres_hz`, 32, 64, 125,
+250, 500, 1000, 2000, 4000, 8000 and 16,000 Hz. `Gain({ band, db })` sets
+band 0 to 9 within -12 to +12 dB; `Preamp(db)`, the gain before the bands for
+headroom, within -24 to +12 dB; `Bypass(on)` plays the unprocessed signal at
+the same volume and keeps the settings for when it is off; `Flat` sets every
+band and the preamp to 0 dB. The EQ starts flat, at unity. A value out of
+range is clamped, and the status reports what applies; a value that is not a
+number is ignored; a band outside 0 to 9 is a host error. A band whose
+centre is above 45% of the source's sample rate (16 kHz below 35.6 kHz) is
+bypassed and keeps its gain. Changes take effect at once and never move the
+playhead.
+Measurements:: `Audio.analysis({ every_ms })` turns the measurements on for
+as long as it lives (unchecking the player's box ends it, and the last
+subscription to go turns the work off), and delivers at most every
+`every_ms` the newest snapshot of the current source position: `{ track,
+at_ms, rms_db, peak_db, bands_db, envelope }`. They measure the signal after
+the EQ and before the volume, so a cut shows and a low volume does not. A
+window is 2048 samples at the source's rate (43 ms at 48 kHz, 46 ms at
+44.1 kHz), one every 512 samples, and `at_ms` is its centre on the source
+timeline. `rms_db` is the mean-square level with the channels' powers
+averaged (a full-scale sine reads -3 dBFS) and `peak_db` the largest sample;
+`bands_db` is the energy in each of 24 bands, logarithmically spaced from
+40 Hz to 16 kHz (`Audio.band_edges_hz`), from a Hann-windowed 2048-point FFT
+with the channels' powers averaged (so opposite-phase stereo still reads),
+in dB relative to a full-scale sine all in one band; `envelope` is the
+window's mono signal as 32 min/max pairs. Silence and a band above half the
+sample rate read -120 dB, never infinity. Only the first two channels are
+measured. A seek, a stop or a new source discards the old measurements, and
+nothing is sent while paused or ended.
 
 [#workers]
 == Workers
@@ -426,11 +839,11 @@ standard error.
 
 == Testing an app
 
-`roc test main.roc` runs an app's `expect` tests, as `examples/todos` has.
+`roc test src/main.roc` runs an app's `expect` tests, as `examples/todos` has.
 Run it: it also reports the single-field record builder
 (`{ a: Engine.cell(…) }.Engine.Cells`) that builds but fails at run time with
 current compilers. Give a store at least two cells.
 
-`roc macos.roc test` runs an app's recorded cases, which drive its real
-controls and compare the view trees they print. See
-xref:apps.adoc#test-an-app[Test an app] for the cases and their steps.
+`roc macos.roc test` runs an app's specs, which drive its real controls and
+expect what they then show. See xref:apps.adoc#test-an-app[Test an app] for
+their steps and expectations.

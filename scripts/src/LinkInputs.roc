@@ -6,7 +6,10 @@
 ## the lock `actions/publish-build-inputs` commits.
 LinkInputs := [].{
 
-	Symbol : { name : Str, evidence : Str }
+	## A symbol, and the targets it is exported for when that is not every
+	## catalog target: `only`, which a symbol of one architecture names. A
+	## symbol without `only` is exported for every target.
+	Symbol : { name : Str, evidence : Str, only : Try(List(Str), [Missing]) }
 
 	Library : { name : Str, path : Str, install_name : Str, evidence : Str, symbols : List(Symbol) }
 
@@ -15,18 +18,26 @@ LinkInputs := [].{
 	## each symbol owned by a library like any other.
 	RunShim : { evidence : Str, symbols : List(Str) }
 
-	Catalog : { schema_version : U64, target : Str, run_shim : RunShim, libraries : List(Library) }
+	## `tapi_targets` names the TAPI targets every stub is for (`targets` is
+	## a word Roc reserves).
+	Catalog : { schema_version : U64, tapi_targets : List(Str), run_shim : RunShim, libraries : List(Library) }
 
-	## The one target the stubs are for, and the Roc target the archive serves.
-	target : Str
-	target = "arm64-macos"
+	## The TAPI targets the stubs are for, one per Roc target the platform
+	## declares: `arm64-macos` for `arm64mac` and `x86_64-macos` for
+	## `x64mac`. Roc's linker takes the one `targets/macos-sysroot` for every
+	## macOS target, so each stub lists both, and the linker reads the slice
+	## of the architecture it links.
+	tapi_targets : List(Str)
+	tapi_targets = ["arm64-macos", "x86_64-macos"]
 
-	roc_target : Str
-	roc_target = "arm64mac"
+	## The manifest's and the lock's name for the one archive, which serves
+	## every macOS target.
+	asset_key : Str
+	asset_key = "macos"
 
 	## The release's file names: the archive and its manifest.
 	archive_name : Str
-	archive_name = "link-inputs-arm64mac.tar"
+	archive_name = "link-inputs-macos.tar"
 
 	manifest_name : Str
 	manifest_name = "build-input-release.json"
@@ -46,15 +57,15 @@ LinkInputs := [].{
 	inputs : List(Str)
 	inputs = ["LICENSE", "host/PROVENANCE.md", "host/interfaces.json", "scripts/link_inputs.roc", "scripts/src/LinkInputs.roc", "scripts/src/Tar.roc"]
 
-	## The catalog, checked as the stub generator always checked it: the one
-	## target, unique relative library paths, an absolute install name and
+	## The catalog, checked as the stub generator always checked it: the
+	## targets, unique relative library paths, an absolute install name and
 	## evidence for every library, and for every symbol a well-formed name,
-	## its own evidence and one owner. The result maps each symbol to its
-	## library.
+	## its own evidence, one owner and, when it is not exported for every
+	## target, some of them. The result maps each symbol to its library.
 	check : Catalog -> Try(List((Str, Str)), Str)
 	check = |catalog| {
-		if catalog.schema_version != 2 or catalog.target != LinkInputs.target {
-			return Err("expected schema_version 2 for ${LinkInputs.target}")
+		if catalog.schema_version != 3 or catalog.tapi_targets != LinkInputs.tapi_targets {
+			return Err("expected schema_version 3 for ${Str.join_with(LinkInputs.tapi_targets, " and ")}")
 		}
 		var $paths = []
 		var $owners = []
@@ -73,6 +84,11 @@ LinkInputs := [].{
 				}
 				if symbol.evidence.is_empty() {
 					return Err("${symbol.name} names no evidence")
+				}
+				match symbol.only {
+					Ok(only) if only.is_empty() or only.len() >= LinkInputs.tapi_targets.len() or !only.all(|t| LinkInputs.tapi_targets.contains(t)) or LinkInputs.unique(only) != only =>
+						return Err("${symbol.name} must name some, not all, of ${Str.join_with(LinkInputs.tapi_targets, " and ")} in `only`, each once")
+					_ => {}
 				}
 				match $owners.find_first(|(owned, _)| owned == symbol.name) {
 					Ok((_, owner)) => return Err("${symbol.name} is owned by both ${owner} and ${library.name}")
@@ -108,15 +124,58 @@ LinkInputs := [].{
 		}
 	}
 
-	## One library's TAPI v4 text stub: its target, install name and sorted
-	## symbols, nothing else.
+	## One library's TAPI v4 text stub: its targets, install name and sorted
+	## symbols, nothing else. The symbols every target exports come first,
+	## then those of one target alone, in the order of `tapi_targets`.
 	tbd : Library -> Str
 	tbd = |library| {
-		head = ["--- !tapi-tbd", "tbd-version: 4", "targets: [ ${LinkInputs.target} ]", "install-name: '${library.install_name}'"]
-		symbols = library.symbols.map(|symbol| symbol.name).sort_with(LinkInputs.compare)
-		exports = if (symbols.is_empty()) [] else ["exports:", "  - targets: [ ${LinkInputs.target} ]", "    symbols:"].concat(symbols.map(|symbol| "      - '${symbol}'"))
+		head = ["--- !tapi-tbd", "tbd-version: 4", "targets: [ ${Str.join_with(LinkInputs.tapi_targets, ", ")} ]", "install-name: '${library.install_name}'"]
+		everywhere = LinkInputs.export_group(LinkInputs.tapi_targets, library.symbols.keep_if(|symbol| symbol.only.is_err()))
+		var $groups = everywhere
+		for target in LinkInputs.tapi_targets {
+			$groups = $groups.concat(LinkInputs.export_group([target], library.symbols.keep_if(|symbol| symbol.only == Ok([target]))))
+		}
+		exports = if ($groups.is_empty()) [] else ["exports:"].concat($groups)
 		"${Str.join_with(head.concat(exports).append("..."), "\n")}\n"
 	}
+
+	## One `exports` entry of a stub: the targets and their sorted symbols,
+	## or nothing for no symbols.
+	export_group : List(Str), List(Symbol) -> List(Str)
+	export_group = |group, symbols| {
+		names = symbols.map(|symbol| symbol.name).sort_with(LinkInputs.compare)
+		if (names.is_empty()) [] else ["  - targets: [ ${Str.join_with(group, ", ")} ]", "    symbols:"].concat(names.map(|name| "      - '${name}'"))
+	}
+
+	## Each symbol the catalog's libraries export for `target`, with its
+	## library: what a host or run shim built for that target may reference.
+	exported : Catalog, Str -> List((Str, Str))
+	exported = |catalog, target| {
+		var $found = []
+		for library in catalog.libraries {
+			for symbol in library.symbols {
+				wanted = match symbol.only {
+					Ok(only) => only.contains(target)
+					Err(_) => Bool.True
+				}
+				if wanted {
+					$found = $found.append((symbol.name, library.name))
+				}
+			}
+		}
+		$found
+	}
+
+	## The TAPI target of a thin 64-bit Mach-O file, from its header: the
+	## CPU type after the magic `cf fa ed fe`, little-endian. A compiler's
+	## run shims are for the architecture the compiler itself is built for.
+	macho_target : List(U8) -> Try(Str, [NotMachO])
+	macho_target = |bytes|
+		match bytes.take_first(8) {
+			[0xCF, 0xFA, 0xED, 0xFE, 0x0C, 0x00, 0x00, 0x01] => Ok("arm64-macos")
+			[0xCF, 0xFA, 0xED, 0xFE, 0x07, 0x00, 0x00, 0x01] => Ok("x86_64-macos")
+			_ => Err(NotMachO)
+		}
 
 	## The stubs, as archive paths under `macos-sysroot/` and their text.
 	stubs : Catalog -> List({ path : Str, text : Str })
@@ -285,7 +344,7 @@ LinkInputs := [].{
 		q = LinkInputs.json_string
 		asset = "{\"asset\":${q(LinkInputs.archive_name)},\"sha256\":${q(m.sha256)},\"size\":${m.size.to_str()}}"
 		source = "{\"input_fingerprint\":${q(m.fingerprint)},\"ref\":${q(m.ref)},\"repository\":${q(m.repository)},\"sha\":${q(m.sha)},\"workflow\":${q(m.workflow)}}"
-		"{\"assets\":{${q(LinkInputs.roc_target)}:${asset}},\"kind\":\"link-inputs\",\"schema_version\":1,\"source\":${source}}\n"
+		"{\"assets\":{${q(LinkInputs.asset_key)}:${asset}},\"kind\":\"link-inputs\",\"schema_version\":1,\"source\":${source}}\n"
 	}
 
 	## What the build reads of a manifest or a lock.
@@ -293,7 +352,7 @@ LinkInputs := [].{
 
 	Source : { input_fingerprint : Str }
 
-	Targets : { arm64mac : Asset }
+	Targets : { macos : Asset }
 
 	Manifest : { schema_version : U64, kind : Str, source : Source, assets : Targets }
 
@@ -391,21 +450,43 @@ LinkInputs := [].{
 }
 
 lib : LinkInputs.Library
-lib = { name: "libobjc", path: "usr/lib/libobjc.tbd", install_name: "/usr/lib/libobjc.A.dylib", evidence: "objc4", symbols: [{ name: "_objc_retain", evidence: "objc4" }, { name: "_OBJC_CLASS_$_NSObject", evidence: "objc4" }] }
+lib = { name: "libobjc", path: "usr/lib/libobjc.tbd", install_name: "/usr/lib/libobjc.A.dylib", evidence: "objc4", symbols: [{ name: "_objc_retain", evidence: "objc4", only: Err(Missing) }, { name: "_OBJC_CLASS_$_NSObject", evidence: "objc4", only: Err(Missing) }] }
+
+stret : LinkInputs.Symbol
+stret = { name: "_objc_msgSend_stret", evidence: "objc4", only: Ok(["x86_64-macos"]) }
 
 catalog : LinkInputs.Catalog
-catalog = { schema_version: 2, target: "arm64-macos", run_shim: { evidence: "roc", symbols: ["_objc_retain"] }, libraries: [lib] }
+catalog = { schema_version: 3, tapi_targets: ["arm64-macos", "x86_64-macos"], run_shim: { evidence: "roc", symbols: ["_objc_retain"] }, libraries: [lib] }
 
-## The stub the Python generator wrote: sorted symbols, quoted.
+## The stub: both targets, sorted symbols, quoted.
 expect
 	LinkInputs.tbd(lib)
-		== "--- !tapi-tbd\ntbd-version: 4\ntargets: [ arm64-macos ]\ninstall-name: '/usr/lib/libobjc.A.dylib'\nexports:\n  - targets: [ arm64-macos ]\n    symbols:\n      - '_OBJC_CLASS_$_NSObject'\n      - '_objc_retain'\n...\n"
-expect LinkInputs.tbd({ ..lib, symbols: [] }) == "--- !tapi-tbd\ntbd-version: 4\ntargets: [ arm64-macos ]\ninstall-name: '/usr/lib/libobjc.A.dylib'\n...\n"
+		== "--- !tapi-tbd\ntbd-version: 4\ntargets: [ arm64-macos, x86_64-macos ]\ninstall-name: '/usr/lib/libobjc.A.dylib'\nexports:\n  - targets: [ arm64-macos, x86_64-macos ]\n    symbols:\n      - '_OBJC_CLASS_$_NSObject'\n      - '_objc_retain'\n...\n"
+expect LinkInputs.tbd({ ..lib, symbols: [] }) == "--- !tapi-tbd\ntbd-version: 4\ntargets: [ arm64-macos, x86_64-macos ]\ninstall-name: '/usr/lib/libobjc.A.dylib'\n...\n"
+
+## A symbol of one architecture is exported for its target alone, after
+## those of every target.
+expect
+	LinkInputs.tbd({ ..lib, symbols: lib.symbols.append(stret) })
+		== "--- !tapi-tbd\ntbd-version: 4\ntargets: [ arm64-macos, x86_64-macos ]\ninstall-name: '/usr/lib/libobjc.A.dylib'\nexports:\n  - targets: [ arm64-macos, x86_64-macos ]\n    symbols:\n      - '_OBJC_CLASS_$_NSObject'\n      - '_objc_retain'\n  - targets: [ x86_64-macos ]\n    symbols:\n      - '_objc_msgSend_stret'\n...\n"
+expect LinkInputs.tbd({ ..lib, symbols: [stret] }) == "--- !tapi-tbd\ntbd-version: 4\ntargets: [ arm64-macos, x86_64-macos ]\ninstall-name: '/usr/lib/libobjc.A.dylib'\nexports:\n  - targets: [ x86_64-macos ]\n    symbols:\n      - '_objc_msgSend_stret'\n...\n"
+
+expect {
+	both = { ..catalog, libraries: [{ ..lib, symbols: lib.symbols.append(stret) }] }
+	LinkInputs.exported(both, "arm64-macos").len() == 2 and LinkInputs.exported(both, "x86_64-macos").contains(("_objc_msgSend_stret", "libobjc"))
+}
 
 expect LinkInputs.check(catalog) == Ok([("_objc_retain", "libobjc"), ("_OBJC_CLASS_$_NSObject", "libobjc")])
-expect LinkInputs.check({ ..catalog, schema_version: 1 }).is_err()
+expect LinkInputs.check({ ..catalog, schema_version: 2 }).is_err()
+expect LinkInputs.check({ ..catalog, tapi_targets: ["arm64-macos"] }).is_err()
 expect LinkInputs.check({ ..catalog, libraries: [lib, { ..lib, path: "usr/lib/other.tbd", name: "other" }] }) == Err("_objc_retain is owned by both libobjc and other")
-expect LinkInputs.check({ ..catalog, libraries: [{ ..lib, symbols: [{ name: "_x", evidence: "" }] }] }) == Err("_x names no evidence")
+expect LinkInputs.check({ ..catalog, libraries: [{ ..lib, symbols: [{ name: "_x", evidence: "", only: Err(Missing) }] }] }) == Err("_x names no evidence")
+expect LinkInputs.check({ ..catalog, libraries: [{ ..lib, symbols: lib.symbols.append(stret) }] }).is_ok()
+expect LinkInputs.check({ ..catalog, libraries: [{ ..lib, symbols: [{ ..stret, only: Ok([]) }] }] }).is_err()
+expect LinkInputs.check({ ..catalog, libraries: [{ ..lib, symbols: [{ ..stret, only: Ok(["arm64-macos", "x86_64-macos"]) }] }] }).is_err()
+expect LinkInputs.check({ ..catalog, libraries: [{ ..lib, symbols: [{ ..stret, only: Ok(["i386-macos"]) }] }] }).is_err()
+
+expect LinkInputs.macho_target([0xCF, 0xFA, 0xED, 0xFE, 0x07, 0x00, 0x00, 0x01, 3]) == Ok("x86_64-macos") and LinkInputs.macho_target([0xCF, 0xFA, 0xED, 0xFE, 0x0C, 0x00, 0x00, 0x01]) == Ok("arm64-macos") and LinkInputs.macho_target([0xCA, 0xFE]) == Err(NotMachO)
 expect LinkInputs.check({ ..catalog, libraries: [{ ..lib, path: "../x.tbd" }] }) == Err("bad or repeated path ../x.tbd")
 expect LinkInputs.check({ ..catalog, run_shim: { evidence: "roc", symbols: ["_mmap"] } }) == Err("run_shim lists _mmap, which no library owns")
 expect LinkInputs.check({ ..catalog, run_shim: { evidence: "", symbols: [] } }) == Err("run_shim names no evidence")
@@ -446,8 +527,8 @@ expect LinkInputs.fingerprint_text("n", [{ path: "a", sha256: "00" }]) == "roc-n
 
 expect
 	LinkInputs.manifest({ repository: "o/r", sha: "s", ref: "refs/heads/b", workflow: "o/r/.github/workflows/link-inputs.yml", fingerprint: "f", sha256: "d", size: 3 })
-		== "{\"assets\":{\"arm64mac\":{\"asset\":\"link-inputs-arm64mac.tar\",\"sha256\":\"d\",\"size\":3}},\"kind\":\"link-inputs\",\"schema_version\":1,\"source\":{\"input_fingerprint\":\"f\",\"ref\":\"refs/heads/b\",\"repository\":\"o/r\",\"sha\":\"s\",\"workflow\":\"o/r/.github/workflows/link-inputs.yml\"}}\n"
-expect LinkInputs.object_at("{\n  \"kind\": \"x\",\n  \"targets\": {\n    \"arm64mac\": {\"asset\": \"a}\"}\n  }\n}\n", "targets") == Ok("{\n    \"arm64mac\": {\"asset\": \"a}\"}\n  }")
+		== "{\"assets\":{\"macos\":{\"asset\":\"link-inputs-macos.tar\",\"sha256\":\"d\",\"size\":3}},\"kind\":\"link-inputs\",\"schema_version\":1,\"source\":{\"input_fingerprint\":\"f\",\"ref\":\"refs/heads/b\",\"repository\":\"o/r\",\"sha\":\"s\",\"workflow\":\"o/r/.github/workflows/link-inputs.yml\"}}\n"
+expect LinkInputs.object_at("{\n  \"kind\": \"x\",\n  \"targets\": {\n    \"macos\": {\"asset\": \"a}\"}\n  }\n}\n", "targets") == Ok("{\n    \"macos\": {\"asset\": \"a}\"}\n  }")
 expect LinkInputs.object_at("{}", "targets") == Err(NoObject)
 expect LinkInputs.json_string("a\"b\\c\n") == "\"a\\\"b\\\\c\\n\""
 expect LinkInputs.current("a", "a") == Ok({}) and LinkInputs.current("a", "b").is_err()

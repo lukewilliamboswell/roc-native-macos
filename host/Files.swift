@@ -367,7 +367,7 @@ extension Host {
         DispatchQueue.main.async { self.nextSave() }
     }
 
-    /// Show the save panel for the next waiting save. A scripted run never
+    /// Show the save panel for the next waiting save. A spec run never
     /// opens one: with `ROC_SAVE_DIR` it writes there, otherwise it skips.
     func nextSave() {
         guard !files.saving, !files.saves.isEmpty else { return }
@@ -377,8 +377,8 @@ extension Host {
             write(next.entry, next.start, next.len, to: dir + "/" + next.name)
             return nextSave()
         }
-        if env["ROC_SCRIPT"] != nil {
-            say("save \(next.name): skipped (scripted run without ROC_SAVE_DIR)")
+        if driven {
+            say("save \(next.name): skipped (spec run without ROC_SAVE_DIR)")
             return nextSave()
         }
         files.saving = true
@@ -478,7 +478,18 @@ final class DropZoneView: Surface {
 // MARK: - The work itself (any thread; plain Swift data only)
 
 extension Files {
-    enum Progress { case done, cancelled, unreadable }
+    enum Progress {
+        case done, cancelled, unreadable
+
+        /// Whether every chunk was visited. A `switch`, not `== .done`, for
+        /// the reason `ShaderStage.isWarp` gives.
+        var isDone: Bool {
+            switch self {
+            case .done: return true
+            case .cancelled, .unreadable: return false
+            }
+        }
+    }
 
     /// Visit `len` bytes of the file from `start`, a chunk at a time
     /// (stdio: `fopen`, `fseeko`, `fread`), stopping when `job` is
@@ -537,7 +548,7 @@ extension Files {
             if !failed, fwrite(bytes.baseAddress, 1, bytes.count, out) != bytes.count { failed = true }
         }
         if fclose(out) != 0 { failed = true }
-        return progress == .done && !failed
+        return progress.isDone && !failed
     }
 }
 

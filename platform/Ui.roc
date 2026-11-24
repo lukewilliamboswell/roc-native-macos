@@ -47,6 +47,8 @@ import Engine exposing [Elem, Handler, HandlerOf, Signal]
 ## | `file_button` | `ui-file-button` | `NSButton` opening an `NSOpenPanel` |
 ## | `drop_zone` | `ui-drop-zone` | a dashed drop target around one child |
 ## | `hover` | `ui-hover` | none: its child's view, hit-tested on each pointer move |
+## | `surface` | `ui-surface` | one view drawing a scene with Core Graphics |
+## | `overlay` | `ui-overlay` | a view holding a background and a foreground over it |
 ## | `divider` | `ui-divider` | `NSBox` separator |
 ## | `spacer` | `ui-spacer` | flexible empty `NSView` |
 ##
@@ -806,6 +808,225 @@ Ui := [].{
 			[content],
 		)
 
+	# --- Drawing ---
+
+	## A point of a surface's scene, in its `space`'s units.
+	Point : { x : F64, y : F64 }
+
+	## A rectangle of a scene: its top-left corner and its size.
+	Area : { x : F64, y : F64, width : F64, height : F64 }
+
+	## A number in a scene: a constant, the latest scalar of the native
+	## source named `source` (`Source`), or the value at `index` (from 0) of
+	## its latest series (`Element`), as `offset + scale * value`. A source
+	## that is not registered, or has nothing yet, and an index past the end
+	## of the series, count as 0, so the number is `offset`.
+	Number : [
+		Value(F64),
+		Source({ source : Str, scale : F64, offset : F64 }),
+		Element({ source : Str, index : U64, scale : F64, offset : F64 }),
+	]
+
+	## One step of a `Path`, from where the last one ended.
+	Segment : [MoveTo(Point), LineTo(Point), QuadTo(Point, Point), CurveTo(Point, Point, Point), Close]
+
+	## A shape. `Wave`, `Ring` and `Bars` draw the latest series of the
+	## native source named `source`: each value `v` counts as
+	## `(v - low) / (high - low)`, 0 at `low` and 1 at `high`. `Wave` is a
+	## polyline across `area`, its first value at the left edge, its last at
+	## the right, 0 on the bottom edge and 1 on the top. `Ring` is a closed
+	## polyline around (`x`, `y`), the first value at the top and the rest
+	## clockwise, each `radius + depth * t` from the centre. `Bars` divides
+	## `area` into one column per value, `gap` apart, each bar rising from the
+	## bottom edge to `t` of the height. `Lissajous` plots the series named
+	## `across` against the one named `down`, value by value, as a polyline
+	## in `area`: `t` of `across` 0 at the left edge and 1 at the right, `t`
+	## of `down` 0 at the bottom and 1 at the top (a stereo vectorscope of
+	## `audio.left` and `audio.right`, say); it has as many points as the
+	## shorter series. A source that is not registered, or has nothing yet,
+	## draws nothing.
+	Shape : [
+		Rect(Area),
+		Oval(Area),
+		Polyline(List(Point)),
+		Polygon(List(Point)),
+		Path(List(Segment)),
+		Wave({ source : Str, area : Area, low : F64, high : F64 }),
+		Ring({ source : Str, x : F64, y : F64, radius : F64, depth : F64, low : F64, high : F64 }),
+		Bars({ source : Str, area : Area, low : F64, high : F64, gap : F64 }),
+		Lissajous({ across : Str, down : Str, area : Area, low : F64, high : F64 }),
+	]
+
+	## How a shape's outline is drawn: its colour and its line width, in the
+	## scene's units, with round joins and caps. The width is a `Number`, so
+	## a source can drive it; a width below 0 draws as 0, so nothing.
+	Pen : { color : Color, width : Number }
+
+	## One step of a surface's scene, drawn in order, as a canvas draws.
+	## `Fill` and `Stroke` draw a shape; `Translate`, `Rotate` (radians,
+	## clockwise), `Scale` and `Matrix` (`x' = a x + c y + tx`, `y' = b x + d y
+	## + ty`) move what is drawn after them, and `Opacity` multiplies its
+	## opacity; `Save` keeps the current transform and opacity, and the
+	## matching `Restore` returns to them.
+	Mark : [
+		Fill(Shape, Color),
+		Stroke(Shape, Pen),
+		Save,
+		Restore,
+		Translate(Number, Number),
+		Rotate(Number),
+		Scale(Number, Number),
+		Matrix({ a : F64, b : F64, c : F64, d : F64, tx : F64, ty : F64 }),
+		Opacity(Number),
+	]
+
+	## A scene's units. `Points`: one unit is one point, from the surface's
+	## top-left corner, y down. `Fit({ width, height })`: a `width` by
+	## `height` scene scaled, without distortion, to the largest size that
+	## fits the surface, and centred in it, so it follows the surface as it
+	## resizes.
+	Space : [Points, Fit({ width : F64, height : F64 })]
+
+	## When a surface draws a new frame. `OnDemand`: when its scene, look or
+	## size changes, or a source it reads says it changed. `Display`: at
+	## every refresh of its display, while it is in a window and not hidden,
+	## reading its native sources each time without a turn of the engine; a
+	## change of scene, look or size shows from the next refresh.
+	Pacing : [OnDemand, Display]
+
+	## Each new frame first draws the previous one beneath it (`Trail`), or
+	## not. `half_life_ms` is how long the old picture takes to fade to half
+	## its opacity; `zoom` is how much it grows each second (1 for none),
+	## `turn` how far it turns each second (radians, clockwise), both about
+	## the surface's centre, and `shift` how far it moves each second, in
+	## points. All four are rates, so a trail lasts as long at any refresh
+	## rate.
+	Trail : [NoTrail, Trail({ half_life_ms : F64, zoom : F64, turn : F64, shift : Point })]
+
+	## A surface's own GPU shaders, in two stages (docs/ui.adoc, "Shaders").
+	## Each is Metal Shading Language source defining one function,
+	## `float4 warp(Frame f, Params p)` or `float4 composite(Frame f, Params p)`,
+	## and any helpers above it; the host supplies the header (`Frame`,
+	## `Params` and the helpers) and the entry point around it.
+	##
+	## Each frame, `warp` makes the new frame from the previous one (`f.image`)
+	## in place of the trail, the scene's marks are drawn over it, and the
+	## result is the next frame's `f.image`. `composite` then maps that frame
+	## (its `f.image`) to the screen without feeding back. With `composite`
+	## alone, the frame under it is the scene over the background (and the
+	## trail, if there is one), drawn fresh.
+	##
+	## `params` name numbers the stages read as `p.NAME` (a `float`): each a
+	## `Number`, so a native source can drive it, read once per frame in the
+	## host without a turn of the engine. A name is lowercase letters, digits
+	## and `_`, not starting with a digit, at most 32 bytes, and there are at
+	## most 16.
+	##
+	## Shaders run only with the Metal renderer, on a display-paced surface.
+	## Elsewhere the surface draws its marks and its trail, as without them:
+	## `on_shader` reports which (`Fallback`).
+	Shader : [NoShader, Shaders({ warp : [None, Some(Str)], composite : [None, Some(Str)], params : List((Str, Number)) })]
+
+	## Which stage an error is in.
+	ShaderStage : [Warp, Composite]
+
+	## A compile error at the line and column of the stage's own source,
+	## counting from 1; 0 for an error outside it (a missing function, too
+	## long a source, a bad param name, the GPU stopping a frame).
+	ShaderError : { stage : ShaderStage, line : U32, column : U32, message : Str }
+
+	## What a surface's shaders are doing, reported by `on_shader` whenever
+	## it changes: none asked for (`NoShader`); both stages compiled and
+	## drawing (`Running`); drawing with Core Graphics, so the marks and the
+	## trail alone (`Fallback`); or a stage that does not compile (`Failed`),
+	## while the surface keeps drawing that stage's last good source, or none.
+	ShaderStatus : [NoShader, Running, Fallback, Failed(List(ShaderError))]
+
+	## How a drawing surface draws. `label` names it to VoiceOver. A change of
+	## `reset` (any new value) clears the trail; it is also cleared when the
+	## surface is first shown and whenever its size or backing scale changes.
+	## `shader` adds GPU stages to it (`Shader`), and `on_shader`, when
+	## `Handled(handler)`, hears what they are doing (`ShaderStatus`).
+	SurfaceProps(ctx) := {
+		label : Str,
+		space : Signal(ctx, Space) ?? Engine.const(Points),
+		background : Signal(ctx, Color) ?? Engine.const(Clear),
+		pacing : Signal(ctx, Pacing) ?? Engine.const(OnDemand),
+		trail : Signal(ctx, Trail) ?? Engine.const(NoTrail),
+		reset : Signal(ctx, U64) ?? Engine.const(0),
+		shader : Signal(ctx, Shader) ?? Engine.const(NoShader),
+		on_shader : [Ignored, Handled(HandlerOf(ctx, ShaderStatus))] ?? Ignored,
+		width : Length ?? Fill,
+		height : Length ?? Fixed(160),
+		squeeze : Squeeze ?? Standard,
+	}
+
+	## A drawing surface: one native view drawing `scene`, an ordered list of
+	## marks, over `background`. A new scene redraws only this view, with no
+	## view per shape and no layout pass.
+	## `Ui.surface(points.map(|ps| [Stroke(Polyline(ps), { color: Green, width: Value(2) })]), { label: "Plot" })`.
+	surface : Signal(ctx, List(Mark)), SurfaceProps(ctx) -> Elem(ctx)
+	surface = |scene, props|
+		Engine.element(
+			"ui-surface",
+			[
+				Engine.attr("label", props.label),
+				Engine.attr_s("space", props.space.map(space_word)),
+				Engine.attr_s("background", props.background.map(color_word)),
+				Engine.attr_s("pacing", props.pacing.map(pacing_word)),
+				Engine.attr_s("trail", props.trail.map(trail_word)),
+				Engine.attr_s("reset", props.reset.map(|n| n.to_str())),
+				Engine.attr_s("shader-params", props.shader.map(shader_params_text)),
+				Engine.attr_s("shader-warp", props.shader.map(|s| shader_source(s, Warp))),
+				Engine.attr_s("shader-composite", props.shader.map(|s| shader_source(s, Composite))),
+				Engine.attr_s("scene", scene.map(scene_text)),
+			]
+				.concat(
+					match props.on_shader {
+						Handled(handler) => [Engine.on("shader", handler.from_payload_by(Engine.const({}), |_, word| shader_status(word)))]
+						Ignored => []
+					},
+				)
+				.concat(frame_attrs(Engine.const({ width: props.width, height: props.height, squeeze: props.squeeze }))),
+			[],
+		)
+
+	## Where an overlay places its foreground over its background, and how
+	## far inside the background's edges.
+	OverlayProps := {
+		horizontal : HorizontalAlign ?? Fill,
+		vertical : [Top, Center, Bottom, Fill] ?? Bottom,
+		padding : Insets ?? All(16),
+		width : Length ?? Fill,
+		height : Length ?? Auto,
+		squeeze : Squeeze ?? Standard,
+	}
+
+	## `foreground` over `background`, in its frame: the background (a
+	## `surface`, say) fills the overlay and sizes it, and the foreground is
+	## an ordinary native view tree, inside `padding`, that wraps, scrolls and
+	## reads to VoiceOver as anywhere else, and never draws into a surface's
+	## trail. `Ui.overlay({ vertical: Bottom }, plot, Ui.text(line, { overflow: Wrap, width: Fill }))`.
+	overlay : OverlayProps, Elem(ctx), Elem(ctx) -> Elem(ctx)
+	overlay = |props, background, foreground|
+		Engine.element(
+			"ui-overlay",
+			[
+				Engine.attr("horizontal", horizontal_align_word(props.horizontal)),
+				Engine.attr(
+					"vertical",
+					match props.vertical {
+						Top => "top"
+						Center => "center"
+						Bottom => "bottom"
+						Fill => "fill"
+					},
+				),
+				Engine.attr("padding", insets_word(props.padding)),
+			].concat(frame_attrs(Engine.const({ width: props.width, height: props.height, squeeze: props.squeeze }))),
+			[background, foreground],
+		)
+
 	## A horizontal separator line.
 	divider : () -> Elem(ctx)
 	divider = || Engine.element("ui-divider", [], [])
@@ -1126,6 +1347,197 @@ image_scaling_word = |scaling|
 		Stretch => "stretch"
 		Original => "original"
 	}
+
+space_word : Ui.Space -> Str
+space_word = |space|
+	match space {
+		Points => "points"
+		Fit({ width, height }) => "fit ${num(width)} ${num(height)}"
+	}
+
+pacing_word : Ui.Pacing -> Str
+pacing_word = |pacing|
+	match pacing {
+		OnDemand => "on-demand"
+		Display => "display"
+	}
+
+trail_word : Ui.Trail -> Str
+trail_word = |trail|
+	match trail {
+		NoTrail => "none"
+		Trail({ half_life_ms, zoom, turn, shift }) => "trail ${num(half_life_ms)} ${num(zoom)} ${num(turn)} ${num(shift.x)} ${num(shift.y)}"
+	}
+
+## A stage's source, or empty for none.
+shader_source : Ui.Shader, Ui.ShaderStage -> Str
+shader_source = |shader, stage|
+	match shader {
+		NoShader => ""
+		Shaders({ warp, composite, .. }) =>
+			match (if (stage == Warp) warp else composite) {
+				Some(source) => source
+				None => ""
+			}
+	}
+
+## The params, one `NAME NUMBER` a line, NUMBER as a scene's.
+shader_params_text : Ui.Shader -> Str
+shader_params_text = |shader|
+	match shader {
+		NoShader => ""
+		Shaders({ params, .. }) => Str.join_with(params.map(|(name, number)| "${name} ${number_word(number)}"), "\n")
+	}
+
+## The `shader` event's payload: `none`, `running`, `fallback`, or `failed`
+## and then one `STAGE LINE COLUMN MESSAGE` a line.
+shader_status : Str -> Ui.ShaderStatus
+shader_status = |word|
+	match word.split_on("\n") {
+		["running"] => Running
+		["fallback"] => Fallback
+		["failed", .. as lines] => Failed(lines.map(shader_error))
+		_ => NoShader
+	}
+
+shader_error : Str -> Ui.ShaderError
+shader_error = |line|
+	match line.split_on(" ") {
+		[stage, row, column, .. as words] =>
+			{
+				stage: if (stage == "composite") Composite else Warp,
+				line: U32.from_str(row) ?? 0,
+				column: U32.from_str(column) ?? 0,
+				message: Str.join_with(words, " "),
+			}
+		_ => { stage: Warp, line: 0, column: 0, message: line }
+	}
+
+## A scene, one mark per line (docs/architecture.adoc, "Drawing surfaces").
+scene_text : List(Ui.Mark) -> Str
+scene_text = |marks| Str.join_with(marks.map(mark_line), "\n")
+
+mark_line : Ui.Mark -> Str
+mark_line = |mark|
+	match mark {
+		Fill(shape, color) => "fill ${color_word(color)} ${shape_words(shape)}"
+		Stroke(shape, { color, width }) => "stroke ${color_word(color)} ${number_word(width)} ${shape_words(shape)}"
+		Save => "save"
+		Restore => "restore"
+		Translate(x, y) => "translate ${number_word(x)} ${number_word(y)}"
+		Rotate(angle) => "rotate ${number_word(angle)}"
+		Scale(x, y) => "scale ${number_word(x)} ${number_word(y)}"
+		Matrix({ a, b, c, d, tx, ty }) => "matrix ${nums([a, b, c, d, tx, ty])}"
+		Opacity(amount) => "opacity ${number_word(amount)}"
+	}
+
+shape_words : Ui.Shape -> Str
+shape_words = |shape|
+	match shape {
+		Rect(area) => "rect ${area_words(area)}"
+		Oval(area) => "oval ${area_words(area)}"
+		Polyline(points) => "line ${points.len().to_str()} ${points_words(points)}".trim()
+		Polygon(points) => "polygon ${points.len().to_str()} ${points_words(points)}".trim()
+		Path(segments) => "path ${segments.len().to_str()} ${Str.join_with(segments.map(segment_words), " ")}".trim()
+		Wave({ source, area, low, high }) => "wave ${source} ${area_words(area)} ${num(low)} ${num(high)}"
+		Ring({ source, x, y, radius, depth, low, high }) => "ring ${source} ${nums([x, y, radius, depth, low, high])}"
+		Bars({ source, area, low, high, gap }) => "bars ${source} ${area_words(area)} ${nums([low, high, gap])}"
+		Lissajous({ across, down, area, low, high }) => "lissajous ${across} ${down} ${area_words(area)} ${num(low)} ${num(high)}"
+	}
+
+segment_words : Ui.Segment -> Str
+segment_words = |segment|
+	match segment {
+		MoveTo(p) => "M ${point_words(p)}"
+		LineTo(p) => "L ${point_words(p)}"
+		QuadTo(c, p) => "Q ${point_words(c)} ${point_words(p)}"
+		CurveTo(c1, c2, p) => "C ${point_words(c1)} ${point_words(c2)} ${point_words(p)}"
+		Close => "Z"
+	}
+
+area_words : Ui.Area -> Str
+area_words = |{ x, y, width, height }| nums([x, y, width, height])
+
+point_words : Ui.Point -> Str
+point_words = |{ x, y }| "${num(x)} ${num(y)}"
+
+points_words : List(Ui.Point) -> Str
+points_words = |points| Str.join_with(points.map(point_words), " ")
+
+## A constant, `@source:scale:offset`, or `@source[index]:scale:offset`.
+number_word : Ui.Number -> Str
+number_word = |number|
+	match number {
+		Value(v) => num(v)
+		Source({ source, scale, offset }) => "@${source}:${num(scale)}:${num(offset)}"
+		Element({ source, index, scale, offset }) => "@${source}[${index.to_str()}]:${num(scale)}:${num(offset)}"
+	}
+
+nums : List(F64) -> Str
+nums = |values| Str.join_with(values.map(num), " ")
+
+num : F64 -> Str
+num = |value| value.to_str()
+
+## A scene's marks in their grammar.
+expect {
+	scene : List(Ui.Mark)
+	scene = [
+		Fill(Rect({ x: 10, y: 20, width: 30.5, height: 40 }), Red),
+		Save,
+		Translate(Source({ source: "synthetic.level", scale: 200, offset: 10 }), Value(0)),
+		Scale(Element({ source: "audio.bands", index: 3, scale: 0.5, offset: 1 }), Value(1)),
+		Opacity(Value(0.5)),
+		Stroke(Polyline([{ x: 0, y: 0 }, { x: 4, y: 2 }]), { color: Adaptive({ light: 0x112233, dark: 0xffffff }), width: Value(2) }),
+		Restore,
+		Fill(Path([MoveTo({ x: 0, y: 0 }), LineTo({ x: 1, y: 0 }), Close]), Green),
+		Stroke(Wave({ source: "synthetic.wave", area: { x: 0, y: 0, width: 100, height: 50 }, low: -1, high: 1 }), { color: Green, width: Value(1.5) }),
+		Fill(Bars({ source: "audio.bands", area: { x: 0, y: 0, width: 240, height: 60 }, low: 0, high: 1, gap: 2 }), Orange),
+		Stroke(Ring({ source: "audio.waveform", x: 50, y: 50, radius: 20, depth: 8, low: -1, high: 1 }), { color: Yellow, width: Source({ source: "synthetic.level", scale: 4, offset: 1 }) }),
+		Matrix({ a: 1, b: 0, c: 0, d: 1, tx: 3, ty: 4 }),
+		Stroke(Polygon([]), { color: Blue, width: Value(1) }),
+		Stroke(Lissajous({ across: "audio.left", down: "audio.right", area: { x: 0, y: 0, width: 200, height: 200 }, low: -1, high: 1 }), { color: Green, width: Value(1) }),
+	]
+	actual = scene_text(scene)
+	expected =
+		\\fill red rect 10 20 30.5 40
+		\\save
+		\\translate @synthetic.level:200:10 0
+		\\scale @audio.bands[3]:0.5:1 1
+		\\opacity 0.5
+		\\stroke adaptive:112233:ffffff 2 line 2 0 0 4 2
+		\\restore
+		\\fill green path 3 M 0 0 L 1 0 Z
+		\\stroke green 1.5 wave synthetic.wave 0 0 100 50 -1 1
+		\\fill orange bars audio.bands 0 0 240 60 0 1 2
+		\\stroke yellow @synthetic.level:4:1 ring audio.waveform 50 50 20 8 -1 1
+		\\matrix 1 0 0 1 3 4
+		\\stroke blue 1 polygon 0
+		\\stroke green 1 lissajous audio.left audio.right 0 0 200 200 -1 1
+	actual == expected
+}
+
+## A surface's space, pacing and trail in their grammar.
+expect {
+	actual = "${space_word(Points)}|${space_word(Fit({ width: 400, height: 300 }))}|${pacing_word(Display)}|${trail_word(NoTrail)}|${trail_word(Trail({ half_life_ms: 300, zoom: 1.25, turn: 0, shift: { x: 100, y: -2 } }))}"
+	actual == "points|fit 400 300|display|none|trail 300 1.25 0 100 -2"
+}
+
+## A surface's shaders in their attributes, and its status read back.
+expect {
+	shader : Ui.Shader
+	shader = Shaders({ warp: Some("float4 warp(Frame f, Params p) { return sample(f, f.uv); }"), composite: None, params: [("zoom", Value(1.5)), ("push", Source({ source: "audio.bass", scale: 0.2, offset: 1 }))] })
+	attrs = (shader_source(shader, Warp), shader_source(shader, Composite), shader_params_text(shader), shader_params_text(NoShader))
+	statuses = ["none", "running", "fallback", "failed\nwarp 3 12 use of undeclared identifier 'x'\ncomposite 0 0 too long"].map(shader_status)
+	attrs == ("float4 warp(Frame f, Params p) { return sample(f, f.uv); }", "", "zoom 1.5\npush @audio.bass:0.2:1", "")
+		and statuses
+			== [
+				NoShader,
+				Running,
+				Fallback,
+				Failed([{ stage: Warp, line: 3, column: 12, message: "use of undeclared identifier 'x'" }, { stage: Composite, line: 0, column: 0, message: "too long" }]),
+			]
+}
 
 ## Image scalings in their grammar.
 expect {

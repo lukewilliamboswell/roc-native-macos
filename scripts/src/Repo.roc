@@ -4,10 +4,11 @@ Repo := [].{
 
 	## The check's stages, in the order a full run takes them.
 	stages : List(Str)
-	stages = ["pins", "engine", "fmt", "scripts", "tool", "glue", "build", "test", "examples", "bench", "bundle"]
+	stages = ["pins", "engine", "fmt", "scripts", "specs", "tool", "glue", "build", "test", "examples", "bench", "matrix", "bundle"]
 
 	## The stages named on the command line, or every stage when none is.
-	## `--update` is an option of the tool and examples stages, not a stage.
+	## `--update` is an option of the tool, examples and matrix stages, not a
+	## stage.
 	selection : List(Str) -> Try({ stages : List(Str), update : Bool }, [Unknown(Str)])
 	selection = |args| {
 		update = args.contains("--update")
@@ -23,9 +24,86 @@ Repo := [].{
 		}
 	}
 
+	## Where an example or a bench harness keeps its specs, relative to its
+	## directory; the files they use are in `tests/fixtures/`, and the
+	## starter's fuzz targets in `tests/fuzz/main.roc`.
+	specs : Str
+	specs = "tests/specs"
+
+	## The apps the matrix stage builds every way, by directory, the specs it
+	## runs against each build, and whether it builds them for every Mac
+	## target or only for this Mac's own: the fixture `tests/matrix/arith`,
+	## for every target, for the library calls 128-bit, `Dec` and float
+	## arithmetic lower to, which differ by target; the example `workers`,
+	## for this Mac's alone, for the worker threads' entry points and a
+	## crashed job's unwind out of a guarded call, which do not.
+	## TODO(slow-lambda-sets): `workers` takes 80 to 140 s a build with
+	## `--specialize=yes`; build it for every target too once that is fast.
+	matrix_apps : List({ name : Str, dir : Str, specs : List(Str), every_target : Bool })
+	matrix_apps = [
+		{ name: "arith", dir: "${Repo.matrix_fixtures}/arith", specs: ["${Repo.specs}/rows.scm", "${Repo.specs}/highest.scm"], every_target: Bool.True },
+		{ name: "workers", dir: "examples/workers", specs: ["${Repo.specs}/crash.scm"], every_target: Bool.False },
+	]
+
+	## Where the apps that exist only for the matrix stage live, each laid
+	## out as an example is, but never built, shipped or recorded as one.
+	matrix_fixtures : Str
+	matrix_fixtures = "tests/matrix"
+
+	## One build of the matrix: a target, an `--opt` and a `--specialize`,
+	## and whether this Mac runs what it builds.
+	MatrixBuild : { target : Str, opt : Str, specialize : Str, run : Bool }
+
+	## Every build of the matrix on a Mac whose own target is `native` and
+	## which runs the programs of the targets `runs` names: every Mac target
+	## with every `--opt` and `--specialize`, run when the Mac runs its
+	## programs and linked only otherwise. `--opt=interpreter` builds only
+	## for the native target, as roc allows.
+	matrix : { native : Str, runs : List(Str) } -> List(MatrixBuild)
+	matrix = |{ native, runs }| {
+		var $builds = []
+		for target in ["arm64mac", "x64mac", "x64v1mac"] {
+			opts = if (target == native) ["speed", "size", "dev", "interpreter"] else ["speed", "size", "dev"]
+			for opt in opts {
+				for specialize in ["yes", "no"] {
+					$builds = $builds.append({ target, opt, specialize, run: runs.contains(target) })
+				}
+			}
+		}
+		$builds
+	}
+
+	## The targets a Mac runs the programs of: its own, and `x64v1mac` on an
+	## Intel Mac or under Rosetta. An `x64mac` program needs x86-64-v3, which
+	## Rosetta does not offer (its CPU reports no AVX2 or BMI2), so it runs
+	## only on an Intel Mac.
+	matrix_runs : { intel : Bool, rosetta : Bool } -> { native : Str, runs : List(Str) }
+	matrix_runs = |{ intel, rosetta }|
+		if intel {
+			{ native: "x64mac", runs: ["x64mac", "x64v1mac"] }
+		} else if rosetta {
+			{ native: "arm64mac", runs: ["arm64mac", "x64v1mac"] }
+		} else {
+			{ native: "arm64mac", runs: ["arm64mac"] }
+		}
+
+	## `roc build`'s flags for one build of the matrix.
+	matrix_flags : MatrixBuild -> List(Str)
+	matrix_flags = |{ target, opt, specialize, .. }| ["--target=${target}", "--opt=${opt}", "--specialize=${specialize}"]
+
+	## The program one build of an app writes, under `build/matrix/`.
+	matrix_name : Str, MatrixBuild -> Str
+	matrix_name = |example, { target, opt, specialize, .. }| "${example}-${target}-${opt}-specialize-${specialize}"
+
+	## The tool's modules the scripts use, each copied byte for byte into
+	## `scripts/src/` (a script cannot import a module outside its own
+	## directory): `check`'s tool stage fails when a copy differs.
+	shared_modules : List(Str)
+	shared_modules = ["Spec.roc", "SpecRun.roc"]
+
 	## Every script, whose `expect`s the scripts stage runs.
 	scripts : List(Str)
-	scripts = ["scripts/check_all.roc", "scripts/build.roc", "scripts/link_inputs.roc", "scripts/bundle.roc", "scripts/release.roc", "scripts/record_demos.roc", "scripts/workflow.roc"]
+	scripts = ["scripts/check_all.roc", "scripts/build.roc", "scripts/link_inputs.roc", "scripts/bundle.roc", "scripts/release.roc", "scripts/record_demos.roc", "scripts/workflow.roc", "scripts/audio_fixtures.roc", "scripts/lower_spec.roc"]
 
 	## Files that would pin a compiler for the whole repository, which the
 	## model forbids: only the scripts' headers name one.
@@ -52,7 +130,7 @@ Repo := [].{
 	paint : Str, Bool -> Str
 	paint = |word, colour| {
 		code = match word {
-			"PASS" | "passed" => "32"
+			"PASS" | "LINK" | "passed" => "32"
 			"FAIL" | "failed" | "Failed" => "31"
 			_ => "33"
 		}
@@ -95,13 +173,23 @@ expect Repo.selection(["--", "examples", "--update"]) == Ok({ stages: ["examples
 expect Repo.selection(["test", "build"]) == Ok({ stages: ["build", "test"], update: Bool.False })
 expect Repo.selection(["bogus"]) == Err(Unknown("bogus"))
 
+expect Repo.matrix({ native: "arm64mac", runs: ["arm64mac"] }).len() == 20
+expect Repo.matrix(Repo.matrix_runs({ intel: Bool.True, rosetta: Bool.False })).keep_if(|b| b.run).map(|b| b.target).drop_if(|t| t == "x64mac" or t == "x64v1mac") == []
+expect Repo.matrix(Repo.matrix_runs({ intel: Bool.False, rosetta: Bool.True })).keep_if(|b| b.opt == "interpreter").map(|b| (b.target, b.run)) == [("arm64mac", Bool.True), ("arm64mac", Bool.True)]
+expect Repo.matrix(Repo.matrix_runs({ intel: Bool.False, rosetta: Bool.True })).keep_if(|b| b.target == "x64v1mac").map(|b| (b.opt, b.specialize, b.run)) == [("speed", "yes", Bool.True), ("speed", "no", Bool.True), ("size", "yes", Bool.True), ("size", "no", Bool.True), ("dev", "yes", Bool.True), ("dev", "no", Bool.True)]
+expect Repo.matrix(Repo.matrix_runs({ intel: Bool.False, rosetta: Bool.False })).keep_if(|b| b.run).len() == 8
+expect Repo.matrix(Repo.matrix_runs({ intel: Bool.False, rosetta: Bool.True })).keep_if(|b| b.target == "x64mac").all(|b| !b.run)
+expect Repo.matrix_flags({ target: "x64mac", opt: "dev", specialize: "no", run: Bool.False }) == ["--target=x64mac", "--opt=dev", "--specialize=no"]
+expect Repo.matrix_name("arith", { target: "arm64mac", opt: "size", specialize: "yes", run: Bool.True }) == "arith-arm64mac-size-specialize-yes"
+expect Repo.paint("LINK", Bool.True) == "\u(001b)[32mLINK\u(001b)[0m"
+
 expect Repo.paint("PASS", Bool.False) == "PASS"
 expect Repo.paint("PASS", Bool.True) == "\u(001b)[32mPASS\u(001b)[0m"
 expect Repo.paint("failed", Bool.True) == "\u(001b)[31mfailed\u(001b)[0m"
 expect Repo.paint("SKIP", Bool.True) == "\u(001b)[33mSKIP\u(001b)[0m"
 
 expect Repo.fmt_skip("platform/Ui.roc") == Err(Checked)
-expect Repo.fmt_skip("examples/todos/main.roc") == Err(Checked)
+expect Repo.fmt_skip("examples/todos/src/main.roc") == Err(Checked)
 
 expect (Repo.millis(12), Repo.millis(1204), Repo.millis(10000), Repo.millis(1002003)) == ("12ms", "1_204ms", "10_000ms", "1_002_003ms")
 

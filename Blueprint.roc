@@ -4,7 +4,7 @@
 #     blueprint run build                  # glue, Swift host, linker stubs, every example
 #     blueprint run build -- counter       # one example, after the platform is built
 #     blueprint run test                   # roc test on the platform root and the examples
-#     blueprint run examples               # every example's recorded scripted runs
+#     blueprint run examples               # every example's specs
 #     blueprint run examples -- --update   # record what they print now, as a reviewable diff
 #     blueprint run bundle                 # the platform bundle, in build/platform/<hash>.tar.zst
 #     blueprint run bundle -- --test       # and a counter made with macos.roc against it
@@ -19,8 +19,11 @@
 # contributor installs a current nightly (or a release such as 0.1.0 RC1) as
 # `roc`, so the environment expects it on PATH.
 #
-# The host is Swift and links AppKit, so the environment is Apple silicon
-# macOS only, and Xcode's `swiftc` comes from the machine.
+# The host is Swift and links AppKit, so the environment is macOS, and
+# Xcode's `swiftc` comes from the machine. It is Apple silicon only, since
+# roc-policy and roc-docs have no x86_64-darwin build; Apple silicon
+# cross-compiles the Intel host, and CI's Intel jobs run the scripts with
+# `roc-stable` directly (.github/actions/setup-roc-tooling).
 app [config] { pf: platform "https://github.com/lukewilliamboswell/roc-blueprint/releases/download/0.13.0/DBtzmMfrSgt6nCGVAcZYCVPxWbhpqw3MXpm6sdQzMn4v.tar.zst" }
 
 import pf.Recipes
@@ -35,13 +38,14 @@ roc_stable_program = Fetch("roc-stable", Recipes.roc_nightly(tooling.compiler))
 # The compiler-pin rules `check`'s `pins` stage enforces with roc-policy,
 # roc-automation's source-policy utility: every script under scripts/ pins
 # `roc-stable`, nothing the package compiler builds pins a compiler, and every
-# example names the platform by its checkout path, which the examples archive
-# rewrites to the release URL. The rules that name no value of this file are
+# example and matrix fixture (tests/matrix/) names the platform by its
+# checkout path, which the examples archive rewrites to the release URL. The
+# rules that name no value of this file are
 # in the profile, which roc-policy reads only at the digest recorded here.
 repository_policy = {
 	schema_version: 2,
-	roots: ["platform", "examples", "bench", "glue", "cli", "scripts"],
-	profiles: [{ name: "repository", path: "tests/repository-policy.roc.txt", definition: "profile", sha256: "e5b247be4e3dc93857bca967e841893eed6326c734611b60813fbb4798d59b12" }],
+	roots: ["platform", "examples", "bench", "glue", "cli", "scripts", "tests"],
+	profiles: [{ name: "repository", path: "scripts/repository-policy.roc.txt", definition: "profile", sha256: "810e45b8dec7a54ff638563f98eb3efc53dd1b78987358f346c3e6430fa3b8b8" }],
 	rules: [{ id: "tooling/pin", kind: CompilerPin, include: ["scripts/**/*.roc"], value: tooling.compiler }],
 	overrides: [],
 }
@@ -102,7 +106,10 @@ config = [
 	Shell("default", [Use("dev")]),
 	# The per-pull-request gate: compiler pins, formatting, the scripts'
 	# tests, the macos.roc tool's tests, the build, `roc test`, every
-	# example's recorded runs and the bundle with its consumer test.
+	# example's specs, the build matrix (the arith fixture and the workers
+	# example built and run with every `--opt` and `--specialize`, arith for
+	# every Mac target) and the
+	# bundle with its consumer test.
 	# `check -- STAGE...` runs only the named stages, in order.
 	Task("check", [Use("dev"), Run(["scripts/check_all.roc", "--"])]),
 	# The host, the linker inputs and every example (scripts/build.roc):
@@ -112,6 +119,10 @@ config = [
 	# The producer of the macOS linker inputs (scripts/link_inputs.roc):
 	# `-- build DIR`, `-- stubs DIR`, `-- fingerprint`.
 	Task("link-inputs", [Use("dev"), Run(["scripts/link_inputs.roc", "--"])]),
+	# One example from the checkout, `roc src/main.roc` in its directory,
+	# building the host first when it is missing (scripts/run.roc):
+	# `-- NAME`, such as `blueprint run run -- about`.
+	Task("run", [Use("dev"), Run(["scripts/run.roc", "--"])]),
 	Task("test", [Use("dev"), Run(["scripts/check_all.roc", "--", "test"])]),
 	Task("examples", [Use("dev"), Run(["scripts/check_all.roc", "--", "examples"])]),
 	# The platform bundle an app's header names: builds the platform's

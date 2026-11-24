@@ -28,6 +28,20 @@
       "modified": "",
       "target": "",
       "origin": "reviewed"
+    },
+    {
+      "id": "starter-default-song",
+      "name": "Polymorphic Defunctionalization Through Lambda Set Specialization (the starter's default song and its timed lyrics)",
+      "version": "NOASSERTION",
+      "producer": "Person: Luke Boswell",
+      "license": "CC-BY-4.0",
+      "license_url": "",
+      "identity": "https://gist.github.com/lukewilliamboswell/be88b49154f602495f2821a01f995d1f",
+      "download": "https://gist.githubusercontent.com/lukewilliamboswell/be88b49154f602495f2821a01f995d1f/raw/polymorphic-defunctionalization-through-lambda-set-specialization-compact.mp3",
+      "sha256": "fe7cddae1237460fa7498b2f213666ae0fc16d89894903c8a2f40b2618d21ba5",
+      "modified": "",
+      "target": "",
+      "origin": "reviewed"
     }
   ],
   "relationships": [
@@ -36,7 +50,7 @@
       "to": "roc-native-macos-examples",
       "relation": "contains",
       "scope": "",
-      "basis": "Every example's main.roc from examples/, its header naming the release's platform bundle URL; each example's recorded cases (examples/<example>/tests/<case>.script and .expected) and the fixtures they use (examples/<example>/tests/fixtures); and a generated README.md. All are this repository's own files."
+      "basis": "Every example's tracked files from examples/ but its demo (its (demo …) spec): its src/main.roc, its header naming the release's platform bundle URL; the starter's other modules, its logic package (logic/) and its fuzz targets (tests/fuzz/main.roc, whose header names roc-fuzz 0.7.0's platform by its content-addressed URL, which the compiler fetches only when the targets are built and which is not in the archive); each example's assets; each example's specs (examples/<example>/tests/specs/<name>.scm) and the fixtures they use (examples/<example>/tests/fixtures); and a generated README.md. All are this repository's own files."
     },
     {
       "from": "Subject",
@@ -44,6 +58,13 @@
       "relation": "dependsOn",
       "scope": "",
       "basis": "Each example's header names the platform bundle published in the same release, by its content-addressed URL; the compiler fetches it when an example builds, and it is not in the archive. It has its own SBOM beside it."
+    },
+    {
+      "from": "Subject",
+      "to": "starter-default-song",
+      "relation": "contains",
+      "scope": "",
+      "basis": "The starter example's assets/polymorphic-defunctionalization.mp3 (MP3, 44.1 kHz stereo, 92 kb/s, 2:59, byte for byte the gist's compact MP3) and assets/polymorphic-defunctionalization.lrc (byte for byte the gist's timed lyrics), under CC BY 4.0, not the UPL; assets/CREDITS.md attributes them."
     }
   ],
   "coverage": [
@@ -94,6 +115,11 @@
       "input": "task:build",
       "component": "",
       "reason": "Development or release task; the examples archive's contents are stated by its components"
+    },
+    {
+      "input": "task:run",
+      "component": "",
+      "reason": "Development task; it builds and starts one example and adds nothing to the examples archive"
     },
     {
       "input": "task:test",

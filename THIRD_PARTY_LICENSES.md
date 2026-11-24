@@ -4,6 +4,18 @@ The repository's own code is under the [UPL 1.0](LICENSE). This file lists
 code it copies from elsewhere, the packages it fetches, and what its
 applications link at run time.
 
+## Media under other licences
+
+- *Polymorphic Defunctionalization Through Lambda Set Specialization*, by
+  Luke Boswell: the starter example's default song,
+  `examples/starter/assets/polymorphic-defunctionalization.mp3`, and its
+  timed lyrics, `polymorphic-defunctionalization.lrc`, which `macos.roc
+  init` copies into every new app. Copyright © 2026 Luke Boswell; licensed
+  under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/), not the
+  UPL. `examples/starter/assets/CREDITS.md` carries the attribution into
+  each app. Lyrics and liner notes:
+  <https://gist.github.com/lukewilliamboswell/be88b49154f602495f2821a01f995d1f>.
+
 ## Roc packages the compiler fetches
 
 The compiler fetches these by content-addressed URL. Their source is not copied
@@ -41,6 +53,8 @@ descriptions of install names and symbol names, taken only from the reviewed
 catalog `host/interfaces.json`. The generator reads no Apple SDK header, `.tbd`
 file or framework binary, and the stubs contain no Apple SDK material.
 
-`platform/targets/arm64mac/libhost.a` is this repository's Swift host,
-compiled with Xcode's `swiftc`. It holds only the host's own object code, and
-links the Swift runtime from the system.
+`platform/targets/arm64mac/libhost.a` and `platform/targets/x64mac/libhost.a`
+are this repository's Swift host, compiled with Xcode's `swiftc` for Apple
+silicon and for Intel Macs (`platform/targets/x64v1mac/libhost.a` is a copy of
+the Intel one). Each holds only the host's own object code, and links the
+Swift runtime from the system.

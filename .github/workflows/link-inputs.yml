@@ -8,11 +8,17 @@ name: Linker inputs
 # request's branch with release_candidate set, verifies this run and its
 # attestations, publishes the archive and commits link-inputs.lock.json.
 #
-#   build     macos-15: the archive twice (identical bytes required), then a
-#             host built from the same commit linked against it: every example
-#             built and its recorded cases run (the final link and the run)
+#   build     macos-15: the archive twice (identical bytes required), then the
+#             hosts built from the same commit (Apple silicon and Intel) linked
+#             against it: every example built for Apple silicon and its
+#             specs run (the final link and the run)
+#   intel     macos-15-intel: the same candidate, the stubs' x86_64 slice,
+#             with the hosts that job built: the audit of the Intel `roc`'s
+#             run shims, every example built for Intel and its specs
+#             run, the counter's also through `roc src/main.roc`
 #   assemble  the manifest and the archive, attested for a release candidate,
-#             uploaded as the one artifact the publisher admits
+#             uploaded as the one artifact the publisher admits, once both
+#             Macs have linked and run against it
 
 on:
   workflow_dispatch:
@@ -83,20 +89,61 @@ jobs:
         run: blueprint run link-inputs -- candidate build/link-inputs
       - name: Build the host and every example against the candidate
         run: blueprint run build -- --link-inputs build/link-inputs
-      - name: Run every example's recorded cases against it
+      - name: Run every example's specs against it
         run: blueprint run examples
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: link-input-candidate
           path: |
             build/link-inputs/build-input-release.json
-            build/link-inputs/link-inputs-arm64mac.tar
+            build/link-inputs/link-inputs-macos.tar
           if-no-files-found: error
           retention-days: 30
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: link-input-hosts
+          path: |
+            platform/targets/arm64mac/libhost.a
+            platform/targets/arm64mac/libhost.fingerprint
+            platform/targets/x64mac/libhost.a
+            platform/targets/x64mac/libhost.fingerprint
+            platform/targets/x64v1mac/libhost.a
+          if-no-files-found: error
+          retention-days: 7
+
+  # The candidate on an Intel Mac. Blueprint's environment is Apple silicon
+  # only, so the scripts run with roc-stable directly.
+  intel:
+    name: Link and run every example against the stubs on an Intel Mac
+    needs: [resolve, build]
+    runs-on: macos-15-intel
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-xcode
+      - uses: ./.github/actions/setup-roc-tooling
+        with:
+          nightly-tag: ${{ needs.resolve.outputs.tag }}
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          name: link-input-candidate
+          path: build/link-inputs
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          name: link-input-hosts
+          path: platform/targets
+      - name: Build every example for Intel against the candidate
+        run: roc-stable scripts/build.roc -- --link-inputs build/link-inputs
+      - name: Run every example's specs against it
+        run: roc-stable scripts/check_all.roc -- examples
 
   assemble:
     name: Attest and hand over the exact candidate
-    needs: build
+    needs: [build, intel]
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
@@ -111,9 +158,9 @@ jobs:
       - name: Require exactly the manifest and the archive it names
         run: |
           set -euo pipefail
-          test "$(find release -mindepth 1 | LC_ALL=C sort | tr '\n' ' ')" = "release/build-input-release.json release/link-inputs-arm64mac.tar "
-          jq -e '.schema_version == 1 and .kind == "link-inputs" and (.assets | keys) == ["arm64mac"]' release/build-input-release.json
-          test "$(jq -r '.assets.arm64mac.sha256' release/build-input-release.json)" = "$(sha256sum release/link-inputs-arm64mac.tar | cut -d' ' -f1)"
+          test "$(find release -mindepth 1 | LC_ALL=C sort | tr '\n' ' ')" = "release/build-input-release.json release/link-inputs-macos.tar "
+          jq -e '.schema_version == 1 and .kind == "link-inputs" and (.assets | keys) == ["macos"]' release/build-input-release.json
+          test "$(jq -r '.assets.macos.sha256' release/build-input-release.json)" = "$(sha256sum release/link-inputs-macos.tar | cut -d' ' -f1)"
           test "$(jq -r '.source.sha' release/build-input-release.json)" = "$GITHUB_SHA"
       - uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6
         if: inputs.release_candidate

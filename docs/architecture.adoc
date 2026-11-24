@@ -32,7 +32,8 @@ It provides `roc_engine_keys`, `roc_engine_init`, `roc_engine_event`,
 `roc_engine_version` for the page's instance, and `roc_engine_work`,
 `roc_engine_prepare`, `roc_engine_ask` and `roc_engine_forget` for worker
 instances (xref:architecture.adoc#workers[Workers]), with the `roc_task_*`
-hosted functions a job calls. It has no ports or crypto.
+hosted functions a job calls. It has no crypto, and its ports are the ones
+`platform/Audio.roc` declares (xref:architecture.adoc#ports[Ports]).
 `roc_engine_keys` returns the engine's declarations without roc-signals'
 section 12 (protocol facts): that CBOR item needs the cbor package and
 `ProtocolFacts`, and this host binds no roles from it.
@@ -56,7 +57,9 @@ vocabulary produces:
 * local storage, via `UserDefaults`, and session storage, in memory for the
   life of the process;
 * files: handles, reads (`FX` 11), digests (13), URLs (14) and `SAVE` (see
-  xref:architecture.adoc#files[Files]).
+  xref:architecture.adoc#files[Files]);
+* ports: `PORT` commands and `FX` subscriptions (kind 10), served by native
+  services (xref:architecture.adoc#ports[Ports]).
 +
 It keeps a node tree mirroring what the engine built and gives each `ui-*`
 element one AppKit view (`ui-hover` lends its place to its child's). It routes AppKit actions back as turns: `click`,
@@ -88,6 +91,8 @@ error, not a silent skip.
 | `file_button` | `ui-file-button` | `NSButton` opening an `NSOpenPanel`
 | `drop_zone` | `ui-drop-zone` | a `Surface` with a dashed outline, registered for dragged file URLs
 | `hover` | `ui-hover` | none: its child's view stands in its place; one window-level `NSTrackingArea` (Hover.swift)
+| `surface` | `ui-surface` | `DrawingSurface` (`host/Drawing.swift`): one `NSView` drawing a scene with Core Graphics; see xref:architecture.adoc#drawing-surfaces[Drawing surfaces]
+| `overlay` | `ui-overlay` | `Overlay` (`host/Drawing.swift`): an `NSView` holding a background pinned to its edges and a foreground over it
 | `divider`, `spacer` | `ui-divider`, `ui-spacer` | `NSBox` separator, flexible `NSView`
 |===
 
@@ -211,7 +216,17 @@ two of them centre what lies between.
 
 Window sizing:: The window fits its content, measured after two layout
 passes (the first gives wrapping labels their widths). Once it holds a scroll
-area or list it grows only when its content needs more room.
+area or list it grows only when its content needs more room. It never grows
+past the room its screen has (`Host.windowRoom`: the screen's visible frame
+less the title bar), and fits again when it changes screen or the screens
+change. The root stack sits in a document view inside the window's page, an
+`NSScrollView` whose document fills it at a priority (749) below a view's
+resistance to compression: what cannot shrink makes the document taller
+than the window, and the page scrolls it. The window's minimum is its
+content's, within that room. A spec's window is on a virtual screen
+(`SpecScreen`, 1440 × 840 points of content unless `(screen-size W H)` says
+otherwise), and `HostWindow` keeps AppKit from constraining it to the run's
+real display, so its size is the same on every Mac.
 
 `ROC_APPEARANCE=dark` (or `light`) draws the app in that appearance whatever
 the system's, to check both looks.
@@ -219,7 +234,7 @@ the system's, to check both looks.
 [#assets]
 == Assets
 
-An app's assets are the files of `assets/` beside its `main.roc`
+An app's assets are the files of `assets/` beside its `src/`
 (xref:apps.adoc#assets[Assets and the icon]). They are delivered as files,
 not compiled into the program: `macos.roc build` copies the directory into
 `<name>.app/Contents/Resources/assets/` and to `.macos/assets/` beside the
@@ -279,9 +294,359 @@ A grid of 10,000 fixed-size boxes lays out in 0.09 s instead of 3.2 s
 (`bench/grid`). A box draws its fill and solid border as its layer's
 properties (`updateLayer`), so it has no backing store.
 
-A batch that only repaints (`fill`, `border`, `radius`, `color`, and no
-structure or text) skips layout and is only drawn. Hit testing a framed
+A batch that only repaints (`fill`, `border`, `radius`, `color`, a
+surface's `scene`, `space`, `background`, `pacing`, `trail`, `reset` and
+`label`, and no structure or text) skips layout and is only drawn. Hit testing a framed
 stack searches its children by position.
+
+[#drawing-surfaces]
+== Drawing surfaces
+
+A `ui-surface` is one `DrawingSurface` (`host/Drawing.swift`): a flipped,
+layer-backed `NSView` that clips to its bounds and is one accessibility
+element (an image, named by `label`). Its scene is one attribute, so a
+change to it is one `ATTR` command, a paint-only change. The view is marked
+for display, and the window is not laid out again. No shape has a view of
+its own.
+
+=== The scene on the wire
+
+`scene` holds one mark per line, in words separated by single spaces. A
+colour is a xref:architecture.adoc#looks[Looks] colour word. A number `N` is
+a decimal as Roc's `F64.to_str` writes it. A bound number is
+`@SOURCE:SCALE:OFFSET`, or `@SOURCE[INDEX]:SCALE:OFFSET` for one value of a
+series, `INDEX` from 0 below 4,096; past the series' end it reads 0.
+
+----
+fill COLOUR SHAPE
+stroke COLOUR N SHAPE
+save | restore
+translate N N | rotate N | scale N N | matrix A B C D TX TY | opacity N
+
+SHAPE: rect X Y W H | oval X Y W H
+     | line COUNT (X Y)* | polygon COUNT (X Y)*
+     | path COUNT (M X Y | L X Y | Q CX CY X Y | C AX AY BX BY X Y | Z)*
+     | wave SOURCE X Y W H LOW HIGH
+     | ring SOURCE X Y RADIUS DEPTH LOW HIGH
+     | bars SOURCE X Y W H LOW HIGH GAP
+     | lissajous SOURCE SOURCE X Y W H LOW HIGH
+----
+
+The other attributes:
+
+* `space` is `points` or `fit W H`.
+* `pacing` is `on-demand` or `display`.
+* `trail` is `none` or `trail HALF-LIFE-MS ZOOM TURN SHIFT-X SHIFT-Y`, with a
+  positive half-life and zoom.
+* `reset` is any word; a new one clears the trail.
+* `background` is a colour.
+* `shader-warp` and `shader-composite` are a stage's Metal source, or empty
+  for none; `shader-params` is one `NAME N` a line, `N` a number as a
+  scene's (xref:architecture.adoc#surface-shaders[Surface shaders]).
+
+A surface that listens for `shader` (`on_shader`) hears its shaders' status
+as a text payload: `none`, `running`, `fallback`, or `failed` and then one
+`STAGE LINE COLUMN MESSAGE` a line, `STAGE` `warp` or `composite`.
+
+The host parses a scene once, when it arrives. A word outside the grammar,
+a number that is not finite or is beyond ±1,000,000, a count above the
+point bound, or a `restore` without a `save` is a fatal error naming the
+line. A frame may draw at most 65,536 points, sources' series included, and
+a series may hold at most 4,096 values.
+
+=== Frames
+
+A frame is logical. Drawing one resolves the parsed scene: it reads each
+bound number and each source's series once, at the frame's time, and keeps
+the result. With Core Graphics (xref:architecture.adoc#drawing-surfaces[Renderers]), `draw(_:)` draws the kept frame in the view's
+own context, at the backing scale, so an AppKit repaint (an expose, a resize
+redraw, a change of key window) draws the same frame again. A new frame is
+due when the scene or a look attribute changes, the size, backing scale or
+appearance changes, or an on-demand surface's source reports a change. On an
+on-demand surface it is drawn at the next repaint. A display-paced surface
+draws frames only at its ticks.
+
+The frame clock (`FrameClock`) ticks a display-paced surface while it is in
+a window and neither it nor an ancestor is hidden. `viewDidMoveToWindow`,
+`viewDidHide` and `viewDidUnhide` start and stop it. Each surface on the
+clock has its own `NSView.displayLink(target:selector:)` (macOS 14), added to
+the main run loop in its common modes. It follows the screen the view is on
+and calls on the main thread, between engine turns. A tick draws one frame
+for the time it will be seen, on `ProcessInfo.systemUptime`'s monotonic
+clock (which the display link's and Core Audio's host times share): its
+`targetTimestamp`, plus, with Metal, how late after their targets its
+last frames were presented (xref:architecture.adoc#audio[Audio,
+timing]), and marks the view for display. The run loop delivers only the latest refresh, so a busy main
+thread skips frames rather than queueing them. The next frame's time covers
+the gap, and since a trail's fade and motion are rates, the picture keeps
+time. Nothing here calls the engine: a tick reads native sources, never Roc.
+Under `ROC_SPEC` the clock is controlled instead. It starts at 0, a spec's
+`(frame)` step moves it and ticks every surface on it, and no display link
+runs, so a spec draws the same frames everywhere.
+
+=== Renderers
+
+A surface draws with one of two renderers, and both draw the same frame in
+the same order.
+
+* **Metal** (`host/SurfaceMetal.swift`) draws a display-paced surface while
+  it is on the frame clock, when the Mac has a Metal device
+  (`MTLCreateSystemDefaultDevice`).
+* **Core Graphics** draws everything else: an on-demand surface, any surface
+  on a Mac or virtual machine without a device, and every surface of a
+  spec unless the spec asks for Metal. It is the reference renderer.
+
+`ROC_SURFACE_RENDERER` (`auto`, `metal` or `cg`) or a spec's
+`(renderer …)` step chooses the renderer. `auto`, the default outside a
+spec, is Metal where there is a device; `metal` falls back to Core
+Graphics without one.
+
+A Metal surface adds one `CAMetalLayer` over its view's layer. It is a
+plain layer rather than an `MTKView`, because the frame clock already paces
+it, and so it costs one QuartzCore class in the linker catalog. Its textures
+and the layer are released when the surface stops ticking: when it is
+removed or hidden, or when its pacing becomes `OnDemand`. The device, queue
+and pipeline states are shared while any surface renders with Metal, and
+released with the last one. The shaders are Metal source in that file,
+compiled when the first surface needs them (`makeLibrary(source:options:)`),
+so the host build has no Metal step.
+
+=== Trails and their storage
+
+Each frame of a surface with a trail is drawn into whichever of its two
+images the latest frame is not in:
+
+. Clear it to the background.
+. If there is a previous frame, draw it source-over (premultiplied) at
+  `0.5^(dt / half-life)` of its opacity, through a transform. The transform
+  is a translation by `shift * dt`, then a rotation by `turn * dt` and a
+  scale by `zoom^dt` about the surface's centre, where `dt` is the time since
+  that frame. Points the moved image does not cover keep the background, and
+  nothing outside the image is sampled.
+. Draw the scene.
+
+That image is shown, and it is the next frame's source. A repaint shows it
+again without fading it. History therefore costs two images however many
+frames it spans. It is emptied when the surface first appears, when its size
+or backing scale changes, when `trail` turns on or off, when `reset`
+changes, and when the surface changes renderer. Both images are released
+when the surface leaves its window (or, with Metal, stops ticking).
+
+*With Core Graphics* the images are bitmaps (`CGBitmapContext`, 8-bit sRGB,
+premultiplied), shown as the layer's `contents` in `updateLayer`. Each holds
+at most 500,000 pixels, so a larger surface keeps its trail below its
+backing scale and its picture is a little softer. A surface without a trail
+has no bitmaps; `draw(_:)` draws its frame at the backing scale.
+
+*With Metal* the images are two `bgra8Unorm` textures at the full backing
+resolution, with no pixel cap. A trail-less surface uses them too. Each
+frame renders 4x multisampled, with a stencil, and resolves into the
+texture; the texture is then copied into the layer's drawable (sRGB colour
+space) and presented. The previous frame is a textured quad whose corners
+go through the trail's transform; its sampler clamps to transparent. The
+scene is drawn on the GPU by stencil, then cover:
+
+* A fill's path is flattened on the CPU (curves to segments within a
+  quarter pixel) and fanned into triangles, which add their winding to the
+  stencil: front faces increment and back faces decrement.
+* A stroke becomes a quad per segment and a disk per point (the round joins
+  and caps), which set the stencil.
+* One quad over the figure's bounds then paints its colour where the
+  stencil is not zero, and clears the stencil for the next figure.
+
+This gives the nonzero rule for any path, and a stroke whose pieces overlap
+is painted once, so its opacity is right. Transforms and opacity are
+applied on the CPU as the vertices are made. Sources are still read once per
+frame, on the main thread, and a frame never calls the engine.
+
+A spec's `expect-probe` reads the Metal texture back at the backing scale
+(`pixel`), and Core Graphics draws at 2 pixels a point. Away from the edges
+of shapes the two agree: `echo-metal`, the visualizer's Metal spec, expects
+the same pixels as `echo`, its Core Graphics spec, so on a Mac without a
+device it falls back and still passes.
+
+A spec's `(bench-surfaces N)` step draws N trail frames offscreen. Each frame
+composites the previous one faded, zoomed and turned, then draws a
+512-point stroke and 24 bars. Measured on an Apple M2, in milliseconds a
+frame, with Core Graphics at full size (no pixel cap) and Metal (CPU
+tessellation, encoding and the GPU, waited for):
+
+[cols="1,1,1",options="header"]
+|===
+| Pixels | Core Graphics | Metal
+
+| 800 × 500 | 8.1 | 0.2
+| 1600 × 1000 | 32.0 | 0.3
+| 2880 × 1800 | 98 | 0.9
+|===
+
+Core Graphics spends most of its frame compositing the previous image,
+about 14 ms a megapixel on the CPU, which is why it caps its bitmaps.
+
+Deferred:
+
+* Metal for on-demand surfaces.
+* A Metal path for a scene of many separate figures, which now costs two
+  draws each.
+* Dashes and line-join choices.
+* GPU-side transforms of a series that changes every frame.
+* Suspending on window occlusion; a surface suspends only when it is
+  hidden or removed.
+
+[#surface-shaders]
+=== Surface shaders
+
+`host/SurfaceShaders.swift` runs an app's own stages
+(xref:ui.adoc#shaders[Shaders]) in a Metal surface's frame:
+
+. With a warp, its program draws a full-surface quad first in the frame's
+  multisampled pass, reading the previous frame's texture, in place of the
+  trail's quad; before the first frame that texture is cleared to the
+  background. Without one, the background and trail are drawn as before.
+. The scene's figures are drawn over it, and the pass resolves into the
+  frame's texture, which is the next frame's history.
+. With a composite, a second pass draws its program over a third texture
+  (`screen`, made the first time) at one sample a pixel, reading the
+  frame's texture. The drawable, a probe and a snapshot then read `screen`;
+  the history never does.
+
+*Programs.* A stage's program is the header (`ShaderSource.header`: the
+`Frame` struct, the samplers and the helpers), a `Params` struct with one
+`float` a param in the app's order, `#line 1 "warp"` (or `"composite"`),
+the app's text, `#line 1 "roc-entry"`, and `roc_stage`, a fragment function
+that fills a `Frame`, calls the app's function and holds its result to a
+premultiplied colour. It is compiled with
+`makeLibrary(source:options:completionHandler:)`, so off the main thread,
+and linked into a pipeline with the renderer's `roc_full_vertex` (a
+four-vertex strip, compiled with the other shaders) on Metal's queue; the
+outcome is handed to the main thread. A spec compiles at once, on the main
+thread, so its frames do not depend on timing. Programs are cached in the
+renderer by stage, params and source while it lives, failures included. A
+compile error's `FILE:LINE:COL: error: MESSAGE` lines name the app's line
+when `FILE` is the stage and its line is within the app's text; anything
+else is line 0. A stage that fails keeps its last good program; a param
+problem (more than 16, a bad or repeated name) and a source over 64 KiB
+fail the stage without compiling.
+
+*Inputs.* Each frame binds, to the fragment stage:
+
+* buffer 0, `RocUniforms`: the size in pixels, a pixel in uv units, the
+  aspect, the time since the shaders started (the frame clock's, so a
+  spec's is exact), the time since the last frame, the frame number, and
+  `audio.bass`, `audio.mids`, `audio.treble` and `audio.level`;
+* buffer 1, the params' values, each read like a scene number;
+* buffer 2, the audio block: `audio.waveform`, `audio.left` and
+  `audio.right` at 256 points each (the mean of each run of values), then
+  the 24 values of `audio.bands`, 800 floats in all, 3,200 bytes;
+* texture 0, the image.
+
+All are `setFragmentBytes` (Metal copies them into the command buffer), so
+there is no buffer to share between frames in flight. Every source is read
+on the main thread, at the frame's time, as a scene's are, and no frame
+calls the engine.
+
+*Status.* After the attributes change (once per turn, or at the next frame)
+and whenever the renderer changes, the surface works out its status:
+`fallback` without Metal, `running` when every stage asked for has a
+program, `failed` with the errors otherwise, and nothing new while a
+compile is pending or a display-paced surface is off the clock. A change is
+sent as the `shader` event on the next pass of the main run loop
+(`DispatchQueue.main.async`), never from inside a turn or a frame.
+
+*Limits.* `MetalSurface` counts frames committed and not yet completed;
+with two in flight a frame is skipped (outside a spec), so a slow stage
+never blocks the main thread in `nextDrawable`. A command buffer that ends
+in error while a stage ran (macOS's GPU watchdog stops one that runs for
+seconds) drops both programs, clears the history and reports `failed` at
+line 0 with the GPU's message, until the app sends new sources.
+
+*Measuring.* `ROC_SURFACE_TIMING=1` prints, every two seconds, each Metal
+surface's GPU time a frame (`gpuEndTime - gpuStartTime`, mean and most);
+`ROC_SURFACE_SHOTS=DIR` writes its shown frame as `DIR/LABEL-N.png` every two
+seconds of frame time. A spec's `(bench-surfaces N)` also draws each surface
+running shaders `N` times offscreen at three sizes, each frame waited for,
+and prints its GPU time. The twelve presets of `examples/visualizer`
+(`src/Presets.roc`), playing music, on an Apple M2 (both stages, the scene
+and the resolve; mean GPU milliseconds a frame):
+
+[cols="2,1,1,1",options="header"]
+|===
+| Preset | 1600 × 1000 | 2560 × 1664 | 2880 × 1800
+
+| Liquid Drift | 1.23 | 3.31 | 4.03
+| Blur Corridor | 0.74 | 2.01 | 2.43
+| Superscope Bloom | 0.98 | 2.58 | 3.08
+| Flux Streaks | 1.08 | 3.16 | 3.83
+| Phase Scope | 1.10 | 3.17 | 3.64
+| Peak Meter | 0.69 | 2.01 | 2.48
+| Plasma Weave | 0.84 | 2.36 | 2.87
+| Hyperspace | 0.66 | 1.85 | 2.31
+| Mirror Shard | 1.08 | 3.24 | 3.97
+| Spectrum Fire | 0.59 | 1.89 | 1.89
+| Ripple Pool | 1.06 | 2.91 | 3.73
+| Orb Garden | 1.65 | 4.45 | 5.56
+|===
+
+Drawn live at the display's pace at 2038 × 1000 pixels, each took 1.1 to
+2.5 ms a frame (`ROC_SURFACE_TIMING`), and none above 4 ms.
+
+Deferred:
+
+* Shaders with Core Graphics: an on-demand surface draws its marks and trail.
+* Stages beyond two, textures of the app's own, and a history in more
+  than 8 bits a channel.
+
+[#surface-sources]
+=== Surface sources
+
+A scene names native data by a string. `host/SurfaceSource.swift`, which
+stands alone (it needs only Foundation and the host's `fatal`), is the
+whole contract:
+
+[source,swift]
+----
+enum SurfaceSample {
+    case series([Float])   // at most SurfaceSample.maxSeries (4096) values, oldest first
+    case scalar(Float)
+}
+
+protocol SurfaceSource: AnyObject {
+    var name: String { get }                          // e.g. "audio.waveform"
+    func latest(at frameTime: Double) -> SurfaceSample?
+}
+
+SurfaceSources.shared.register(source)              // replaces one of that name
+SurfaceSources.shared.unregister("audio.waveform")
+SurfaceSources.shared.changed("audio.waveform")     // redraw on-demand surfaces that read it
+----
+
+The registry, and every call of `latest(at:)`, is on the main thread only.
+A surface calls `latest` once for each mark that reads the source in each
+frame, so it must return at once. A producer on another thread (an audio
+tap's analysis worker, say) publishes into storage that `latest` reads
+under a short lock of its own, and never calls the registry or a view from
+its thread. `frameTime` is the time the frame will be seen:
+`ProcessInfo.systemUptime` seconds, which follow `mach_absolute_time`. Under a spec it is the
+controlled clock's seconds. A producer that keeps timestamped snapshots
+returns the one for that time. Returning nil draws nothing for the mark,
+and a number reads as its offset. A series where a number belongs, the
+reverse, or a series longer than 4,096 values is a fatal error naming the
+source.
+
+`SyntheticSource` registers `synthetic.wave` and `synthetic.level` in every
+app. With the display clock they move with time; under a spec they
+move only on `(step-source …)`.
+
+=== Overlays
+
+A `ui-overlay` is an `Overlay`, an `NSView` holding its first element
+child's view (the background), pinned to all four edges, and its second's
+(the foreground) above it. The foreground stays inside `padding`, and is
+pinned or centred by `horizontal` and `vertical`. Its views are AppKit's
+own: text wraps to the width it is given, scroll views scroll, and both
+children are in the accessibility tree. The foreground is composited by
+Core Animation above the background's layer and never drawn into a
+surface's bitmaps.
 
 [#lists]
 == Lists
@@ -373,7 +738,7 @@ the next launch (`Engine.boot_storage`, `Engine.watch_changes`).
 Quitting, or closing the window, cancels every effect in flight and calls
 `roc_engine_drop` once; no turn runs after it. A Roc crash or a host fatal
 error prints the message, shows it in an alert, then exits with status 1.
-Under `ROC_SCRIPT` it never shows the alert. The modal loop runs no turns, so
+Under `ROC_SPEC` it never shows the alert. The modal loop runs no turns, so
 a timer cannot re-enter Roc after a crash. `dbg` still prints to stderr.
 
 [#effects-and-threads]
@@ -406,8 +771,13 @@ its own worker thread, which follows the same rules from the other side
 . *One result, one turn, through the UI's queue.* Results enter through
   `Host.send`, as AppKit events do, which queues while a batch is being
   applied: a completion never re-enters Roc mid-batch.
+. *Frames never enter Roc.* A drawing surface's display link calls on the
+  main thread, between turns, and reads native sources, not the engine
+  (xref:architecture.adoc#drawing-surfaces[Drawing surfaces]). A native
+  producer feeding a surface publishes from its own thread into storage
+  that its `SurfaceSource` reads on the main thread.
 . *Teardown cancels everything in flight* (`teardownEffects`, from
-  `Host.stop` on `applicationWillTerminate`, which the scripted `quit` also
+  `Host.stop` on `applicationWillTerminate`, which the end of a spec also
   reaches), and invalidates the session.
 
 [#http]
@@ -513,6 +883,204 @@ browser, Roc learns nothing of the outcome; it is reported on stderr.
 
 Not built: uploads (`FX` 12), fetched files (`FX` 15) and pasted files.
 
+[#ports]
+== Ports
+
+A typed port (roc-signals' `Port`) is the engine's supported bridge for a
+service the platform does not model itself: in a browser the page's
+JavaScript supplies it, here a native service in the host. The engine does
+the typing: a port's values cross as JSON in roc-signals' `PortJson` format,
+derived from the app's types, with an `Engine.File` as a marker
+(`{"$file":N}`) that names a file token carried beside the text. Nothing in
+the engine is changed for it.
+
+Declarations:: `Program.with_ports` puts the ports in declaration section 5
+(`n:u32 (name:str kind:u8 delivery:u8 bound:u32)*`). At mount, before the
+mount batch is applied, the host checks every declared port against the
+services it has (`PortHost.declare`, `host/Ports.swift`): a port it does not
+serve, or serves in another shape, is a fatal error, as the browser runtime
+refuses to mount a page whose handlers do not match.
+Commands:: `PORT` (opcode 19, `port:str message`) reaches the service while
+the batch is applied, on the main thread, in stream order with the batch's
+other commands. A message is `json:str nblobs:u32 (len:u32 bytes)* nfiles:u32
+(token:u64 start:u64 len:u64)*`; the service resolves a file token through
+the handle table then and there and keeps its own copy of the `FileEntry`.
+`UNSENT` (27), a command nested past the format's bound, is reported on
+stderr, as the browser reports it to the console.
+Subscriptions:: `FX` kind 10 (`port:str message`) opens one under the
+effect's id, and `CANCEL` (the site disposed, or a `watch_latest` moving on)
+ends it: the service is told, and nothing more is delivered to it. A service
+emits a message as JSON (`PortHost.emit`); it waits in the host by the
+port's declared delivery, `Latest` keeping only the newest, `Every(n)` up to
+`n` and refusing more, and each is delivered as result tag 14 (`json:str
+nblobs:u32 nfiles:u32`, no files), one turn each, from the main queue: never
+inside a batch, and never to a subscription that ended while it waited.
+`PortFailed(Closed)` (tag 15, class 3) ends one from the host's side.
+Calls:: `FX` kind 9 is a fatal error: no service is a call.
+Teardown:: quit and reload call every service's `teardown`, after the open
+subscriptions are forgotten.
+
+[#audio]
+== Audio
+
+The playback session (`host/Audio.swift`) serves `platform/Audio.roc`'s four
+ports: `roc-native-macos/audio/command` (a command), `…/events` (a
+subscription, `Every(64)`), `…/status` and `…/analysis` (subscriptions,
+`Latest`). The API is in xref:ui.adoc#audio[the Ui reference].
+
+[mermaid]
+....
+flowchart LR
+    F["AVAudioFile"] --> P["AVAudioPlayerNode"] --> E["AVAudioUnitEQ (10 bands)"] --> M["main mixer: volume"] --> O["output"]
+    E -- "render notification, after the EQ, before the volume" --> T["preallocated buffer ring"] --> W["analysis worker: vDSP FFT"] --> H["snapshot history"]
+    H --> R["Audio.analysis (Latest)"]
+    H --> S["SurfaceSource: audio.*"]
+....
+
+Graph:: One `AVAudioEngine` with an `AVAudioPlayerNode`, an `AVAudioUnitEQ`
+and the main mixer, connected at the source's own format, so the EQ and the
+measurements run at the source's rate and the mixer converts to the
+output's. A source of another format gets a fresh engine, player and EQ
+(with the same settings), so node times start at zero again and nothing the
+old graph scheduled can reach the new one.
+Loading:: `Load` copies the file's entry, and `LoadAsset` resolves its path
+with the asset lookup (`Assets.lookup`, the one `Ui.asset_image` uses, here
+reporting rather than stopping on a name outside `assets/` or a missing
+file); either opens the file as an `AVAudioFile` on the file jobs' queue, off the main thread; the result hops back with
+`DispatchQueue.main.async` and is kept only if no later command superseded
+it. Core Audio's status codes name the error (`typ?` and `fmt?` are
+`Unsupported`, anything else `Corrupt`).
+Generations:: Every load, seek, stop and restart is a new generation. Each
+scheduled segment's `.dataPlayedBack` completion captures its generation and
+hops to the main thread, where it ends the source only if that generation is
+still current and has not ended: an old completion, such as the one
+`AVAudioPlayerNode.stop` fires for the segment a seek replaces, is dropped,
+and `Ended` is sent once.
+The timeline:: The position is the player's own timeline (`playerTime(forNodeTime:
+lastRenderTime)`, which a pause holds) after the segment's start frame; while
+paused or stopped it is the cursor the host keeps. A seek stops the player,
+schedules the segment from the target frame, and starts it again only if it
+was playing. The player always starts at an explicit node time (the last
+render time plus 2048 frames under a real output, about 46 ms at 44.1 kHz),
+so the tap knows where every rendered frame sits on the source timeline
+without asking the player.
+Analysis:: An opt-in tap on the EQ's output while a consumer holds it: an
+`Audio.analysis` subscription, or a native source sampled within the last
+second. The tap is a render notification on the EQ's audio unit
+(`AudioUnitAddRenderNotify` on `AVAudioUnitEQ.audioUnit`, AudioToolbox), so
+each render cycle's buffer, 512 frames on most outputs, arrives on the audio
+render thread as soon as it is rendered, after the EQ and before the main
+mixer's volume. AVAudioEngine's `installTap` was the first tap: it delivers
+100 ms chunks whatever buffer size is asked for, so its newest data was up
+to a chunk old and a 5 ms click often never reached a measurement at all
+(see Timing). An `AVAudioSinkNode` would need a branch of the graph of its
+own and serves only an engine rendering to a device, not the manual clock.
+The notification, called before and after each render, takes only the
+post-render call of bus 0 with a valid sample time, and copies the buffer
+list's channels (read directly, not through the CoreAudio overlay's
+wrapper) into a ring of 32 preallocated slots of up to 8192 frames and 2
+channels, then returns: it tries the ring's `os_unfair_lock` a bounded
+number of times and never blocks (a buffer that finds it held is dropped),
+allocates nothing, calls nothing of AVFAudio's (asking the player from the
+render thread deadlocks against `AVAudioPlayerNode.stop` on the main
+thread), and overwrites the oldest slot when the worker is behind. It also
+keeps each buffer's render stamp (its node sample time and host time) in a
+preallocated ring of 2048. A worker `Thread`, looking every millisecond,
+takes slots, keeps a rolling 2048-sample window, and every 512 samples
+measures it with Accelerate (`vDSP_measqv`, `vDSP_maxmgv`,
+`vDSP_hann_window`, `vDSP_ctoz`, `vDSP_fft_zrip`, `vDSP_zvmags`): levels,
+24 band energies (each band takes the share of every FFT bin its range
+overlaps, so the bands narrower than a bin below about 160 Hz still read
+the energy there) and the waveform. A snapshot (generation, window-centre
+frame, levels, bands, a 32-point envelope and a 1024-point waveform, mixed
+and of each of the first two channels) goes into a history of 128 (about
+1.4 s at 48 kHz) under its own lock, which readers copy. A new generation
+clears the ring and the history. The last consumer's going removes the
+notification and stops the worker.
+Publication:: The status and the snapshot for now are emitted on timers at
+the smallest interval their subscribers asked for, only while playing, and
+on every transport change. A native consumer samples the history directly
+(`AudioSurfaceSources`): `latest(at:)` takes the snapshot for the frame's
+time (see Timing), and every transport change calls
+`SurfaceSources.changed` for the `audio.*` names. None of this runs Roc off
+the main thread or waits on a consumer.
+Timing:: A frame shows the sound heard when it reaches the screen.
++
+--
+* *When the frame is seen.* A display-paced surface's frame is drawn for
+  its display link's `targetTimestamp` plus the median, over its last 31
+  frames, of how far after their target Metal presented them
+  (`CAMetalDrawable.addPresentedHandler`'s `presentedTime`), within 0 to
+  100 ms; Core Graphics, which has no presented time, adds nothing. The
+  shaders' `time` and `dt` count in the same times, so the picture's motion
+  keeps the same timebase. A frame due while one presented frame has not yet
+  reached the glass is skipped, so the layer never queues a second frame:
+  queued, every later frame appeared a refresh or two after its target
+  (33 to 67 ms in the first measurements), and the picture lagged by as much.
+* *What is heard then.* The newest render stamp says that the EQ node's
+  frame `n` leaves the output at its host time plus the output latency, so
+  the frame heard at time `t` is `n + (t - latency - visual offset - host
+  time) * rate`, placed on the source timeline by the player's known start.
+  The output latency is the larger of AVAudioEngine's
+  `outputNode.presentationLatency` and Core Audio's device latency plus its
+  first output stream's latency (`kAudioDevicePropertyLatency` and
+  `kAudioStreamPropertyLatency`, read with `AudioObjectGetPropertyData`):
+  on an M2 MacBook Air's speakers the first is 1.5 ms and the second
+  21.2 ms (a 1.5 ms device latency and a 19.7 ms stream latency), so
+  `presentationLatency` alone would show the picture 20 ms early. The
+  safety offset and the IO buffer come before the time stamp, so neither
+  is added. Under the manual clock, with no host times, it is the frame
+  rendered to.
+* *Which measurement.* The snapshot whose window *ends* at the frame heard
+  (its centre half a window, 1024 frames, earlier), the nearest of the
+  history. A meter shows what has been heard; a window centred on the
+  playhead holds the next 21 ms too, and a click would flash before it
+  sounds, which viewers tolerate less than a picture that trails.
+--
++
+The harness (`host/AVTiming.swift`, xref:apps.adoc#av-sync[Measure
+audio/visual sync]) measures the result end to end on the real clock. On an
+M2 MacBook Air (60 Hz) with its speakers, playing a click every 500 ms
+through the visualizer's Sync Test:
++
+[cols="2,1,1,1,1",options="header"]
+|===
+| Pipeline | Clicks flashed | Mean | 95th percentile | Window lag
+| `installTap`, nearest window centre to the render position | 0–1 of 13 | +86 to +131 ms (when one flashed) | – | 66–91 ms
+| render notification, same choice | 13 of 13 | +1 to +30 ms | 10 to 46 ms | 14–43 ms
+| render notification, the frame drawn for when it is seen, the window ending at the sound heard then, one frame queued at most | 90 of 91 (7 runs; the one missed as the screen locked) | +7.9 ms (runs +6.8 to +10.4) | 10.4 ms (largest 21.2, earliest +4.3: none led) | 21–22 ms
+|===
++
+The window lag is how long after its window's centre was heard each frame
+was seen: half a window, 21 ms, is the least the window-end choice allows.
+Frame pacing holds with the shaded presets too: the visualizer's
+`tests/specs/av-pacing.scm` plays the starter's song through each of the twelve
+for three seconds in a 1400 × 860-point window at the display's backing
+scale (2), and on that Mac every one drew 191–195 frames with no refresh
+missed and none skipped, frame time 16.7 ms at the 50th and 99th
+percentiles, and a GPU time a frame of 1.4–3.2 ms (50th percentile) and
+2.0–3.5 ms (99th).
+The offsets fall a refresh apart (16.7 ms), since a run's clicks keep one
+phase against the display. A measurement trusts the system's times; what a
+camera sees is checked by hand before a release
+(xref:contributing.adoc#av-sync-by-hand[Audio/visual sync by hand]).
+The manual clock:: A spec's `(audio-clock manual)` enables
+`enableManualRenderingMode(.offline)` at 48 kHz stereo: nothing plays to a
+device, and only a `(render MS)` step advances the clock, in 1024-frame
+renders. The render notification runs within each render, so after each
+one the host waits while the ring is all but full, unless a spec stalled
+the worker, and at the end until the worker has measured everything. The
+waits have no deadline, and offline the tap takes the ring's lock rather
+than only trying it, so every buffer rendered is measured however slow the
+machine, then the host publishes. A worker that takes no chunk for 60 s
+has stopped, which is fatal.
+`.dataPlayedBack` completions do not fire in this mode, so a render that
+reaches the end ends the source itself, through the same generation check.
+The node times follow from the frames rendered, so every spec
+reports the same on every run.
+Teardown:: quit and reload stop the player, remove the tap, stop the worker
+and the engine, and forget the file.
+
 [#workers]
 == Workers
 
@@ -577,7 +1145,7 @@ Size:: One worker per core but one, from 1 to 8:
 AppKit and the page's turns, so a full pool never starves the UI; 8 is
 roc-signals' default `maxWorkers`; the engine's in-flight bound (32 by
 default) bounds the queue. Workers start when a job needs one. `ROC_WORKERS=N`
-sets the size, as does the scripted step `pool:N` before any job.
+sets the size, as does a spec's `(worker-pool N)` setup.
 Placement:: As roc-signals' pool: a job of a preparation's task runs on an
 idle worker that holds its state (`ask`), or waits for a busy one that does;
 any other job takes an idle worker holding nothing, a new worker while the
@@ -712,25 +1280,74 @@ hosted function, on anything else. The list helpers were the point: the stock C 
 leaves list construction to the host, and a hand-written list encoding is
 easy to get wrong (see xref:contributing.adoc#findings[Constraints to build with]).
 
+The glue serves both of the platform's architectures unchanged. Apple
+silicon and Intel Macs are both 64-bit and little-endian, with the same C
+layout of every shape above, and the Intel `roc` generates byte-for-byte the
+glue the Apple silicon `roc` does; the Intel CI job's `glue` stage checks
+that on every pull request.
+
+[#targets]
+== Targets
+
+The platform declares three Roc targets, each with its own `libhost.a`
+under `platform/targets/<target>/`, as Roc's target model expects: one
+host library per target, which `roc build --target=…` links with the app's
+object. They are `arm64mac` (Apple silicon), `x64mac` (Intel, x86-64-v3,
+which every Intel Mac that runs macOS 15 has) and `x64v1mac` (Roc's
+baseline Intel target, which `roc` picks on a machine whose CPU does not
+report v3, such as Rosetta or some virtual machines). The Swift host is
+compiled for each architecture with an explicit `-target`
+(`arm64-apple-macos15.0`, `x86_64-apple-macos15.0`), so either Mac builds
+both and the bytes do not depend on the machine; it uses no v3 instruction,
+so `x64v1mac` links a copy of the `x64mac` host. All three link against the
+one `targets/macos-sysroot`, whose stubs list both TAPI targets
+(xref:architecture.adoc#linker-inputs[Linker inputs]).
+
+The deployment target, macOS 15, is the oldest macOS an app runs on, and so
+its `LSMinimumSystemVersion`. Roc's linker writes `minos` 11.0 into every
+program, but Swift 6.2 compiling for macOS 15 references Swift runtime
+symbols, such as `_swiftImmortalRefCount` and
+`swift_getTypeByMangledNameInContext2`, that older macOS releases do not
+export, so an earlier macOS could not load the program.
+
+An app is universal by default. `macos.roc build` builds the app for `arm64mac` and for
+`x64mac` and joins the two programs into one fat Mach-O file (`cli/Universal.roc`),
+written byte for byte as `lipo -create` writes it, so that it needs no Apple
+tool and works on Linux and Windows too: a big-endian header, then each
+thin program at its CPU's page alignment, the Intel one first. Each slice
+keeps the ad hoc signature Roc's linker gave it, and macOS runs the slice
+for its own CPU. `LSArchitecturePriority` is left out: with both slices
+native, macOS's own choice is the right one. `macos.roc build --target
+arm64mac` (or `x64mac`), like a bare `roc build`, makes one thin program
+for one target, which `package` names `<name>-<version>-<target>.zip`.
+
 [#linker-inputs]
 == Linker inputs: no Apple SDK files
 
 Following roc-gui, the platform ships no Apple SDK material. Roc's linker
-links a platform's `targets/macos-sysroot`: minimal TAPI v4 `.tbd` stubs
-written only from the reviewed catalog `host/interfaces.json`, which records
-each library's install name and evidence and each symbol's own evidence
-(`host/PROVENANCE.md` states what may count as evidence and what is never
-read). The platform bundle carries these generated stubs, never an SDK file.
+links a platform's `targets/macos-sysroot`, the same one for every macOS
+target: minimal TAPI v4 `.tbd` stubs written only from the reviewed catalog
+`host/interfaces.json`, which records each library's install name and
+evidence and each symbol's own evidence (`host/PROVENANCE.md` states what
+may count as evidence and what is never read). Each stub lists both TAPI
+targets, `arm64-macos` and `x86_64-macos`, and the linker reads the slice
+of the architecture it links. The catalog (schema 3) names its targets in
+`tapi_targets`; a symbol only one architecture exports, such as x86-64's
+`objc_msgSend_stret` or `stat$INODE64`, names it in `only`, and its stub
+exports it for that target alone. The platform bundle carries these
+generated stubs, never an SDK file.
 
 The stubs are an external linker input with a release of their own, as
 roc-automation's "Publish linker inputs from a pull request" describes.
 `scripts/link_inputs.roc` (the `link-inputs` task) writes them, with the
 catalog, `PROVENANCE.md` and the licence, into a deterministic
-`link-inputs-arm64mac.tar`, and a `build-input-release.json` manifest that
-binds its SHA-256 and size to the source commit and an input fingerprint (the
-catalog, the provenance statement, the licence, the producer's source and the
+`link-inputs-macos.tar`, which serves every macOS target, and a
+`build-input-release.json` manifest that binds its SHA-256 and size (its one
+asset, `macos`) to the source commit and an input fingerprint (the catalog,
+the provenance statement, the licence, the producer's source and the
 tooling compiler). The producer workflow `link-inputs.yml` builds it twice,
-requires identical bytes, and links and runs every example against it; the
+requires identical bytes, and links and runs every example against it on
+an Apple silicon and on an Intel Mac; the
 trusted publisher `publish-link-inputs.yml` (`actions/publish-build-inputs`)
 publishes it as `linker-inputs-sha256-<manifest digest>` and commits
 `link-inputs.lock.json` to the pull request. Every other build installs the
@@ -738,8 +1355,9 @@ archive the lock selects (`scripts/build.roc`, cached under
 `build/link-inputs-cache` and verified by size and SHA-256), and fails when
 the lock's fingerprint is not the checkout's. Before the first release, with
 no lock, the build generates the stubs from the catalog. After installing
-them it audits `libhost.a`: a reference the catalog does not own fails the
-build, so adding one is a reviewed edit that names its library and evidence.
+them it audits each `libhost.a` against what the catalog exports for its
+architecture: a reference the catalog does not own there fails the build,
+so adding one is a reviewed edit that names its library and evidence.
 
 The stubs have a second consumer: Roc's run mode. `roc main.roc` (and
 `roc run`, with `--opt=dev`, the default, or `--opt=interpreter`) links the
@@ -759,14 +1377,24 @@ their `nm -u` less their own definitions and the `_roc_*` symbols the host
 and the compiler's generated objects supply, and fails on an import the
 catalog does not own or `run_shim` does not list; a `run_shim` name the
 shims no longer import is only noted, as another supported compiler's may.
-The check's `examples` stage then runs the counter's first recorded case
-through `roc main.roc`, so a run mode the stubs cannot link fails the gate.
+A `roc` embeds the shims of its own architecture, and they are audited
+against what the catalog exports for it: the Intel `roc`'s import the libm
+rounding functions (`ceil`, `floor`, `trunc` and their `f` forms) and
+`__bzero`, which Apple silicon's inline, so the Intel CI job audits them.
+The check's `examples` stage then runs the counter's first spec
+through `roc src/main.roc`, so a run mode the stubs cannot link fails the gate.
 
 Swift is compiled with `-disable-autolink-frameworks` and
 `-disable-force-load-symbols`, so the frameworks linked are exactly the
-catalog's. Roc then links each `X.framework/X.tbd` it finds. The resulting
-binaries load only `AppKit`, `Foundation`, `CoreGraphics`, `libSystem`,
-`libobjc` and the Swift runtime and overlays in `/usr/lib/swift`.
+catalog's, and with `-Xcc -fno-objc-msgsend-selector-stubs`, so every
+Objective-C call is to the catalog's `_objc_msgSend` rather than to an
+`_objc_msgSend$<selector>` stub for the linker to synthesize, which Swift
+6.3 and later emit on arm64 by default. Roc then links each `X.framework/X.tbd` it finds. The resulting
+binaries load only `AppKit`, `Foundation`, `CoreGraphics`, `AVFAudio`, `AudioToolbox`, `CoreAudio`,
+`Accelerate`, `libSystem`, `libobjc` and the Swift runtime and overlays in
+`/usr/lib/swift`. `Accelerate`'s stub lists the vDSP functions under the
+umbrella's install name, which re-exports vecLib's `libvDSP` where they are
+defined.
 
 A Swift symbol's evidence is the declaration it mangles (Swift's
 `docs/ABI/Mangling.rst`), named by the open-source demangler, in the module

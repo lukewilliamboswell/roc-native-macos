@@ -1,0 +1,139 @@
+; A new app starts with the default song queued, loaded from assets/ and
+; ready to play, its timed lyrics read, under Orb Garden: Play, ten
+; seconds in, shows the second line with Lyrics on, and the surface's
+; measurements are of the song now playing, in order, none skipped. (The
+; window measured is about a window's half behind the rendered playhead;
+; its exact time is the analysis tap's, so it is not pinned here.)
+(test "default"
+  (setup
+    (audio-clock manual))
+  (steps
+    (wait 400)
+    (expect-audio-status :state "Stopped" :position 0 :track 1 :ended 0)
+    (frame)
+    (expect-dump (window :width 760 :height 539
+                   (vstack :views 1
+                     (vstack :views 8
+                       (hstack :views 6
+                         (asset-image icon.png :pixels 512x512 :width 30 :height 30)
+                         (text "Music" :text-style title2 :weight bold)
+                         (text "Polymorphic Defunctionalization Through Lambda Set Specialization" :color secondary-label :text-style title3)
+                         (spacer)
+                         (hstack :views 2
+                           (text "" :color red :text-style caption1)
+                           (file-button "Add lyrics…"))
+                         (checkbox "Lyrics" :checked #f))
+                       (hstack :views 2
+                         (drop-zone
+                           (overlay
+                             (surface "Visualizer" :width 506 :height 332 :pacing display :ticking #t :trail held :shader fallback
+                               (space :fit 1000.0 1000.0 :scale 0.332 :offset 87.0 0.0)
+                               (save)
+                               (transform 1.000 0.000 0.000 1.000 500.000 500.000)
+                               (transform 1.000 0.000 0.000 1.000 0.000 0.000)
+                               (transform 0.467 0.000 0.000 0.467 0.000 0.000)
+                               (opacity 1.000)
+                               (opacity 1.000)
+                               (stroke adaptive:ff3fc8:ff3fc8 24.0 0.0,-150.0 150.0,0.0 0.0,150.0 -150.0,0.0 0.0,-150.0 close)
+                               (restore)
+                               (save)
+                               (transform 1.000 0.000 0.000 1.000 500.000 500.000)
+                               (transform 1.000 0.000 0.000 1.000 0.000 0.000)
+                               (transform 0.462 0.000 0.000 0.462 0.000 0.000)
+                               (opacity 1.000)
+                               (opacity 1.000)
+                               (stroke adaptive:22e0d0:22e0d0 24.0 0.0,-130.0 130.0,0.0 0.0,130.0 -130.0,0.0 0.0,-130.0 close)
+                               (restore)
+                               (save)
+                               (transform 1.000 0.000 0.000 1.000 500.000 500.000)
+                               (transform 1.000 0.000 0.000 1.000 0.000 0.000)
+                               (transform 0.417 0.000 0.000 0.417 0.000 0.000)
+                               (opacity 1.000)
+                               (opacity 1.000)
+                               (stroke adaptive:ff9a2a:ff9a2a 24.0 0.0,-120.0 120.0,0.0 0.0,120.0 -120.0,0.0 0.0,-120.0 close)
+                               (restore))
+                             (vstack :views 0)))
+                         (vstack :views 4
+                           (hstack :views 3
+                             (text "Presets" :text-style headline)
+                             (spacer)
+                             (text "Simple visuals" :color secondary-label :text-style caption1))
+                           (text "Using Orb Garden" :color secondary-label :text-style caption1)
+                           (box :border line:1:separator :fill text-background
+                             (scroll :views 16 :height 190
+                               (hstack :views 2
+                                 (text "" :color accent)
+                                 (button "Scope"))
+                               (hstack :views 2
+                                 (text "" :color accent)
+                                 (button "Spectrum Bars"))
+                               (hstack :views 2
+                                 (text "" :color accent)
+                                 (button "Echo Rings"))
+                               (hstack :views 2
+                                 (text "" :color accent)
+                                 (button "Liquid Drift"))
+                               (hstack :views 2
+                                 (text "" :color accent)
+                                 (button "Blur Corridor"))
+                               (hstack :views 2
+                                 (text "" :color accent)
+                                 (button "Superscope Bloom"))
+                               (hstack :views 2
+                                 (text "" :color accent)
+                                 (button "Flux Streaks"))
+                               (hstack :views 2
+                                 (text "" :color accent)
+                                 (button "Phase Scope"))
+                               (hstack :views 2
+                                 (text "" :color accent)
+                                 (button "Peak Meter"))
+                               (hstack :views 2
+                                 (text "" :color accent)
+                                 (button "Plasma Weave"))
+                               (hstack :views 2
+                                 (text "" :color accent)
+                                 (button "Hyperspace"))
+                               (hstack :views 2
+                                 (text "" :color accent)
+                                 (button "Mirror Shard"))
+                               (hstack :views 2
+                                 (text "" :color accent)
+                                 (button "Spectrum Fire"))
+                               (hstack :views 2
+                                 (text "" :color accent)
+                                 (button "Ripple Pool"))
+                               (hstack :views 2
+                                 (text "●" :color accent)
+                                 (button "Orb Garden"))
+                               (hstack :views 2
+                                 (text "" :color accent)
+                                 (button "Sync Test"))))
+                           (hstack :views 3
+                             (button "New")
+                             (button "Duplicate")
+                             (button "Edit"))))
+                       (box :border line:1:separator
+                         (hstack :views 8
+                           (text "0:00 / 2:59" :design monospaced-digits :weight medium)
+                           (slider :value 0.0)
+                           (button "Previous")
+                           (button "Play")
+                           (button "Stop")
+                           (button "Next")
+                           (image speaker.wave.2.fill)
+                           (slider :value 100.0)))
+                       (segmented :items ("Hide Panels" "Queue" "EQ" "Editor") :selected "Hide Panels")
+                       (text "Press Play for the default song, or drop your own songs here with their .lrc or .txt lyrics." :color secondary-label :text-style callout)
+                       (shortcut)
+                       (shortcut)
+                       (shortcut)))))
+    (toggle (checkbox "Lyrics"))
+    (click (button "Play"))
+    (render 10000)
+    (expect-audio-status :state "Playing" :position 10000 :track 1)
+    (wait 200)
+    (expect-snapshot :present true :rate 44100 :finite true)
+    (expect-history :current true :ordered true :skipped false)
+    (expect-visible (text "Three amps hum and the fourth one squeals."))
+    (expect-visible (text "One good KNOCK from the flat upstairs"))))

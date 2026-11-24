@@ -1,5 +1,7 @@
 // The engine instance across the ABI, through the generated glue.
 
+import Foundation
+
 // MARK: - The engine across the ABI
 
 /// The engine instance: one opaque state box and the two recycled buffers.
@@ -14,6 +16,11 @@ final class EngineInstance {
 
     var version: UInt32 { Roc.versionForHost() }
 
+    /// The last turn's work record, as bytes (`count:u32 (counter:u64)*`,
+    /// then the cleanups that ran). The host never reads the counters: a
+    /// spec's `metrics` step prints them for the tool to decode.
+    var workRecord: [UInt8] { work.bytes }
+
     /// The program's declarations (`roc_engine_keys`). The list is the
     /// host's; it is read once at mount and not released (the glue has no
     /// release helper for a returned list).
@@ -21,7 +28,14 @@ final class EngineInstance {
 
     /// Mount with the boot facts the declarations ask for; returns the
     /// mount batch.
-    func mount() -> [UInt8] { take(Roc.initForHost(.ownedBytes(bootBytes(declarations())))) }
+    func mount(now: Date = Date()) -> [UInt8] {
+        let d = declarations()
+        declaredPorts = d.ports
+        return take(Roc.initForHost(.ownedBytes(bootBytes(d, now: now))))
+    }
+
+    /// The ports the program declared, read at mount.
+    private(set) var declaredPorts: [PortDeclaration] = []
 
     /// Teardown (`roc_engine_drop`), once: the state and both buffers move
     /// into Roc. Later calls do nothing.

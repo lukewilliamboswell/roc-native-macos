@@ -18,7 +18,7 @@ import src/Tar
 ## (host/PROVENANCE.md). It reads only the catalog, the provenance statement,
 ## the licence and its own source, and never an Apple SDK file.
 ##
-##     blueprint run link-inputs -- build DIR [--workflow W]   # DIR/link-inputs-arm64mac.tar and its manifest
+##     blueprint run link-inputs -- build DIR [--workflow W]   # DIR/link-inputs-macos.tar and its manifest
 ##     blueprint run link-inputs -- candidate DIR              # build twice, require identical bytes (link-inputs.yml)
 ##     blueprint run link-inputs -- stubs DIR                  # the stub tree alone, DIR/<library path>
 ##     blueprint run link-inputs -- fingerprint                # this checkout's input fingerprint
@@ -57,7 +57,7 @@ catalog! = || {
 	text = read!("host/interfaces.json")?
 	parsed : Try(LinkInputs.Catalog, _)
 	parsed = Json.parse(text)
-	found = parsed ? |error| "host/interfaces.json is not a schema 2 catalog: ${Str.inspect(error)}"
+	found = parsed ? |error| "host/interfaces.json is not a schema 3 catalog: ${Str.inspect(error)}"
 	_ = LinkInputs.check(found) ? |problem| "host/interfaces.json: ${problem}"
 	Ok(found)
 }

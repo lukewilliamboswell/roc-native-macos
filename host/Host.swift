@@ -34,6 +34,10 @@ final class Host: NSObject, NSTextFieldDelegate {
     let files = Files()
     /// Worker threads and the jobs they run (Workers.swift).
     let work = WorkPool()
+    /// The program's ports and the native services behind them (Ports.swift).
+    let ports = PortHost()
+    /// The playback session behind `Audio` (Audio.swift).
+    lazy var audio = AudioService(host: self)
     var byView: [ObjectIdentifier: Node] = [:]
     /// Nodes whose view needs its children or text refreshed after a batch.
     var dirty: [Node] = []
@@ -42,6 +46,10 @@ final class Host: NSObject, NSTextFieldDelegate {
     /// The nodes under the pointer that listen for `hover`, outermost first
     /// (Hover.swift).
     var hovered: [Node] = []
+    /// The spec this run performs (`ROC_SPEC`, Spec.swift); nil otherwise.
+    var specSteps: SpecSteps?
+    /// The effects a spec holds for its steps to answer (Simulated.swift).
+    var held: HeldEffects?
     /// `ROC_BENCH=1` timings (Bench.swift); nil when off.
     let bench: Bench? = Bench.on ? Bench() : nil
     /// Live document key declarations, in the order they were mounted.
@@ -57,6 +65,11 @@ final class Host: NSObject, NSTextFieldDelegate {
     /// Whether an attribute that can move or resize a view changed since
     /// the last layout pass (`sync`).
     var relayout = false
+    /// The window's page: a scroll view over the document that holds the
+    /// root stack, which scrolls only when the window is smaller than its
+    /// content needs (a screen too small for it).
+    let page = NSScrollView()
+    let document = FlippedView()
     var keyMonitor: Any?
 
     init(window: NSWindow) {
@@ -72,22 +85,64 @@ final class Host: NSObject, NSTextFieldDelegate {
         stack.translatesAutoresizingMaskIntoConstraints = false
         let content = ContentView()
         content.host = self
-        content.addSubview(stack)
+        // The root stack fills the page's document, which fills the window
+        // and grows past it only when the content needs more than the
+        // window has: on a screen too small for the content, the page
+        // scrolls rather than cut it off (`sync`).
+        page.hasVerticalScroller = true
+        page.hasHorizontalScroller = true
+        page.autohidesScrollers = true
+        page.drawsBackground = false
+        page.translatesAutoresizingMaskIntoConstraints = false
+        document.translatesAutoresizingMaskIntoConstraints = false
+        document.addSubview(stack)
+        page.documentView = document
+        content.addSubview(page)
+        let clip = page.contentView
+        let fillWidth = document.widthAnchor.constraint(equalTo: clip.widthAnchor)
+        let fillHeight = document.heightAnchor.constraint(equalTo: clip.heightAnchor)
+        // Below the priority that holds a window's size (500, what
+        // AppKit calls windowSizeStayPut), so filling never resizes the
+        // window, and so below a view's resistance to compression (750):
+        // what cannot shrink makes the document taller than the window,
+        // and the page scrolls it.
+        fillWidth.priority = .init(490)
+        fillHeight.priority = .init(490)
         NSLayoutConstraint.activate([
-            stack.topAnchor.constraint(equalTo: content.topAnchor),
-            stack.leadingAnchor.constraint(equalTo: content.leadingAnchor),
-            stack.trailingAnchor.constraint(equalTo: content.trailingAnchor),
-            stack.bottomAnchor.constraint(equalTo: content.bottomAnchor),
-            content.widthAnchor.constraint(greaterThanOrEqualToConstant: 320),
+            page.topAnchor.constraint(equalTo: content.topAnchor),
+            page.leadingAnchor.constraint(equalTo: content.leadingAnchor),
+            page.trailingAnchor.constraint(equalTo: content.trailingAnchor),
+            page.bottomAnchor.constraint(equalTo: content.bottomAnchor),
+            document.topAnchor.constraint(equalTo: clip.topAnchor),
+            document.leadingAnchor.constraint(equalTo: clip.leadingAnchor),
+            document.widthAnchor.constraint(greaterThanOrEqualTo: clip.widthAnchor),
+            document.heightAnchor.constraint(greaterThanOrEqualTo: clip.heightAnchor),
+            fillWidth, fillHeight,
+            stack.topAnchor.constraint(equalTo: document.topAnchor),
+            stack.leadingAnchor.constraint(equalTo: document.leadingAnchor),
+            stack.trailingAnchor.constraint(equalTo: document.trailingAnchor),
+            stack.bottomAnchor.constraint(equalTo: document.bottomAnchor),
+            document.widthAnchor.constraint(greaterThanOrEqualToConstant: 320),
         ])
         window.contentView = content
+        ports.deliver = { [weak self] id, payload in self?.send(EngineInstance.effectNode, id, payload) }
+        ports.serve(audio)
+        AudioSurfaceSources.register(audio)
     }
 
     func start() {
         let v = engine.version
         if v != 23 { fatal("engine speaks protocol \(v), this host speaks 23") }
         bench?.begin(.mount)
-        timed(.mount) { engine.mount() }
+        // A spec mounts at its virtual clock's time.
+        let now = specSteps.map { Date(timeIntervalSince1970: Double($0.clock) / 1000) } ?? Date()
+        timed(.mount) {
+            let batch = engine.mount(now: now)
+            // The ports are checked before the mount batch, which may
+            // already subscribe to them, is applied.
+            ports.declare(engine.declaredPorts)
+            return batch
+        }
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .keyUp]) { [weak self] event in
             guard let self, event.window === self.window else { return event }
             return self.key(event) ? nil : event
@@ -330,6 +385,8 @@ final class Host: NSObject, NSTextFieldDelegate {
                 default: break
                 }
                 if [1, 3, 5].contains(op), let view = target?.view { window.makeFirstResponder(view) }
+            case 19: // PORT port message (Ports.swift)
+                ports.command(&r)
             case 20: // SAVE token start len name
                 let token = r.u64(), start = r.u64(), len = r.u64(), name = r.str()
                 save(token: token, start: start, len: len, name: name)
@@ -358,6 +415,9 @@ final class Host: NSObject, NSTextFieldDelegate {
                 n.id = id
                 nodes[id] = n
                 insert(n, parent: parent, before: before)
+            case 27: // UNSENT port reason: a command nested past the port format's bound
+                let port = r.str(), reason = r.u8()
+                say("port \(port): a command was not sent (reason \(reason): its value nests more than 512 deep)")
             case 28: // STARTUP mode entry
                 _ = r.u8(); _ = r.u32()
             case 29: // STARTUP_ACK
@@ -459,10 +519,14 @@ final class Host: NSObject, NSTextFieldDelegate {
             if !documentKeys.isEmpty { documentKeys.removeAll { $0 === d } }
             if !hovered.isEmpty { hovered.removeAll { $0 === d } }
         }
-        refs = refs.filter { entry in
+        // A loop, not `refs.filter`: Swift 6.3 specializes Dictionary's
+        // rethrowing `filter` with typed-throws runtime calls.
+        var gone: [UInt32] = []
+        for (key, value) in refs {
             var inside = false
-            n.walk { if $0 === entry.value { inside = true } }
-            return !inside
+            n.walk { if $0 === value { inside = true } }
+            if inside { gone.append(key) }
         }
+        for key in gone { refs.removeValue(forKey: key) }
     }
 }

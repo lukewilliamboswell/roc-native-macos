@@ -23,7 +23,7 @@
 //
 // Anything else is arranged by NSStackView as before. A framed stack
 // reproduces what NSStackView does with the same children (measured, and
-// checked by the recorded cases): children from the leading or top edge,
+// checked by the specs): children from the leading or top edge,
 // `spacing` apart, inside the `padding` along the stack; across it, a
 // leading (vertical) or top (horizontal) alignment keeps that edge's
 // padding and the others keep none; slack along the stack is left after

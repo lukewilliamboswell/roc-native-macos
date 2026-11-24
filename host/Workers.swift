@@ -340,7 +340,7 @@ final class Builder {
     func append(_ entry: FileEntry, _ start: UInt64, _ len: UInt64) -> Bool {
         var ok = true
         let progress = Files.chunks(entry, start, len, nil) { if ok { ok = write($0) } }
-        return progress == .done && ok
+        return progress.isDone && ok
     }
 
     /// Finish: the bytes are flushed and the stream closed. False when they
@@ -657,7 +657,7 @@ final class WorkerThread {
         guard case .file(let entry) = table.held(token), start <= entry.size, len <= entry.size - start else { return nil }
         var bytes: [UInt8] = []
         bytes.reserveCapacity(Int(len))
-        return Files.chunks(entry, start, len, nil, { bytes.append(contentsOf: $0) }) == .done ? bytes : nil
+        return Files.chunks(entry, start, len, nil, { bytes.append(contentsOf: $0) }).isDone ? bytes : nil
     }
 
     func size(_ token: UInt64) -> UInt64 {
@@ -834,7 +834,7 @@ final class WorkPool {
     /// How many worker threads run jobs at once: one per core but the
     /// main thread's (the UI keeps a core), at least one and at most eight
     /// (roc-signals' default `maxWorkers`). `ROC_WORKERS` sets it, as does
-    /// the scripted step `pool:N` before the first job.
+    /// a spec's `(worker-pool N)` before the first job.
     var limit: Int = {
         if let given = ProcessInfo.processInfo.environment["ROC_WORKERS"].flatMap({ Int($0) }), given >= 1 { return min(given, 64) }
         return max(1, min(8, ProcessInfo.processInfo.activeProcessorCount - 1))
@@ -848,7 +848,7 @@ final class WorkPool {
     var pumpQueued = false
     var serial = 0
 
-    /// For the scripted `workers` step and ROC_TRACE.
+    /// For a spec's `expect-workers` and ROC_TRACE.
     var spawned = 0, answered = 0, stopped = 0, lost = 0, dropped = 0, timedOut = 0
 
     var summary: String {

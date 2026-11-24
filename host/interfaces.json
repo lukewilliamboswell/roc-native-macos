@@ -1,11 +1,12 @@
 {
-  "schema_version": 2,
-  "target": "arm64-macos",
-  "note": "Reviewed catalog of the system interfaces the Swift host links against, and that Roc's run-mode shims import when `roc main.roc` links the host (run_shim). Every library names its install name and every symbol its own public evidence; the generated stubs list only these names, and no Apple SDK file is read or shipped. PROVENANCE.md states the rules.",
+  "schema_version": 3,
+  "tapi_targets": ["arm64-macos", "x86_64-macos"],
+  "note": "Reviewed catalog of the system interfaces the Swift host links against, and that Roc's run-mode shims import when `roc main.roc` links the host (run_shim), for Apple silicon (arm64-macos) and Intel (x86_64-macos) Macs. Every library names its install name and every symbol its own public evidence; a symbol exported for one architecture alone names it in `only`. The generated stubs list only these names, and no Apple SDK file is read or shipped. PROVENANCE.md states the rules.",
   "run_shim": {
     "evidence": "Roc's run mode (`roc main.roc`, `roc run`, `--opt=dev` or `--opt=interpreter`) links the platform host with one of the compiler's own shim archives, libroc_machine_code_shim.a or libroc_interpreter_shim.a, which roc embeds and extracts for every run. Their system imports are the macOS imports roc-lang/roc's src/machine_code_shim/archive_check.zig allows (darwin_imports, c_memory_set, c_math_set). These are the ones the shims of the supported compilers reference (`nm -u`, which scripts/build.roc's audit re-checks against the `roc` it builds with); each is owned by a library below with its own evidence.",
     "symbols": [
       "__NSGetExecutablePath",
+      "___bzero",
       "___error",
       "___ulock_wait",
       "___ulock_wake",
@@ -15,9 +16,13 @@
       "__tlv_bootstrap",
       "_abort",
       "_bzero",
+      "_ceil",
+      "_ceilf",
       "_close",
       "_close$NOCANCEL",
       "_dlsym",
+      "_floor",
+      "_floorf",
       "_fmod",
       "_fmodf",
       "_memcpy",
@@ -35,6 +40,8 @@
       "_read",
       "_strlen",
       "_sys_icache_invalidate",
+      "_trunc",
+      "_truncf",
       "_write"
     ]
   },
@@ -78,12 +85,37 @@
           "evidence": "_NSGetExecutablePath (man 3 dyld), in libSystem's libdyld: Roc's run-mode shims (roc-lang/roc src/machine_code_shim, src/interpreter_shim) find their own executable (src/shim_io.zig)"
         },
         {
+          "name": "____chkstk_darwin",
+          "evidence": "the stack probe Swift-compiled x86-64 code calls for a frame larger than a page on Apple platforms, the global `____chkstk_darwin` that libpthread defines for x86_64, i386 and arm64 beside `thread_chkstk_darwin` (apple-oss-distributions/libpthread, src/pthread_asm.s), in libSystem's libsystem_pthread"
+        },
+        {
+          "name": "___ashlti3",
+          "evidence": "__ashlti3, the 128-bit left shift compiler-rt provides (llvm-project compiler-rt/lib/builtins/ashlti3.c), in libSystem's libcompiler_rt: LLVM lowers an i128 shift to this libcall (llvm/lib/CodeGen/TargetLoweringBase.cpp, RTLIB SHL_I128) instead of inline code when optimising for size, so a Roc app built with `--opt=size` for x64mac calls it"
+        },
+        {
+          "name": "___ashrti3",
+          "evidence": "__ashrti3, the 128-bit arithmetic right shift compiler-rt provides (llvm-project compiler-rt/lib/builtins/ashrti3.c), in libSystem's libcompiler_rt: LLVM lowers an i128 shift to this libcall (llvm/lib/CodeGen/TargetLoweringBase.cpp, RTLIB SRA_I128) instead of inline code when optimising for size, so a Roc app built with `--opt=size` for x64mac or x64v1mac calls it for a signed shift right (`I128.shr_wrap`); Roc's own libcalls for linked programs (roc-lang/roc src/builtins/native_runtime_libcalls.zig, `exportLibcalls`) cover 128-bit multiplication, division and conversions but no shift"
+        },
+        {
+          "name": "___bzero",
+          "evidence": "__bzero, the zeroing entry point LLVM's x86 backend calls on macOS in place of memset with zero (apple-oss-distributions/llvmCore, lib/Target/X86/X86Subtarget.cpp, getBZeroEntry), defined by libplatform (apple-oss-distributions/libplatform, src/string/generic/bzero.c; xcodeconfig/libplatform.aliases, `__platform_bzero ___bzero`), in libSystem's libsystem_platform: the x86-64 host and Roc's x86-64 run shims (roc-lang/roc src/machine_code_shim, src/interpreter_shim) call it"
+        },
+        {
           "name": "___chkstk_darwin",
-          "evidence": "the stack probe the compiler calls for a frame larger than a page on Apple platforms (llvm AArch64FrameLowering, ___chkstk_darwin), in libSystem's libcompiler_rt"
+          "evidence": "the stack probe the compiler calls for a frame larger than a page on Apple platforms (llvm AArch64FrameLowering, ___chkstk_darwin), in libSystem's libcompiler_rt. x86-64 code calls ____chkstk_darwin instead, through a weak private ___chkstk_darwin of its own",
+          "only": ["arm64-macos"]
         },
         {
           "name": "___error",
           "evidence": "__error, the function errno names (`#define errno (*__error())`, apple-oss-distributions/xnu, bsd/sys/errno.h), in libSystem's libsystem_kernel: Roc's run-mode shims (roc-lang/roc src/machine_code_shim, src/interpreter_shim) read errno through it (Zig's lib/std/c/darwin.zig)"
+        },
+        {
+          "name": "___lshrti3",
+          "evidence": "__lshrti3, the 128-bit logical right shift compiler-rt provides (llvm-project compiler-rt/lib/builtins/lshrti3.c), in libSystem's libcompiler_rt: LLVM lowers an i128 shift to this libcall (llvm/lib/CodeGen/TargetLoweringBase.cpp, RTLIB SRL_I128) instead of inline code when optimising for size, so a Roc app built with `--opt=size` for x64mac calls it"
+        },
+        {
+          "name": "___sincos_stret",
+          "evidence": "__sincos_stret, the sine and cosine of one argument that LLVM calls on Darwin in place of a sin and a cos of the same value (llvm/llvm-project, llvm/lib/IR/RuntimeLibcalls.cpp), in libSystem's libsystem_m (apple-oss-distributions/Libm)"
         },
         {
           "name": "___stack_chk_fail",
@@ -134,12 +166,24 @@
           "evidence": "bzero (man 3 bzero; POSIX.1-2001), in libSystem's libsystem_platform"
         },
         {
+          "name": "_ceil",
+          "evidence": "ceil (ISO C 7.12.9.1), in libSystem's libsystem_m: the x86-64 run shims of Roc (roc-lang/roc src/machine_code_shim, src/interpreter_shim) call it, one of the math imports a shim may have (src/builtins/shim_symbols.zig, c_math_set)"
+        },
+        {
+          "name": "_ceilf",
+          "evidence": "ceilf (ISO C 7.12.9.1), in libSystem's libsystem_m: the x86-64 run shims of Roc (roc-lang/roc src/machine_code_shim, src/interpreter_shim) call it, one of the math imports a shim may have (src/builtins/shim_symbols.zig, c_math_set)"
+        },
+        {
           "name": "_close",
           "evidence": "close, POSIX.1 (man 2 close), in libSystem's libsystem_kernel: Roc's run-mode shims (roc-lang/roc src/machine_code_shim, src/interpreter_shim) (src/shim_io.zig, src/ipc/platform.zig)"
         },
         {
           "name": "_close$NOCANCEL",
           "evidence": "close under the name of its variant that is not a pthread cancellation point, `close$NOCANCEL` (apple-oss-distributions/Libc, include/sys/cdefs.h, __DARWIN_NOCANCEL; apple-oss-distributions/xnu, libsyscall), in libSystem's libsystem_kernel: Zig's std closes files through it on macOS (Zig's lib/std/c.zig, lib/std/c/darwin.zig), which Roc's run-mode shims (roc-lang/roc src/machine_code_shim, src/interpreter_shim) link"
+        },
+        {
+          "name": "_cos",
+          "evidence": "cos (ISO C 7.12.4.5), in libSystem's libsystem_m: the scripted tone measurement (host/AudioScript.swift)"
         },
         {
           "name": "_dlsym",
@@ -150,8 +194,20 @@
           "evidence": "exit (ISO C 7.22.4.4), in libSystem's libsystem_c"
         },
         {
+          "name": "_exp2",
+          "evidence": "exp2 (ISO C 7.12.6.2), which the compiler calls for a power of two, in libSystem's libsystem_m"
+        },
+        {
           "name": "_fclose",
           "evidence": "fclose (ISO C 7.21.5.1), in libSystem's libsystem_c"
+        },
+        {
+          "name": "_floor",
+          "evidence": "floor (ISO C 7.12.9.2), in libSystem's libsystem_m: the x86-64 run shims of Roc (roc-lang/roc src/machine_code_shim, src/interpreter_shim) call it, one of the math imports a shim may have (src/builtins/shim_symbols.zig, c_math_set)"
+        },
+        {
+          "name": "_floorf",
+          "evidence": "floorf (ISO C 7.12.9.2), in libSystem's libsystem_m: the x86-64 run shims of Roc (roc-lang/roc src/machine_code_shim, src/interpreter_shim) call it, one of the math imports a shim may have (src/builtins/shim_symbols.zig, c_math_set)"
         },
         {
           "name": "_fmod",
@@ -192,6 +248,14 @@
         {
           "name": "_getrusage",
           "evidence": "getrusage (POSIX.1-2008; man 2 getrusage), whose peak resident set size ROC_BENCH reports, in libSystem's libsystem_kernel"
+        },
+        {
+          "name": "_log10",
+          "evidence": "log10 (ISO C 7.12.6.8), in libSystem's libsystem_m: the scripted tone measurement (host/AudioScript.swift)"
+        },
+        {
+          "name": "_log10f",
+          "evidence": "log10f (ISO C 7.12.6.8), in libSystem's libsystem_m: audio levels in dB (host/AudioAnalysis.swift)"
         },
         {
           "name": "_mach_task_self_",
@@ -250,6 +314,10 @@
           "evidence": "posix_memalign (POSIX.1-2001), in libSystem's libsystem_malloc"
         },
         {
+          "name": "_pow",
+          "evidence": "pow (ISO C 7.12.7.4), in libSystem's libsystem_m"
+        },
+        {
           "name": "_pread",
           "evidence": "pread, POSIX.1 (man 2 pread), in libSystem's libsystem_kernel: Roc's run-mode shims (roc-lang/roc src/machine_code_shim, src/interpreter_shim) (src/shim_io.zig)"
         },
@@ -286,8 +354,17 @@
           "evidence": "realpath (POSIX.1-2008), under the name macOS exports for its extended form (man 3 realpath), in libSystem's libsystem_c"
         },
         {
+          "name": "_sin",
+          "evidence": "sin (ISO C 7.12.4.6), in libSystem's libsystem_m"
+        },
+        {
           "name": "_stat",
           "evidence": "stat (POSIX.1-2008), in libSystem's libsystem_kernel"
+        },
+        {
+          "name": "_stat$INODE64",
+          "evidence": "stat under the name of its 64-bit-inode variant, `stat$INODE64`, which x86-64 code calls (apple-oss-distributions/Libc, include/sys/stat.h, `__DARWIN_INODE64(stat)`, and include/sys/cdefs.h, `__DARWIN_SUF_64_BIT_INO_T`; arm64 has only 64-bit inodes, `__DARWIN_ONLY_64_BIT_INO_T`, so no variant), in libSystem's libsystem_kernel",
+          "only": ["x86_64-macos"]
         },
         {
           "name": "_strlen",
@@ -300,6 +377,14 @@
         {
           "name": "_task_info",
           "evidence": "task_info, with MACH_TASK_BASIC_INFO for the current resident size ROC_BENCH reports (apple-oss-distributions/xnu, osfmk/mach/task_info.h), in libSystem's libsystem_kernel"
+        },
+        {
+          "name": "_trunc",
+          "evidence": "trunc (ISO C 7.12.9.8), in libSystem's libsystem_m: the x86-64 run shims of Roc (roc-lang/roc src/machine_code_shim, src/interpreter_shim) call it, one of the math imports a shim may have (src/builtins/shim_symbols.zig, c_math_set)"
+        },
+        {
+          "name": "_truncf",
+          "evidence": "truncf (ISO C 7.12.9.8), in libSystem's libsystem_m: the x86-64 run shims of Roc (roc-lang/roc src/machine_code_shim, src/interpreter_shim) call it, one of the math imports a shim may have (src/builtins/shim_symbols.zig, c_math_set)"
         },
         {
           "name": "_unlink",
@@ -338,6 +423,10 @@
           "evidence": "objc_allocWithZone (apple-oss-distributions/objc4, runtime/objc-internal.h)"
         },
         {
+          "name": "_objc_autorelease",
+          "evidence": "objc_autorelease (apple-oss-distributions/objc4, runtime/objc-internal.h)"
+        },
+        {
           "name": "_objc_autoreleaseReturnValue",
           "evidence": "objc_autoreleaseReturnValue (apple-oss-distributions/objc4, runtime/objc-internal.h)"
         },
@@ -346,8 +435,18 @@
           "evidence": "objc_msgSend (apple-oss-distributions/objc4, runtime/message.h)"
         },
         {
+          "name": "_objc_msgSend_stret",
+          "evidence": "objc_msgSend_stret, the message send for a method returning a structure in memory, which x86-64 code calls for such methods (apple-oss-distributions/objc4, runtime/message.h, marked OBJC_ARM64_UNAVAILABLE: arm64 has no such variant)",
+          "only": ["x86_64-macos"]
+        },
+        {
           "name": "_objc_msgSendSuper2",
           "evidence": "objc_msgSendSuper2 (apple-oss-distributions/objc4, runtime/objc-abi.h)"
+        },
+        {
+          "name": "_objc_msgSendSuper2_stret",
+          "evidence": "objc_msgSendSuper2_stret, the superclass message send for a method returning a structure in memory, which x86-64 code calls for such methods, as an override of -[NSWindow constrainFrameRect:toScreen:] does (apple-oss-distributions/objc4, runtime/objc-abi.h, marked OBJC_ARM64_UNAVAILABLE: arm64 has no such variant)",
+          "only": ["x86_64-macos"]
         },
         {
           "name": "_objc_opt_self",
@@ -634,6 +733,10 @@
           "evidence": "`Swift.Double.write<A where A: Swift.TextOutputStream>(to: inout A) -> ()`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
         },
         {
+          "name": "_$sSfN",
+          "evidence": "`type metadata for Swift.Float`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
           "name": "_$sSh15minimumCapacityShyxGSi_tcfC",
           "evidence": "`Swift.Set.init(minimumCapacity: Swift.Int) -> Swift.Set<A>`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
         },
@@ -676,6 +779,10 @@
         {
           "name": "_$ss10SetAlgebraPyxqd__ncSTRd__7ElementQyd__ACRtzlufCTj",
           "evidence": "`dispatch thunk of Swift.SetAlgebra.init<A where A1: Swift.Sequence, A.Element == A1.Element>(__owned A1) -> A`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$ss10_HashTableV11startBucketAB0D0Vvg",
+          "evidence": "`Swift._HashTable.startBucket.getter : Swift._HashTable.Bucket`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
         },
         {
           "name": "_$ss10_HashTableV12previousHole6beforeAB6BucketVAF_tF",
@@ -740,6 +847,10 @@
         {
           "name": "_$ss12_ArrayBufferV20_consumeAndCreateNew14bufferIsUnique15minimumCapacity13growForAppendAByxGSb_SiSbtFyXl_Ts5",
           "evidence": "`generic pre-specialization <Swift.AnyObject> of Swift._ArrayBuffer._consumeAndCreateNew(bufferIsUnique: Swift.Bool, minimumCapacity: Swift.Int, growForAppend: Swift.Bool) -> Swift._ArrayBuffer<A>`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$ss13OpaquePointerVMn",
+          "evidence": "`nominal type descriptor for Swift.OpaquePointer`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
         },
         {
           "name": "_$ss13_StringObjectV10sharedUTF8SRys5UInt8VGvg",
@@ -844,6 +955,10 @@
         {
           "name": "_$ss21_ObjectiveCBridgeableP09_bridgeToA1C01_A5CTypeQzyFTq",
           "evidence": "`method descriptor for Swift._ObjectiveCBridgeable._bridgeToObjectiveC() -> A._ObjectiveCType`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$ss21_findStringSwitchCase5cases6stringSiSays06StaticB0VG_SStF",
+          "evidence": "`Swift._findStringSwitchCase(cases: [Swift.StaticString], string: Swift.String) -> Swift.Int`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
         },
         {
           "name": "_$ss22_minimumMergeRunLengthyS2iF",
@@ -1178,6 +1293,10 @@
           "evidence": "`swift_initStackObject`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
         },
         {
+          "name": "_swift_isEscapingClosureAtFileLocation",
+          "evidence": "`swift_isEscapingClosureAtFileLocation`, the Swift runtime's check that a closure passed as non-escaping did not escape (swiftlang/swift, stdlib/public/runtime), which Swift emits where a closure becomes a non-escaping Objective-C block"
+        },
+        {
           "name": "_swift_isUniquelyReferenced_nonNull_bridgeObject",
           "evidence": "`swift_isUniquelyReferenced_nonNull_bridgeObject`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
         },
@@ -1214,6 +1333,10 @@
           "evidence": "`swift_retain_n`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
         },
         {
+          "name": "_swift_setDeallocating",
+          "evidence": "`swift_setDeallocating`, a function of the Swift runtime (swiftlang/swift, stdlib/public/runtime), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
           "name": "_swift_slowAlloc",
           "evidence": "`swift_slowAlloc`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
         },
@@ -1230,8 +1353,16 @@
           "evidence": "`swift_unknownObjectRelease`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
         },
         {
+          "name": "_swift_unknownObjectRelease_n",
+          "evidence": "`swift_unknownObjectRelease_n`, a function of the Swift runtime (swiftlang/swift, stdlib/public/runtime), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
           "name": "_swift_unknownObjectRetain",
           "evidence": "`swift_unknownObjectRetain`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_swift_unknownObjectRetain_n",
+          "evidence": "`swift_unknownObjectRetain_n`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
         },
         {
           "name": "_swift_unknownObjectUnownedDestroy",
@@ -1384,6 +1515,10 @@
         {
           "name": "_$s10Foundation15ContiguousBytesP010withUnsafeC0yqd__qd__SWKXEKlFTj",
           "evidence": "`dispatch thunk of Foundation.ContiguousBytes.withUnsafeBytes<A>((Swift.UnsafeRawBufferPointer) throws -> A1) throws -> A1`, a declaration of Swift's Foundation module (swiftlang/swift-foundation; swiftlang/swift-corelibs-foundation), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$s10Foundation22_convertNSErrorToErrorys0E0_pSo0C0CSgF",
+          "evidence": "`Foundation._convertNSErrorToError(__C.NSError?) -> Swift.Error`, the bridging of an Objective-C error that Swift emits for a throwing Objective-C method, a declaration of Swift's Foundation module (swiftlang/swift-foundation; swiftlang/swift-corelibs-foundation), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst): a throwing Objective-C method's error, as Swift receives it (MTLDevice, the drawing surface; AVAudioFile and AVAudioEngine, the audio session)"
         },
         {
           "name": "_$s10Foundation3URLV19_bridgeToObjectiveCSo5NSURLCyF",
@@ -1774,6 +1909,10 @@
           "evidence": "the Objective-C class NSBezierPath (https://developer.apple.com/documentation/appkit/nsbezierpath)"
         },
         {
+          "name": "_OBJC_CLASS_$_NSBitmapImageRep",
+          "evidence": "the Objective-C class NSBitmapImageRep (https://developer.apple.com/documentation/appkit/nsbitmapimagerep), which encodes a drawing surface's frame as PNG for ROC_SURFACE_SHOTS (representation(using:properties:), https://developer.apple.com/documentation/appkit/nsbitmapimagerep/representation(using:properties:))"
+        },
+        {
           "name": "_OBJC_CLASS_$_NSBox",
           "evidence": "the Objective-C class NSBox (https://developer.apple.com/documentation/appkit/nsbox)"
         },
@@ -1786,6 +1925,10 @@
           "evidence": "the Objective-C class NSColor (https://developer.apple.com/documentation/appkit/nscolor)"
         },
         {
+          "name": "_OBJC_CLASS_$_NSColorSpace",
+          "evidence": "the Objective-C class NSColorSpace (https://developer.apple.com/documentation/appkit/nscolorspace)"
+        },
+        {
           "name": "_OBJC_CLASS_$_NSControl",
           "evidence": "the Objective-C class NSControl (https://developer.apple.com/documentation/appkit/nscontrol)"
         },
@@ -1796,6 +1939,10 @@
         {
           "name": "_OBJC_CLASS_$_NSFont",
           "evidence": "the Objective-C class NSFont (https://developer.apple.com/documentation/appkit/nsfont)"
+        },
+        {
+          "name": "_OBJC_CLASS_$_NSGraphicsContext",
+          "evidence": "the Objective-C class NSGraphicsContext (https://developer.apple.com/documentation/appkit/nsgraphicscontext)"
         },
         {
           "name": "_OBJC_CLASS_$_NSImage",
@@ -1904,6 +2051,10 @@
         {
           "name": "_OBJC_METACLASS_$_NSView",
           "evidence": "the metaclass of the Objective-C class NSView, which a Swift subclass of NSView references (https://developer.apple.com/documentation/appkit/nsview)"
+        },
+        {
+          "name": "_OBJC_METACLASS_$_NSWindow",
+          "evidence": "the metaclass of the Objective-C class NSWindow, which a Swift subclass of NSWindow references (https://developer.apple.com/documentation/appkit/nswindow)"
         }
       ]
     },
@@ -1974,6 +2125,66 @@
       "evidence": "Core Graphics, /System/Library/Frameworks/CoreGraphics.framework/Versions/A/CoreGraphics (https://developer.apple.com/documentation/coregraphics).",
       "symbols": [
         {
+          "name": "_CGBitmapContextCreate",
+          "evidence": "CGBitmapContextCreate, which Swift calls as CGContext.init(data:width:height:bitsPerComponent:bytesPerRow:space:bitmapInfo:) (https://developer.apple.com/documentation/coregraphics/cgcontext/init(data:width:height:bitspercomponent:bytesperrow:space:bitmapinfo:))"
+        },
+        {
+          "name": "_CGBitmapContextCreateImage",
+          "evidence": "CGBitmapContextCreateImage, which Swift calls as CGContext.makeImage() (https://developer.apple.com/documentation/coregraphics/cgcontext/makeimage())"
+        },
+        {
+          "name": "_CGBitmapContextGetData",
+          "evidence": "CGBitmapContextGetData, which Swift reads as CGContext.data (https://developer.apple.com/documentation/coregraphics/cgcontext/data)"
+        },
+        {
+          "name": "_CGColorSpaceCreateWithName",
+          "evidence": "CGColorSpaceCreateWithName, which Swift calls as CGColorSpace.init(name:) (https://developer.apple.com/documentation/coregraphics/cgcolorspace/init(name:))"
+        },
+        {
+          "name": "_CGContextClearRect",
+          "evidence": "CGContextClearRect, which Swift calls as CGContext.clear(_:) (https://developer.apple.com/documentation/coregraphics/cgcontext/clear(_:))"
+        },
+        {
+          "name": "_CGContextConcatCTM",
+          "evidence": "CGContextConcatCTM, which Swift calls as CGContext.concatenate(_:) (https://developer.apple.com/documentation/coregraphics/cgcontext/concatenate(_:))"
+        },
+        {
+          "name": "_CGContextFillRect",
+          "evidence": "CGContextFillRect, which Swift calls as CGContext.fill(_:) with a CGRect (https://developer.apple.com/documentation/coregraphics/cgcontext/fill(_:))"
+        },
+        {
+          "name": "_CGContextRestoreGState",
+          "evidence": "CGContextRestoreGState, which Swift calls as CGContext.restoreGState() (https://developer.apple.com/documentation/coregraphics/cgcontext/restoregstate())"
+        },
+        {
+          "name": "_CGContextRotateCTM",
+          "evidence": "CGContextRotateCTM, which Swift calls as CGContext.rotate(by:) (https://developer.apple.com/documentation/coregraphics/cgcontext/rotate(by:))"
+        },
+        {
+          "name": "_CGContextSaveGState",
+          "evidence": "CGContextSaveGState, which Swift calls as CGContext.saveGState() (https://developer.apple.com/documentation/coregraphics/cgcontext/savegstate())"
+        },
+        {
+          "name": "_CGContextScaleCTM",
+          "evidence": "CGContextScaleCTM, which Swift calls as CGContext.scaleBy(x:y:) (https://developer.apple.com/documentation/coregraphics/cgcontext/scaleby(x:y:))"
+        },
+        {
+          "name": "_CGContextSetAlpha",
+          "evidence": "CGContextSetAlpha, which Swift calls as CGContext.setAlpha(_:) (https://developer.apple.com/documentation/coregraphics/cgcontext/setalpha(_:))"
+        },
+        {
+          "name": "_CGContextSetFillColorWithColor",
+          "evidence": "CGContextSetFillColorWithColor, which Swift calls as CGContext.setFillColor(_:) with a CGColor (https://developer.apple.com/documentation/coregraphics/cgcontext/setfillcolor(_:))"
+        },
+        {
+          "name": "_CGContextSetInterpolationQuality",
+          "evidence": "CGContextSetInterpolationQuality, which Swift sets as CGContext.interpolationQuality (https://developer.apple.com/documentation/coregraphics/cgcontext/interpolationquality)"
+        },
+        {
+          "name": "_CGContextTranslateCTM",
+          "evidence": "CGContextTranslateCTM, which Swift calls as CGContext.translateBy(x:y:) (https://developer.apple.com/documentation/coregraphics/cgcontext/translateby(x:y:))"
+        },
+        {
           "name": "_CGRectGetHeight",
           "evidence": "CGRectGetHeight (https://developer.apple.com/documentation/coregraphics/cgrectgetheight(_:))"
         },
@@ -1984,6 +2195,178 @@
         {
           "name": "_CGRectInset",
           "evidence": "CGRectInset (https://developer.apple.com/documentation/coregraphics/cgrectinset(_:_:_:))"
+        },
+        {
+          "name": "_kCGColorSpaceSRGB",
+          "evidence": "the colour space name kCGColorSpaceSRGB, which Swift reads as CGColorSpace.sRGB (https://developer.apple.com/documentation/coregraphics/cgcolorspace/srgb)"
+        }
+      ]
+    },
+    {
+      "name": "Metal",
+      "path": "System/Library/Frameworks/Metal.framework/Metal.tbd",
+      "install_name": "/System/Library/Frameworks/Metal.framework/Versions/A/Metal",
+      "evidence": "Metal, /System/Library/Frameworks/Metal.framework/Versions/A/Metal (https://developer.apple.com/documentation/metal).",
+      "symbols": [
+        {
+          "name": "_MTLCreateSystemDefaultDevice",
+          "evidence": "MTLCreateSystemDefaultDevice (https://developer.apple.com/documentation/metal/mtlcreatesystemdefaultdevice())"
+        },
+        {
+          "name": "_OBJC_CLASS_$_MTLDepthStencilDescriptor",
+          "evidence": "the Objective-C class MTLDepthStencilDescriptor (https://developer.apple.com/documentation/metal/mtldepthstencildescriptor)"
+        },
+        {
+          "name": "_OBJC_CLASS_$_MTLRenderPassDescriptor",
+          "evidence": "the Objective-C class MTLRenderPassDescriptor (https://developer.apple.com/documentation/metal/mtlrenderpassdescriptor)"
+        },
+        {
+          "name": "_OBJC_CLASS_$_MTLRenderPipelineDescriptor",
+          "evidence": "the Objective-C class MTLRenderPipelineDescriptor (https://developer.apple.com/documentation/metal/mtlrenderpipelinedescriptor)"
+        },
+        {
+          "name": "_OBJC_CLASS_$_MTLStencilDescriptor",
+          "evidence": "the Objective-C class MTLStencilDescriptor (https://developer.apple.com/documentation/metal/mtlstencildescriptor)"
+        },
+        {
+          "name": "_OBJC_CLASS_$_MTLTextureDescriptor",
+          "evidence": "the Objective-C class MTLTextureDescriptor (https://developer.apple.com/documentation/metal/mtltexturedescriptor)"
+        }
+      ]
+    },
+    {
+      "name": "QuartzCore",
+      "path": "System/Library/Frameworks/QuartzCore.framework/QuartzCore.tbd",
+      "install_name": "/System/Library/Frameworks/QuartzCore.framework/Versions/A/QuartzCore",
+      "evidence": "Core Animation, /System/Library/Frameworks/QuartzCore.framework/Versions/A/QuartzCore (https://developer.apple.com/documentation/quartzcore).",
+      "symbols": [
+        {
+          "name": "_OBJC_CLASS_$_CAMetalLayer",
+          "evidence": "the Objective-C class CAMetalLayer (https://developer.apple.com/documentation/quartzcore/cametallayer)"
+        },
+        {
+          "name": "_OBJC_CLASS_$_CATransaction",
+          "evidence": "the Objective-C class CATransaction (https://developer.apple.com/documentation/quartzcore/catransaction)"
+        }
+      ]
+    },
+    {
+      "name": "AVFAudio",
+      "path": "System/Library/Frameworks/AVFAudio.framework/AVFAudio.tbd",
+      "install_name": "/System/Library/Frameworks/AVFAudio.framework/Versions/A/AVFAudio",
+      "evidence": "AVFAudio, /System/Library/Frameworks/AVFAudio.framework/Versions/A/AVFAudio (https://developer.apple.com/documentation/avfaudio): the playback session (host/Audio.swift). Its classes exist on arm64 and x86_64 alike.",
+      "symbols": [
+        {
+          "name": "_OBJC_CLASS_$_AVAudioEngine",
+          "evidence": "the Objective-C class AVAudioEngine (https://developer.apple.com/documentation/avfaudio/avaudioengine)"
+        },
+        {
+          "name": "_OBJC_CLASS_$_AVAudioFile",
+          "evidence": "the Objective-C class AVAudioFile (https://developer.apple.com/documentation/avfaudio/avaudiofile)"
+        },
+        {
+          "name": "_OBJC_CLASS_$_AVAudioFormat",
+          "evidence": "the Objective-C class AVAudioFormat (https://developer.apple.com/documentation/avfaudio/avaudioformat)"
+        },
+        {
+          "name": "_OBJC_CLASS_$_AVAudioPCMBuffer",
+          "evidence": "the Objective-C class AVAudioPCMBuffer (https://developer.apple.com/documentation/avfaudio/avaudiopcmbuffer)"
+        },
+        {
+          "name": "_OBJC_CLASS_$_AVAudioPlayerNode",
+          "evidence": "the Objective-C class AVAudioPlayerNode (https://developer.apple.com/documentation/avfaudio/avaudioplayernode)"
+        },
+        {
+          "name": "_OBJC_CLASS_$_AVAudioTime",
+          "evidence": "the Objective-C class AVAudioTime (https://developer.apple.com/documentation/avfaudio/avaudiotime)"
+        },
+        {
+          "name": "_OBJC_CLASS_$_AVAudioUnitEQ",
+          "evidence": "the Objective-C class AVAudioUnitEQ (https://developer.apple.com/documentation/avfaudio/avaudiouniteq)"
+        },
+        {
+          "name": "_OBJC_CLASS_$_AVAudioUnitEQFilterParameters",
+          "evidence": "the Objective-C class AVAudioUnitEQFilterParameters (https://developer.apple.com/documentation/avfaudio/avaudiouniteqfilterparameters)"
+        }
+      ]
+    },
+    {
+      "name": "Accelerate",
+      "path": "System/Library/Frameworks/Accelerate.framework/Accelerate.tbd",
+      "install_name": "/System/Library/Frameworks/Accelerate.framework/Versions/A/Accelerate",
+      "evidence": "Accelerate, /System/Library/Frameworks/Accelerate.framework/Versions/A/Accelerate (https://developer.apple.com/documentation/accelerate), the umbrella framework that re-exports vecLib and its vDSP: the audio analysis (host/AudioAnalysis.swift). Its functions exist on arm64 and x86_64 alike.",
+      "symbols": [
+        {
+          "name": "_vDSP_create_fftsetup",
+          "evidence": "vDSP_create_fftsetup, vDSP (https://developer.apple.com/documentation/accelerate/vdsp_create_fftsetup), in Accelerate, which re-exports vecLib's libvDSP: the audio analysis (host/AudioAnalysis.swift)"
+        },
+        {
+          "name": "_vDSP_ctoz",
+          "evidence": "vDSP_ctoz, vDSP (https://developer.apple.com/documentation/accelerate/vdsp_ctoz), in Accelerate, which re-exports vecLib's libvDSP: the audio analysis (host/AudioAnalysis.swift)"
+        },
+        {
+          "name": "_vDSP_destroy_fftsetup",
+          "evidence": "vDSP_destroy_fftsetup, vDSP (https://developer.apple.com/documentation/accelerate/vdsp_destroy_fftsetup), in Accelerate, which re-exports vecLib's libvDSP: the audio analysis (host/AudioAnalysis.swift)"
+        },
+        {
+          "name": "_vDSP_fft_zrip",
+          "evidence": "vDSP_fft_zrip, vDSP (https://developer.apple.com/documentation/accelerate/vdsp_fft_zrip), in Accelerate, which re-exports vecLib's libvDSP: the audio analysis (host/AudioAnalysis.swift)"
+        },
+        {
+          "name": "_vDSP_hann_window",
+          "evidence": "vDSP_hann_window, vDSP (https://developer.apple.com/documentation/accelerate/vdsp_hann_window), in Accelerate, which re-exports vecLib's libvDSP: the audio analysis (host/AudioAnalysis.swift)"
+        },
+        {
+          "name": "_vDSP_maxmgv",
+          "evidence": "vDSP_maxmgv, vDSP (https://developer.apple.com/documentation/accelerate/vdsp_maxmgv), in Accelerate, which re-exports vecLib's libvDSP: the audio analysis (host/AudioAnalysis.swift)"
+        },
+        {
+          "name": "_vDSP_measqv",
+          "evidence": "vDSP_measqv, vDSP (https://developer.apple.com/documentation/accelerate/vdsp_measqv), in Accelerate, which re-exports vecLib's libvDSP: the audio analysis (host/AudioAnalysis.swift)"
+        },
+        {
+          "name": "_vDSP_vadd",
+          "evidence": "vDSP_vadd, vDSP (https://developer.apple.com/documentation/accelerate/vdsp_vadd), in Accelerate, which re-exports vecLib's libvDSP: the audio analysis (host/AudioAnalysis.swift)"
+        },
+        {
+          "name": "_vDSP_vmul",
+          "evidence": "vDSP_vmul, vDSP (https://developer.apple.com/documentation/accelerate/vdsp_vmul), in Accelerate, which re-exports vecLib's libvDSP: the audio analysis (host/AudioAnalysis.swift)"
+        },
+        {
+          "name": "_vDSP_zvmags",
+          "evidence": "vDSP_zvmags, vDSP (https://developer.apple.com/documentation/accelerate/vdsp_zvmags), in Accelerate, which re-exports vecLib's libvDSP: the audio analysis (host/AudioAnalysis.swift)"
+        }
+      ]
+    },
+    {
+      "name": "CoreAudio",
+      "path": "System/Library/Frameworks/CoreAudio.framework/CoreAudio.tbd",
+      "install_name": "/System/Library/Frameworks/CoreAudio.framework/Versions/A/CoreAudio",
+      "evidence": "CoreAudio, /System/Library/Frameworks/CoreAudio.framework/Versions/A/CoreAudio (https://developer.apple.com/documentation/coreaudio), the Core Audio hardware abstraction layer: the playback session's output device, its name, UID and latency (host/AudioOutput.swift). Its functions exist on arm64 and x86_64 alike.",
+      "symbols": [
+        {
+          "name": "_AudioObjectGetPropertyData",
+          "evidence": "AudioObjectGetPropertyData, Core Audio's Audio Object API (https://developer.apple.com/documentation/coreaudio/audioobjectgetpropertydata(_:_:_:_:_:_:)): an output device's name, UID, latency, safety offset, buffer size and streams (host/AudioOutput.swift)"
+        },
+        {
+          "name": "_AudioObjectGetPropertyDataSize",
+          "evidence": "AudioObjectGetPropertyDataSize, Core Audio's Audio Object API (https://developer.apple.com/documentation/coreaudio/audioobjectgetpropertydatasize(_:_:_:_:_:)): how many devices and streams a list property holds (host/AudioOutput.swift)"
+        }
+      ]
+    },
+    {
+      "name": "AudioToolbox",
+      "path": "System/Library/Frameworks/AudioToolbox.framework/AudioToolbox.tbd",
+      "install_name": "/System/Library/Frameworks/AudioToolbox.framework/Versions/A/AudioToolbox",
+      "evidence": "AudioToolbox, /System/Library/Frameworks/AudioToolbox.framework/Versions/A/AudioToolbox (https://developer.apple.com/documentation/audiotoolbox), whose Audio Unit API the playback session's measuring tap uses on the EQ's audio unit (host/AudioAnalysis.swift). Its functions exist on arm64 and x86_64 alike.",
+      "symbols": [
+        {
+          "name": "_AudioUnitAddRenderNotify",
+          "evidence": "AudioUnitAddRenderNotify, the Audio Unit API (https://developer.apple.com/documentation/audiotoolbox/audiounitaddrendernotify(_:_:_:)): a callback after each render of the EQ's unit, which copies the rendered buffer for the measurements (host/AudioAnalysis.swift)"
+        },
+        {
+          "name": "_AudioUnitRemoveRenderNotify",
+          "evidence": "AudioUnitRemoveRenderNotify, the Audio Unit API (https://developer.apple.com/documentation/audiotoolbox/audiounitremoverendernotify(_:_:_:)): the measuring tap's removal (host/AudioAnalysis.swift)"
         }
       ]
     }

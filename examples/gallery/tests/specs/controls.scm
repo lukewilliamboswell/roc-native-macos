@@ -1,0 +1,58 @@
+; A dropdown choice, and a shortcut the app hears twice.
+(test "controls"
+  (steps
+    (choose "Cherry")
+    (press "cmd+n" :heard true)
+    (press "cmd+n" :heard true)
+    (expect-dump (window :width 560 :height 539
+                   (vstack :views 1
+                     (vstack :views 4
+                       (hstack :views 2
+                         (image square.grid.2x2.fill)
+                         (vstack :views 2
+                           (text "Gallery" :text-style title2 :weight semibold)
+                           (text "Controls, typography, colors, and shortcuts" :color secondary-label :text-style caption1)))
+                       (vstack :views 2
+                         (hstack :views 3
+                           (spacer)
+                           (segmented :items ("Controls" "Text" "Styles" "Shortcuts") :selected "Controls")
+                           (spacer))
+                         (vstack :views 4
+                           (vstack :views 2
+                             (text "CHOICE" :color secondary-label :text-style subheadline :weight semibold)
+                             (box :border line:1:separator :fill text-background
+                               (vstack :views 2
+                                 (hstack :views 3
+                                   (image leaf.fill)
+                                   (text "Fruit")
+                                   (dropdown "Cherry" :items ("Apple" "Banana" "Cherry")))
+                                 (text "You picked Cherry" :color accent))))
+                           (vstack :views 2
+                             (text "LEVEL" :color secondary-label :text-style subheadline :weight semibold)
+                             (box :border line:1:separator :fill text-background
+                               (vstack :views 2
+                                 (hstack :views 3
+                                   (image speaker.wave.2.fill)
+                                   (slider :value 40.0)
+                                   (text "40" :design monospaced-digits))
+                                 (progress :value 40 :max 100))))
+                           (vstack :views 2
+                             (text "RANGES" :color secondary-label :text-style subheadline :weight semibold)
+                             (box :border line:1:separator :fill text-background
+                               (vstack :views 2
+                                 (hstack :views 3
+                                   (text "Gain")
+                                   (slider :value -6.0)
+                                   (text "-6" :design monospaced-digits))
+                                 (hstack :views 3
+                                   (text "Zoom")
+                                   (slider :value 200.0)
+                                   (text "200" :design monospaced-digits)))))
+                           (vstack :views 2
+                             (text "ACTIVITY" :color secondary-label :text-style subheadline :weight semibold)
+                             (box :border line:1:separator :fill text-background
+                               (hstack :views 2
+                                 (checkbox "Working" :checked #f)
+                                 (progress idle))))))
+                       (shortcut)
+                       (shortcut)))))))

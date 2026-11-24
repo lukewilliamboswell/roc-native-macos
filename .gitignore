@@ -1,20 +1,25 @@
-# Built by scripts/build.roc (the glue in host/ is committed)
-platform/targets/arm64mac/libhost.a
-platform/targets/arm64mac/libhost.fingerprint
-platform/targets/macos-sysroot/
+# Built by scripts/build.roc: the hosts and the linker stubs (the glue in
+# host/ is committed)
+platform/targets/
 # Example binaries and their .app bundles (examples/<name>/<name>.app); their
 # sources and assets/ stay tracked
 examples/*/*
 examples/*/*.app/
 !examples/*/*.roc
-!examples/*/demo.script
+!examples/*/*.md
 !examples/*/assets/
+# Each app's tests: tests/specs/, tests/fixtures/ and the starter's tests/fuzz/
 !examples/*/tests/
+# The starter's app and logic package (examples/starter)
+!examples/*/src/
+!examples/*/logic/
 # The bench harnesses' binaries (bench/<name>/<name>), beside their sources
 bench/*/*
 !bench/*/*.roc
 !bench/*/*.adoc
 !bench/*/*.sh
+!bench/*/src/
+!bench/*/tests/
 
 # Blueprint's generated environment and links
 .blueprint/

@@ -20,11 +20,12 @@ import Archive
 ## by the owner alone and removed when packaging ends.
 Package := [].{
 
-	## What `package` was asked for: the metadata flags, and whether to sign
-	## with a Developer ID and to notarize (which implies signing).
-	Options : { fields : Meta.Fields, sign : Bool, notarize : Bool }
+	## What `package` was asked for: the metadata flags, whether to sign
+	## with a Developer ID and to notarize (which implies signing), and what
+	## to build (universal, or `--target`'s one Mac).
+	Options : { fields : Meta.Fields, sign : Bool, notarize : Bool, how : App.Build }
 
-	## Where the zip goes, beside `main.roc`.
+	## Where the zip goes, in the app's directory.
 	dist : Str
 	dist = "dist"
 
@@ -83,8 +84,8 @@ Package := [].{
 			"" => Archive.default_time
 			text => U64.from_str(text) ? |_| BadSourceDateEpoch(text)
 		}
-		{ bundle, meta, .. } = App.build!(options.fields)?
-		zip = "${Package.dist}/${Meta.zip_name(meta.name, meta.release)}"
+		{ bundle, meta, .. } = App.build!({ fields: options.fields, how: options.how })?
+		zip = "${Package.dist}/${Package.zip_name(meta.name, meta.release, options.how)}"
 		outcome = seal_and_zip!({ here, choice, notary, password, seconds, bundle, zip, rcodesign: environment.rcodesign })
 		Package.forget_secrets!()
 		signed = outcome?
@@ -92,6 +93,17 @@ Package := [].{
 		Stdout.line!("Packaged ${zip} (${Package.size(bytes.len())}, sha256 ${Crypto.SHA256.hash(bytes).to_hex()}): ${meta.name} ${meta.release}, ${signed}.")?
 		Stdout.line!(Package.advice(choice, options.notarize))?
 		Ok({ zip, meta })
+	}
+
+	## The zip's name: the app's name and version, and for a build for one
+	## Mac (`--target`) its target, so the two never share a name.
+	zip_name : Str, Str, App.Build -> Str
+	zip_name = |name, release, how| {
+		universal = Meta.zip_name(name, release)
+		match how {
+			Universal => universal
+			Native(target) => "${universal.drop_suffix(".zip")}-${target}.zip"
+		}
 	}
 
 	## Whether this is a Mac.
@@ -288,3 +300,6 @@ expect {
 		_ => Bool.False
 	}
 }
+
+## A universal zip is named for the app and version; one Mac's names its target too.
+expect [Package.zip_name("My App", "1.0.0-rc.1", Universal), Package.zip_name("My App", "1.2.0", Native("x64mac"))] == ["My-App-1.0.0-rc.1.zip", "My-App-1.2.0-x64mac.zip"]

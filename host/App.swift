@@ -4,11 +4,24 @@ import AppKit
 
 // MARK: - The application
 
-final class AppDelegate: NSObject, NSApplicationDelegate {
+/// The app's window. AppKit keeps a window within its screen's visible
+/// area when it is shown, so the size a window settles at would depend on
+/// the display a spec runs on (a runner's 1024x768 screen with its Dock
+/// shortens a tall window). In a spec the window keeps the size the host
+/// gives it, within the room the spec's `(screen-size W H)` sets; otherwise
+/// it is constrained as any window is, and the host keeps it within its
+/// screen (`Host.windowRoom`).
+final class HostWindow: NSWindow {
+    override func constrainFrameRect(_ frameRect: NSRect, to screen: NSScreen?) -> NSRect {
+        driven ? frameRect : super.constrainFrameRect(frameRect, to: screen)
+    }
+}
+
+final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     var host: Host?
 
     func applicationDidFinishLaunching(_ note: Notification) {
-        let window = NSWindow(
+        let window = HostWindow(
             contentRect: NSRect(x: 0, y: 0, width: 360, height: 200),
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered,
@@ -23,26 +36,38 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         let host = Host(window: window)
         self.host = host
+        let spec = specText.map(SpecSteps.init)
+        if let spec { host.drive(spec) }
         host.start()
         window.center()
-        if let script = ProcessInfo.processInfo.environment["ROC_SCRIPT"] {
-            // A scripted run sets control values directly, so it never takes
-            // keyboard focus: keystrokes meant for another app stay there.
+        if let spec {
+            // As a script does, a spec sets control values directly and
+            // never takes keyboard focus.
             window.orderFrontRegardless()
-            host.run(script: script)
+            host.run(spec: spec)
         } else {
             window.makeKeyAndOrderFront(nil)
             NSApp.activate(ignoringOtherApps: true)
+            // Sized again for the screen it is shown on.
+            host.refit()
         }
+        window.delegate = self
         host.bench?.shown(host)
     }
+
+    /// The window moved to another screen, or the screens changed: the
+    /// window keeps within the room it now has (`Host.windowRoom`).
+    /// After the change, between turns: AppKit may report it from inside
+    /// a resize the host itself made.
+    func windowDidChangeScreen(_ note: Notification) { DispatchQueue.main.async { self.host?.refit() } }
+    func applicationDidChangeScreenParameters(_ note: Notification) { DispatchQueue.main.async { self.host?.refit() } }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ app: NSApplication) -> Bool { true }
 
     /// Closing the window or quitting tears the engine down once.
     func applicationWillTerminate(_ note: Notification) { host?.stop() }
 
-    /// Reload (Cmd-R, or the scripted `reload` step): retire the engine and
+    /// Reload (Cmd-R, or a spec's `(reload)` step): retire the engine and
     /// mount a fresh one in the same window, as a browser reloads a page.
     /// Local and session storage carry over; everything else starts again.
     /// Under `roc main.roc` the mount is a Roc entry point, so it runs the
@@ -53,6 +78,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         old.retire()
         let fresh = Host(window: old.window)
         host = fresh
+        if let spec = old.specSteps { fresh.drive(spec) }
         fresh.start()
         fresh.trace("RELOAD")
         return fresh

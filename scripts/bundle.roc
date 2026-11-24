@@ -12,7 +12,7 @@ import cli.Path
 import cli.Stderr
 import cli.Stdout
 import src/Bundle
-import src/Recorded
+import src/SpecRun
 
 ## The `bundle` task: the platform bundle an app author's header names.
 ##
@@ -23,7 +23,8 @@ import src/Recorded
 ##
 ## It builds the platform's native inputs (`scripts/build.roc -- --platform`)
 ## unless `--prebuilt`, stages the tracked `platform/*.roc` modules, the
-## Swift host `targets/arm64mac/libhost.a`, the generated linker stubs
+## Swift hosts `targets/arm64mac/libhost.a` and `targets/x64mac/libhost.a`
+## (Apple silicon and Intel), the generated linker stubs
 ## `targets/macos-sysroot/` and the licence notices under `build/`, and runs
 ## `roc bundle` there. The output directory then holds exactly one
 ## content-addressed `<hash>.tar.zst`.
@@ -33,15 +34,17 @@ import src/Recorded
 ## compiler accepts `http` only for localhost), makes the `macos.roc` tool
 ## there naming the served URLs (`scripts/release.roc -- tool`), and then,
 ## with an empty Roc package cache, takes an author's first steps outside
-## the checkout: `roc macos.roc init counter`, then `build` and `test` in
-## `counter/`, which runs the counter's recorded cases. It packages the
-## counter twice with `macos.roc package`, and checks that the two zips are
+## the checkout: `roc macos.roc init my-app`, which writes the starter app
+## (`examples/starter`, with `src/main.roc`), then `build`, `test` (its
+## `expect`s and specs) and `fuzz --check` (its roc-fuzz targets) in
+## `my-app/`. It packages the app twice with `macos.roc package`, and
+## checks that the two zips are
 ## the same bytes, hold the sealed bundle with each entry's Unix mode, and
 ## extract with `ditto` to an app whose seal verifies and whose program runs
-## a recorded case; `actionlint`, when it is on PATH, lints the release
+## a spec; `actionlint`, when it is on PATH, lints the release
 ## workflow `init` wrote. Then it builds and
 ## tests an app with assets, `examples/about` with its `assets/` and
-## recorded cases, through the tool, checks that its bundle holds the assets
+## specs, through the tool, checks that its bundle holds the assets
 ## and an icon made from `assets/icon.png`, and runs a case on the program
 ## inside the bundle, which must find its images in `Contents/Resources`.
 ## Last, it runs that case under `roc macos.roc dev`, whose bare program
@@ -66,7 +69,7 @@ main! = |raw_args| {
 	if !options.prebuilt {
 		step!(Cmd.new("roc-stable").args(["scripts/build.roc", "--", "--platform"]).env("ROC", "roc"), "scripts/build.roc -- --platform")?
 	}
-	for input in [Bundle.host_library, Bundle.sysroot] {
+	for input in Bundle.host_libraries.append(Bundle.sysroot) {
 		if !(Path.exists!(Path.utf8("platform/${input}"))?) {
 			warn!("bundle: platform/${input} is not built: run `blueprint run build` (or drop --prebuilt)")
 			return Err(Exit(1))
@@ -81,8 +84,10 @@ main! = |raw_args| {
 	for name in modules {
 		Path.copy!(Path.utf8("platform/${name}"), Path.utf8("${stage}/${name}"))?
 	}
-	Path.create_all!(Path.utf8("${stage}/targets/arm64mac"))?
-	Path.copy!(Path.utf8("platform/${Bundle.host_library}"), Path.utf8("${stage}/${Bundle.host_library}"))?
+	for library in Bundle.host_libraries {
+		Path.create_all!(Path.utf8("${stage}/${Str.join_with(library.split_on("/").drop_last(1), "/")}"))?
+		Path.copy!(Path.utf8("platform/${library}"), Path.utf8("${stage}/${library}"))?
+	}
 	Path.copy_dir!(Path.utf8("platform/${Bundle.sysroot}"), Path.utf8("${stage}/${Bundle.sysroot}"))?
 	for notice in Bundle.notices {
 		Path.copy!(Path.utf8(notice), Path.utf8("${stage}/${notice}"))?
@@ -110,7 +115,7 @@ main! = |raw_args| {
 }
 
 ## Serve a copy of the bundle on localhost, make the `macos.roc` tool naming
-## it there, and create, build and test a counter with the tool.
+## it there, and create, build, test and package an app with the tool.
 consumer_test! : Str, Str, Str => Try({}, _)
 consumer_test! = |root, out, bundle| {
 	dir = "${root}/build/bundle-test"
@@ -119,7 +124,7 @@ consumer_test! = |root, out, bundle| {
 	Path.create_all!(Path.utf8(served_dir))?
 	Path.copy!(Path.utf8("${out}/${bundle}"), Path.utf8("${served_dir}/${bundle}"))?
 	server = Cmd.new("python3")
-		.args(["-I", "-u", "-m", "http.server", "0", "--bind", "::", "--directory", OsStr.from_str(served_dir)])
+		.args(["-I", "-u", "-c", OsStr.from_str(Bundle.serve_script), OsStr.from_str(served_dir)])
 		.stdin(Null)
 		.stdout(Pipe)
 		.stderr(MergeWithStdout)
@@ -128,7 +133,7 @@ consumer_test! = |root, out, bundle| {
 		Ok(port) =>
 			match first_steps!(root, dir, "http://localhost:${port.to_str()}") {
 				Ok({}) =>
-					match package_counter!(dir) {
+					match package_app!(dir) {
 						Ok({}) => assets_app!(root, dir, "http://localhost:${port.to_str()}/${bundle}")
 						Err(problem) => Err(problem)
 					}
@@ -140,7 +145,7 @@ consumer_test! = |root, out, bundle| {
 	server.close!() ?? {}
 	match result {
 		Ok({}) => {
-			note!("bundle: macos.roc created, built, tested and packaged a counter, and built, tested and ran under dev ${Bundle.assets_example} with its assets, against the served bundle")
+			note!("bundle: macos.roc created, built, tested and packaged the starter app, and built, tested and ran under dev ${Bundle.assets_example} with its assets, against the served bundle")
 			Ok({})
 		}
 		Err(problem) => {
@@ -159,7 +164,8 @@ served! = |server|
 		Err(error) => Err("the local server did not start: ${Str.inspect(error)}")
 	}
 
-## `roc macos.roc init counter`, then `build` and `test`, as an author takes
+## `roc macos.roc init my-app`, then `build`, `test` and `fuzz --check`
+## (not on an Intel Mac, which roc-fuzz does not run on), as an author takes
 ## them, with the tool and the platform fetched from `base_url`.
 first_steps! : Str, Str, Str => Try({}, Str)
 first_steps! = |root, dir, base_url| {
@@ -169,27 +175,31 @@ first_steps! = |root, dir, base_url| {
 	Path.copy!(Path.utf8("${served_dir}/macos.roc"), Path.utf8("${dir}/macos.roc")) ? |error| "could not copy macos.roc: ${Str.inspect(error)}"
 	Path.create_all!(Path.utf8(cache)) ? |error| "could not create ${cache}: ${Str.inspect(error)}"
 	note!("bundle: an author's first steps in ${dir}, package cache ${cache}")
-	for { args, cwd } in Bundle.first_steps {
+	machine = Cmd.new("uname").args(["-m"]).capture!() ?? ""
+	if machine.trim() == "x86_64" {
+		note!("bundle: roc-fuzz has no Intel Mac target, so this Intel Mac skips `roc macos.roc fuzz --check`")
+	}
+	for { args, cwd } in Bundle.first_steps_on(machine.trim()) {
 		shown = "roc macos.roc ${Str.join_with(args, " ")}${if (cwd.is_empty()) "" else " (in ${cwd}/)"}"
 		step!(Cmd.new("roc").args(["macos.roc"].concat(args).map(OsStr.from_str)).cwd(Path.utf8(if (cwd.is_empty()) dir else "${dir}/${cwd}")).env("XDG_CACHE_HOME", OsStr.from_str(cache)), shown) ? |_| "${shown} failed against the bundle"
 	}
 	Ok({})
 }
 
-## `roc macos.roc ci package` the counter `init` made, twice, as the release
+## `roc macos.roc ci package` the app `init` made, twice, as the release
 ## workflow `init` wrote does for a pushed pre-release tag
 ## with no secrets: both zips must be the same bytes, hold exactly the entries
 ## `Bundle.package_entries` names with their modes, pass `unzip -t`, and
 ## extract with `ditto` (as Archive Utility does) to an app whose seal
-## `codesign --verify --strict` accepts and whose program runs a recorded
-## case, and whose Info.plist has the tag's version. The workflow is linted
+## `codesign --verify --strict` accepts and whose program runs a
+## spec, and whose Info.plist has the tag's version. The workflow is linted
 ## when actionlint is on PATH.
-package_counter! : Str => Try({}, Str)
-package_counter! = |dir| {
-	app_dir = "${dir}/counter"
+package_app! : Str => Try({}, Str)
+package_app! = |dir| {
+	app_dir = "${dir}/my-app"
 	cache = "${dir}/cache"
 	zip = "${app_dir}/${Bundle.package_zip}"
-	shown = "roc macos.roc ${Str.join_with(Bundle.package_args, " ")} (in counter/)"
+	shown = "roc macos.roc ${Str.join_with(Bundle.package_args, " ")} (in my-app/)"
 	var $digests = []
 	for _ in ["first", "second"] {
 		command = Bundle.package_env.fold(
@@ -208,36 +218,26 @@ package_counter! = |dir| {
 	entries = Bundle.zip_entries(bytes) ? |_| "${zip} is not a zip archive"
 	if entries != Bundle.package_entries {
 		listed = Str.join_with(entries.map(|e| "${e.name} ${e.mode.to_str()}"), ", ")
-		return Err("${zip} holds other entries or modes than a sealed counter.app should: ${listed}")
+		return Err("${zip} holds other entries or modes than a sealed my-app.app should: ${listed}")
 	}
 	step!(Cmd.new("unzip").args(["-tq", OsStr.from_str(zip)]), "unzip -tq ${Bundle.package_zip}") ? |_| "unzip found ${zip} damaged"
 	extracted = "${dir}/extracted"
 	fresh!(extracted) ? |_| "could not empty ${extracted}"
 	step!(Cmd.new("ditto").args(["-x", "-k", OsStr.from_str(zip), OsStr.from_str(extracted)]), "ditto -x -k ${Bundle.package_zip}") ? |_| "ditto could not extract ${zip}"
-	extracted_app = "${extracted}/counter.app"
-	step!(Cmd.new("codesign").args(["--verify", "--strict", "--verbose=2", OsStr.from_str(extracted_app)]), "codesign --verify --strict the extracted counter.app") ? |_| "the extracted counter.app's seal does not verify"
+	extracted_app = "${extracted}/my-app.app"
+	step!(Cmd.new("codesign").args(["--verify", "--strict", "--verbose=2", OsStr.from_str(extracted_app)]), "codesign --verify --strict the extracted my-app.app") ? |_| "the extracted my-app.app's seal does not verify"
 	plist = Path.read_utf8!(Path.utf8("${extracted_app}/Contents/Info.plist")) ? |error| "could not read the extracted Info.plist: ${Str.inspect(error)}"
 	for line in Bundle.package_plist {
 		if !plist.contains(line) {
-			return Err("the packaged counter.app's Info.plist does not hold ${line}, for the tag v1.0.0-rc.1")
+			return Err("the packaged my-app.app's Info.plist does not hold ${line}, for the tag v1.0.0-rc.1")
 		}
 	}
-	steps = Path.read_utf8!(Path.utf8("${app_dir}/tests/${Bundle.package_case}.script")) ? |error| "could not read the case: ${Str.inspect(error)}"
-	expected = Path.read_utf8!(Path.utf8("${app_dir}/tests/${Bundle.package_case}.expected")) ? |error| "could not read the case: ${Str.inspect(error)}"
-	note!("RUN the extracted counter.app/Contents/MacOS/counter with tests/${Bundle.package_case}.script")
-	ran = Cmd.new(OsStr.from_str("${extracted_app}/Contents/MacOS/counter"))
-		.env("ROC_SCRIPT", OsStr.from_str(steps.trim()))
-		.stdin(Null)
-		.stderr(MergeWithStdout)
-		.timeout(Duration.seconds(60))
-		.run!() ? |error| "the extracted counter.app did not finish: ${Str.inspect(error)}"
-	printed = Str.from_utf8_lossy(ran.stdout_bytes)
-	if ran.status != Exited(0) or !Recorded.matches(expected, printed) {
-		return Err("the extracted counter.app's program did not print tests/${Bundle.package_case}.expected; it printed:\n${printed}")
-	}
+	spec = "tests/specs/${Bundle.package_case}.scm"
+	note!("RUN the extracted my-app.app/Contents/MacOS/my-app with ${spec}")
+	passes!({ program: "${extracted_app}/Contents/MacOS/my-app", dir: app_dir, spec, update: Bool.False, metrics: Bool.False, args: [], env: [] }, "the extracted my-app.app's program")?
 	workflow = "${app_dir}/.github/workflows/release.yml"
 	if Cmd.check_available!("actionlint") {
-		step!(Cmd.new("actionlint").args([OsStr.from_str(workflow)]), "actionlint counter/.github/workflows/release.yml") ? |_| "actionlint found problems in the workflow init writes"
+		step!(Cmd.new("actionlint").args([OsStr.from_str(workflow)]), "actionlint my-app/.github/workflows/release.yml") ? |_| "actionlint found problems in the workflow init writes"
 	} else {
 		note!("bundle: actionlint is not on PATH, so the workflow init writes was not linted")
 	}
@@ -245,22 +245,24 @@ package_counter! = |dir| {
 }
 
 ## The repository's example with assets, as an author would have it beside
-## the tool: `main.roc` naming the served bundle, `assets/` and `tests/`.
+## the tool: `src/main.roc` naming the served bundle, `assets/` and
+## `tests/specs/`.
 ## `macos.roc build` and `test` it, check the bundle it made, and run its
-## case on the program inside the bundle, then under `macos.roc dev`.
+## spec on the program inside the bundle, then under `macos.roc dev`.
 assets_app! : Str, Str, Str => Try({}, Str)
 assets_app! = |root, dir, url| {
 	name = Bundle.assets_example
 	app_dir = "${dir}/${name}"
 	cache = "${dir}/cache"
-	source = Path.read_utf8!(Path.utf8("${root}/examples/${name}/main.roc")) ? |error| "could not read examples/${name}/main.roc: ${Str.inspect(error)}"
-	served = Bundle.released_main(source, url) ? |_| "examples/${name}/main.roc does not name ../../platform/main.roc"
-	Path.create_all!(Path.utf8("${app_dir}/tests")) ? |error| "could not create ${app_dir}/tests: ${Str.inspect(error)}"
-	Path.write_utf8!(Path.utf8("${app_dir}/main.roc"), served) ? |error| "could not write ${app_dir}/main.roc: ${Str.inspect(error)}"
-	Path.copy_dir!(Path.utf8("${root}/examples/${name}/assets"), Path.utf8("${app_dir}/assets")) ? |error| "could not copy examples/${name}/assets: ${Str.inspect(error)}"
-	for file in [".script", ".expected"].map(|ext| "${Bundle.assets_case}${ext}") {
-		Path.copy!(Path.utf8("${root}/examples/${name}/tests/${file}"), Path.utf8("${app_dir}/tests/${file}")) ? |error| "could not copy ${file}: ${Str.inspect(error)}"
+	source = Path.read_utf8!(Path.utf8("${root}/examples/${name}/src/main.roc")) ? |error| "could not read examples/${name}/src/main.roc: ${Str.inspect(error)}"
+	served = Bundle.released_main(source, url) ? |_| "examples/${name}/src/main.roc does not name ../../../platform/main.roc"
+	for sub in ["tests/specs", "src"] {
+		Path.create_all!(Path.utf8("${app_dir}/${sub}")) ? |error| "could not create ${app_dir}/${sub}: ${Str.inspect(error)}"
 	}
+	Path.write_utf8!(Path.utf8("${app_dir}/src/main.roc"), served) ? |error| "could not write ${app_dir}/src/main.roc: ${Str.inspect(error)}"
+	Path.copy_dir!(Path.utf8("${root}/examples/${name}/assets"), Path.utf8("${app_dir}/assets")) ? |error| "could not copy examples/${name}/assets: ${Str.inspect(error)}"
+	spec = "tests/specs/${Bundle.assets_case}.scm"
+	Path.copy!(Path.utf8("${root}/examples/${name}/${spec}"), Path.utf8("${app_dir}/${spec}")) ? |error| "could not copy ${spec}: ${Str.inspect(error)}"
 	Path.copy!(Path.utf8("${dir}/macos.roc"), Path.utf8("${app_dir}/macos.roc")) ? |error| "could not copy macos.roc: ${Str.inspect(error)}"
 	for command in ["build", "test"] {
 		shown = "roc macos.roc ${command} (in ${name}/)"
@@ -277,36 +279,21 @@ assets_app! = |root, dir, url| {
 		return Err("${name}.app's Info.plist names no icon")
 	}
 	# The program inside the bundle, which has no assets/ beside it.
-	steps = Path.read_utf8!(Path.utf8("${app_dir}/tests/${Bundle.assets_case}.script")) ? |error| "could not read the case: ${Str.inspect(error)}"
-	expected = Path.read_utf8!(Path.utf8("${app_dir}/tests/${Bundle.assets_case}.expected")) ? |error| "could not read the case: ${Str.inspect(error)}"
-	note!("RUN ${name}.app/Contents/MacOS/${name} with tests/${Bundle.assets_case}.script")
-	ran = Cmd.new(OsStr.from_str("${app_dir}/${name}.app/Contents/MacOS/${name}"))
-		.env("ROC_SCRIPT", OsStr.from_str(steps.trim()))
-		.stdin(Null)
-		.stderr(MergeWithStdout)
-		.timeout(Duration.seconds(60))
-		.run!() ? |error| "${name}.app did not finish: ${Str.inspect(error)}"
-	printed = Str.from_utf8_lossy(ran.stdout_bytes)
-	if ran.status != Exited(0) or !Recorded.matches(expected, printed) {
-		return Err("${name}.app's own program did not print tests/${Bundle.assets_case}.expected; it printed:\n${printed}")
-	}
-	# `macos.roc dev`: `roc main.roc` here, which finds assets/ in this directory.
-	note!("RUN roc macos.roc dev (in ${name}/) with tests/${Bundle.assets_case}.script")
-	dev = Cmd.new("roc")
-		.args(["macos.roc", "dev"].map(OsStr.from_str))
-		.cwd(Path.utf8(app_dir))
-		.env("XDG_CACHE_HOME", OsStr.from_str(cache))
-		.env("ROC_SCRIPT", OsStr.from_str(steps.trim()))
-		.stdin(Null)
-		.stderr(MergeWithStdout)
-		.timeout(Duration.seconds(120))
-		.run!() ? |error| "roc macos.roc dev did not finish: ${Str.inspect(error)}"
-	dev_printed = Str.from_utf8_lossy(dev.stdout_bytes)
-	match dev_printed.split_on("\n") {
-		[first, .. as rest] if dev.status == Exited(0) and first.starts_with("Running main.roc") and Recorded.matches(expected, Str.join_with(rest, "\n")) => Ok({})
-		_ => Err("roc macos.roc dev (in ${name}/) did not print tests/${Bundle.assets_case}.expected after its first line; it printed:\n${dev_printed}")
-	}
+	note!("RUN ${name}.app/Contents/MacOS/${name} with ${spec}")
+	passes!({ program: "${app_dir}/${name}.app/Contents/MacOS/${name}", dir: app_dir, spec, update: Bool.False, metrics: Bool.False, args: [], env: [] }, "${name}.app's own program")?
+	# `macos.roc dev`: `roc ../src/main.roc` from .macos/, pointed at assets/ here.
+	note!("RUN roc macos.roc dev (in ${name}/) with ${spec}")
+	passes!({ program: "roc", dir: app_dir, spec, update: Bool.False, metrics: Bool.False, args: ["macos.roc", "dev"], env: [("XDG_CACHE_HOME", cache)] }, "roc macos.roc dev (in ${name}/)")
 }
+
+## A spec run that must pass, or the reason it did not.
+passes! : SpecRun.Run, Str => Try({}, Str)
+passes! = |run, what|
+	match SpecRun.run!(run) {
+		Ok(Passed) | Ok(Updated) | Ok(Measured(_)) => Ok({})
+		Ok(Failed(problems)) => Err("${what} did not pass ${run.spec}:\n  ${Str.join_with(problems, "\n  ")}")
+		Err(error) => Err("${what} could not run ${run.spec}: ${Str.inspect(error)}")
+	}
 
 ## Every file under `base/sub`, relative to `base`.
 walk! : Str, Str => Try(List(Str), _)

@@ -6,6 +6,7 @@ app [main!] {
 
 import cli.Cmd
 import cli.Duration
+import cli.Env
 import cli.Monotonic
 import cli.OsStr
 import cli.Path
@@ -13,15 +14,18 @@ import cli.Sleep
 import cli.Stderr
 import cli.Stdout
 import src/Demo
+import src/SpecRun
 
 ## Record the README's animated tiles, `docs/images/<example>.gif`, from the
 ## built examples (`blueprint run build` first):
 ##
-##     roc-stable scripts/record_demos.roc                  # every example with a demo.script
+##     roc-stable scripts/record_demos.roc                  # every example with a demo
 ##     roc-stable scripts/record_demos.roc -- counter todos # the named ones
 ##
-## Each example runs its `examples/<example>/demo.script` steps, in the light
-## appearance, while `screencapture -l<window> -o -x` takes a frame of its
+## An example's demo is its one spec written `(demo …)` among
+## `examples/<example>/tests/specs/*.scm` (`SpecRun.is_demo!`, the rule that
+## keeps `test` and the check from running it). The example runs it from its
+## own directory, as a spec runs, in the light appearance, while `screencapture -l<window> -o -x` takes a frame of its
 ## window every `Demo.frame_ms`. A capture names the window, so the app never
 ## needs focus and other windows never show. ffmpeg then scales the frames
 ## to `Demo.tile_width`, drops repeats and writes a looping GIF.
@@ -34,15 +38,24 @@ main! : List(OsStr) => Try({}, _)
 main! = |raw_args| {
 	named = raw_args.map(OsStr.display).drop_if(|arg| arg == "--")
 	listed = Path.list!(Path.utf8("examples"))?.keep_oks(|path| Path.filename(path).map_ok(Path.display))
-	var $names = []
+	var $demos = []
 	for name in listed.sort_with(compare_str) {
-		if Path.exists!(Path.utf8("examples/${name}/demo.script"))? and (named.is_empty() or named.contains(name)) {
-			$names = $names.append(name)
+		if named.is_empty() or named.contains(name) {
+			match demo_of!(name) {
+				Ok(spec) => {
+					$demos = $demos.append({ name, spec })
+				}
+				Err(NoDemo) => {}
+				Err(Several(specs)) => {
+					warn!("record_demos: examples/${name} has more than one (demo …) spec: ${Str.join_with(specs, ", ")}")
+					return Err(Exit(2))
+				}
+			}
 		}
 	}
 	for name in named {
-		if !$names.contains(name) {
-			warn!("record_demos: examples/${name}/demo.script does not exist")
+		if !$demos.any(|demo| demo.name == name) {
+			warn!("record_demos: examples/${name}/tests/specs holds no (demo …) spec")
 			return Err(Exit(2))
 		}
 	}
@@ -53,8 +66,8 @@ main! = |raw_args| {
 		.stderr(Null)
 		.spawn!()?
 	var $problems = []
-	for name in $names {
-		match record!(name) {
+	for { name, spec } in $demos {
+		match record!(name, spec) {
 			Ok(made) => note!("docs/images/${name}.gif: ${kb(made.bytes)}, ${made.frames.to_str()} frames, ${Demo.seconds(made.ms)} s")
 			Err(problem) => {
 				warn!("${name}: ${problem}")
@@ -71,21 +84,44 @@ main! = |raw_args| {
 	}
 }
 
-## Run one example's demo, capturing its window, and write its GIF.
-record! : Str => Try({ bytes : U64, frames : U64, ms : U64 }, Str)
-record! = |name| {
-	exe = "examples/${name}/${name}"
-	if !(Path.exists!(Path.utf8(exe)) ?? Bool.False) {
-		return Err("${exe} is not built: run `blueprint run build` first")
+## An example's demo: the one spec among its `tests/specs/` that is a
+## `(demo …)`, by its path relative to the example.
+demo_of! : Str => Try(Str, [NoDemo, Several(List(Str))])
+demo_of! = |name| {
+	app_dir = "examples/${name}"
+	specs = (Path.list!(Path.utf8("${app_dir}/tests/specs")) ?? []).keep_oks(|path| Path.filename(path).map_ok(Path.display))
+	var $demos = []
+	for spec in SpecRun.names(specs).map(|file| "tests/specs/${file}") {
+		if SpecRun.is_demo!("${app_dir}/${spec}") {
+			$demos = $demos.append(spec)
+		}
 	}
-	text = Path.read_utf8!(Path.utf8("examples/${name}/demo.script")) ? |error| "could not read its demo.script: ${Str.inspect(error)}"
-	steps = Demo.steps(text) ? |problem| "its demo.script is not usable: ${Str.inspect(problem)} (it must end with quit)"
+	match $demos {
+		[] => Err(NoDemo)
+		[one] => Ok(one)
+		several => Err(Several(several))
+	}
+}
+
+## Run one example's demo, `spec` relative to its directory, capturing its
+## window, and write its GIF.
+record! : Str, Str => Try({ bytes : U64, frames : U64, ms : U64 }, Str)
+record! = |name, spec| {
+	root = Env.cwd!().map_ok(|cwd| cwd.display()) ?? "."
+	app_dir = "${root}/examples/${name}"
+	exe = "${app_dir}/${name}"
+	if !(Path.exists!(Path.utf8(exe)) ?? Bool.False) {
+		return Err("examples/${name}/${name} is not built: run `blueprint run build` first")
+	}
+	text = Path.read_utf8!(Path.utf8("${app_dir}/${spec}")) ? |error| "could not read ${spec}: ${Str.inspect(error)}"
+	steps = Demo.steps(text) ? |problem| "${spec} is not usable: ${Str.inspect(problem)} (it is a demo whose first step is (window))"
 	dir = "build/demos/${name}"
 	Path.delete_all!(Path.utf8(dir)) ?? {}
 	Path.create_all!(Path.utf8(dir)) ? |error| "could not create ${dir}: ${Str.inspect(error)}"
 	note!("record_demos: ${name}")
 	demo = Cmd.new(OsStr.from_str(exe))
-		.env("ROC_SCRIPT", OsStr.from_str(steps))
+		.cwd(Path.utf8(app_dir))
+		.env("ROC_SPEC", OsStr.from_str(steps))
 		.env("ROC_APPEARANCE", "light")
 		.stdin(Null)
 		.stdout(Null)
