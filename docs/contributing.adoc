@@ -19,6 +19,17 @@ https://github.com/lukewilliamboswell/roc-automation[roc-automation], and
 https://github.com/lukewilliamboswell/roc-blueprint[Blueprint] 0.13.0
 provides the rest of the environment.
 
+To try one example from a checkout, run it with Blueprint. It builds the
+host first when it is missing, then runs `roc src/main.roc` in the
+example's directory, so the example finds its `assets/` and reloads as you
+save. Name no example to list them. With Nix, Blueprint needs no install:
+
+[source,sh]
+----
+blueprint run run -- about
+nix run github:lukewilliamboswell/roc-blueprint/0.13.0 run run -- about
+----
+
 [source,sh]
 ----
 blueprint run build                  # Swift host, linker stubs, every example
@@ -105,6 +116,7 @@ xref:apps.adoc#the-examples[The examples].
 | `blueprint run check` | the pull-request gate; `check -- STAGE...` runs the named stages
 | `blueprint run build` | `scripts/build.roc`: host, stubs and every example; `build -- counter` for one, `build -- glue` to regenerate the glue
 | `blueprint run link-inputs` | `scripts/link_inputs.roc`, the producer of the linker-input release: `-- build DIR`, `-- stubs DIR`, `-- fingerprint`
+| `blueprint run run` | `scripts/run.roc`: `run -- NAME` starts one example from its directory (`roc src/main.roc`), building the host first when it is missing
 | `blueprint run test` | `roc test` on the platform root and every example
 | `blueprint run examples` | every example's specs; `examples -- --update` rewrites their dumps and lowers their allocation bounds
 | `blueprint run bundle` | the platform bundle, in `build/platform/` (see xref:contributing.adoc#the-bundle[The bundle])
