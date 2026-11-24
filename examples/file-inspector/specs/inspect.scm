@@ -16,7 +16,7 @@
                          (vstack :views 3
                            (image arrow.down.doc)
                            (text "Drop files here" :color secondary-label :text-style headline)
-                           (text "The app holds each file as a handle, never its bytes." :color tertiary-label :text-style caption1)))
+                           (text "Choose a file to see its digest, preview, and URL." :color tertiary-label :text-style caption1)))
                        (text "1 file" :color secondary-label :text-style caption1)
                        (box :border line:1:separator
                          (vstack :views 1
@@ -27,7 +27,7 @@
                                (text "21 bytes · text/plain" :color secondary-label :text-style caption1))
                              (spacer)
                              (button "Inspect"))))
-                       (box :border line:1:separator
+                       (box :border line:1:separator :fill text-background
                          (vstack :views 5
                            (hstack :views 4
                              (image doc.text.magnifyingglass)

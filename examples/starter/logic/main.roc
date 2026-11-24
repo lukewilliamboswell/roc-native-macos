@@ -10,6 +10,7 @@
 ## - `Eq`: the equalizer's settings, in tenths of a dB.
 ## - `Preset`: the versioned preset document, its file and its checks.
 ## - `Library`: the built-in presets, Ember Tunnel, and saving presets.
+## - `Gallery`: the twelve shaded built-in presets.
 ## - `Scene`: what a preset draws, for the drawing surface.
 ## - `Prefs`: the listener's choices kept between launches.
 ## - `JsonValue`: JSON text and values, which presets are written in.
@@ -20,4 +21,4 @@
 ## with `expect`, fuzzed, and reused anywhere. To add a module, write
 ## `logic/<Name>.roc` as a type module (`Name := [].{ ... }`) and add `Name`
 ## to the list below; then `import logic.Name` where it is used.
-package [Eq, JsonValue, Library, Lyrics, Pairing, Prefs, Preset, Queue, Scene] {}
+package [Eq, Gallery, JsonValue, Library, Lyrics, Pairing, Prefs, Preset, Queue, Scene] {}

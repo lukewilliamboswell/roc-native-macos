@@ -72,10 +72,10 @@ Prefs := [].{
 			_ => Regular
 		}
 
-	## Lyrics start off, at the regular size, with Scope, at full volume and
+	## Lyrics start off, at the regular size, with Orb Garden, at full volume and
 	## a flat EQ.
 	defaults : Choices
-	defaults = { lyrics: Bool.False, lyric_size: Regular, preset: "builtin.scope", volume: 100, eq: Eq.flat, offsets: [] }
+	defaults = { lyrics: Bool.False, lyric_size: Regular, preset: "builtin.orb-garden", volume: 100, eq: Eq.flat, offsets: [] }
 
 	encode : Choices -> Str
 	encode = |prefs|

@@ -143,7 +143,7 @@ cells = store.cells()
 view : () -> Elem(Engine.StoreRoot(_))
 view = ||
 	Ui.vstack(
-		{ spacing: 14, align: Fill, width: AtLeast(560) },
+		{ spacing: 14, align: Fill, padding: All(6), width: AtLeast(560) },
 		[
 			Ui.hstack(
 				{},
@@ -194,8 +194,8 @@ mandelbrot = || {
 				],
 			),
 			Ui.box(
-				{ padding: All(10), border: Line({ color: Separator, width: 1 }), width: Fill },
-				Ui.text(cells.bands.signal().map(picture), { design: Monospaced, size: Fixed(10), overflow: Wrap, width: Fill }),
+				{ fill: Adaptive({ light: 0x142326, dark: 0x142326 }), radius: 12, padding: All(14), width: Fill },
+				Ui.text(cells.bands.signal().map(picture), { color: Adaptive({ light: 0xAFF2DC, dark: 0xAFF2DC }), design: Monospaced, size: Fixed(10), overflow: Wrap, width: Fill }),
 			),
 			Engine.watch_latest(
 				job,
@@ -328,7 +328,7 @@ report_panel : () -> Elem(Engine.StoreRoot(_))
 report_panel = || {
 	report = cells.report.signal()
 	Ui.box(
-		{ padding: All(12), border: Line({ color: Separator, width: 1 }), width: Fill },
+		{ fill: TextBackground, radius: 12, padding: All(12), border: Line({ color: Separator, width: 1 }), width: Fill },
 		Ui.vstack(
 			{ spacing: 6, align: Fill },
 			[

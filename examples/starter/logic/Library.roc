@@ -1,3 +1,4 @@
+import Gallery
 import JsonValue
 import Preset
 import "../specs/fixtures/ember-tunnel.json" as ember_file : Str
@@ -63,7 +64,13 @@ Library := [].{
 	}
 
 	builtins : List(Preset.Doc)
-	builtins = [Library.scope, Library.spectrum_bars, Library.echo_rings, Library.sync_test]
+	builtins = [Library.scope, Library.spectrum_bars, Library.echo_rings].concat(Gallery.all).append(Library.sync_test)
+
+	## The preset a first launch shows, and the one chosen when the chosen
+	## preset is gone: one of the shaded built-ins, at its best with the
+	## default song.
+	default : Preset.Doc
+	default = Gallery.orb_garden
 
 	## The worked example a listener makes from a blank preset: a circular
 	## waveform a fifth of the view across, which the bass swells from 20% to
@@ -208,10 +215,10 @@ Library := [].{
 ## The built-ins and the worked example are valid presets, and each reads
 ## back from its file unchanged.
 expect Library.builtins.append(Library.ember_tunnel).all(|p| Preset.problems(p).is_empty() and Preset.decode(Preset.encode(p)) == Ok(p))
-expect Library.builtins.map(|p| p.name) == ["Scope", "Spectrum Bars", "Echo Rings", "Sync Test"]
+expect Library.builtins.map(|p| p.name) == ["Scope", "Spectrum Bars", "Echo Rings", "Liquid Drift", "Blur Corridor", "Superscope Bloom", "Flux Streaks", "Phase Scope", "Peak Meter", "Plasma Weave", "Hyperspace", "Mirror Shard", "Spectrum Fire", "Ripple Pool", "Orb Garden", "Sync Test"] and Library.default.id == "builtin.orb-garden"
 
 ## Every layer of the built-ins and Ember Tunnel uses a named palette.
-expect Library.builtins.append(Library.ember_tunnel).all(|p| p.layers.all(|l| Library.palette_name(l.colors) != "Custom")) and Library.palette_name([]) == "Custom"
+expect [Library.scope, Library.spectrum_bars, Library.echo_rings, Library.ember_tunnel].all(|p| p.layers.all(|l| Library.palette_name(l.colors) != "Custom")) and Library.palette_name([]) == "Custom"
 
 expect Library.slug("Ember Tunnel!") == "ember-tunnel" and Library.slug("  ---  ") == "preset" and Library.slug("Über 2") == "ber-2"
 
@@ -251,11 +258,38 @@ expect {
 ## exactly as Export… writes it, and reads back as Ember Tunnel.
 expect Preset.encode(Library.ember_tunnel) == ember_file.trim() and Preset.decode(ember_file) == Ok(Library.ember_tunnel)
 
-## A preset may carry shader stages: an object kept as it is through its
-## file; anything else there needs attention.
+## A preset's shaders go through its file: their sources with quotes,
+## backslashes and line breaks, and params fixed or following the sound.
 expect {
-	carrying = { ..Library.blank, shaders: Shaders(JsonValue.Object([("warp", JsonValue.Text("zoom"))])) }
+	stages = {
+		warp: Some("// \"warp\"\nfloat4 warp(Frame f, Params p) {\n    return sample(f, f.uv) * p.decay; // a \\ fade\n}"),
+		composite: None,
+		params: [
+			{ name: "decay", value: 0.975, low: 0.9, high: 0.995, follows: Fixed, about: "how much a frame keeps" },
+			{ name: "push", value: 0, low: 0, high: 0.03, follows: Feature(Bass), about: "" },
+			{ name: "glow", value: 1, low: 0, high: 2, follows: Feature(Band(3)), about: "" },
+		],
+	}
+	carrying = { ..Library.blank, shaders: Shaders(stages) }
 	Preset.decode(Preset.encode(carrying)) == Ok(carrying)
 		and Preset.decode(Preset.encode(Library.blank)) == Ok(Library.blank)
-		and Preset.decode("{\"version\": 1, \"id\": \"a\", \"name\": \"A\", \"background\": \"#000000\", \"layers\": [], \"shaders\": 3}") == Err([{ field: "shaders", problem: "is not an object of shader stages" }])
+		and Preset.decode("{\"version\": 1, \"id\": \"a\", \"name\": \"A\", \"background\": \"#000000\", \"layers\": [], \"shaders\": 3}") == Err([{ field: "shaders", problem: "is not an object" }])
+}
+
+## A preset's shaders are checked field by field.
+expect {
+	param = { name: "decay", value: 0.5, low: 0, high: 1, follows: Fixed, about: "" }
+	stages = {
+		warp: Some(Str.repeat("x", 65_537)),
+		composite: None,
+		params: [{ ..param, name: "9lives" }, param, param, { ..param, low: 2 }, { ..param, value: 3 }].concat(List.repeat({ ..param, name: "n" }, 12)),
+	}
+	fields = Preset.problems({ ..Library.blank, shaders: Shaders(stages) }).map(|p| p.field)
+	fields.contains("shaders.warp")
+		and fields.contains("shaders.params")
+		and fields.contains("shaders.params[0].name")
+		and fields.contains("shaders.params[2].name")
+		and fields.contains("shaders.params[3].high")
+		and fields.contains("shaders.params[4].value")
+		and Preset.problems({ ..Library.blank, shaders: Shaders({ warp: None, composite: None, params: [] }) }).map(|p| p.field) == ["shaders"]
 }

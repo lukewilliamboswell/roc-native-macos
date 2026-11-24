@@ -70,9 +70,9 @@ Theme : {
 
 theme : Theme
 theme = {
-	page: { spacing: 14, align: Fill, width: AtLeast(440) },
+	page: { spacing: 16, align: Fill, width: AtLeast(440), padding: All(8) },
 	quiet: { style: Subheadline, color: SecondaryLabel, design: MonospacedDigits },
-	panel: { padding: Axes({ horizontal: 4, vertical: 6 }), border: Line({ color: Separator, width: 1 }), height: Fill },
+	panel: { fill: TextBackground, padding: Axes({ horizontal: 6, vertical: 8 }), border: Line({ color: Separator, width: 1 }), radius: 12, height: Fill },
 }
 
 ## Which to-dos the list shows.
@@ -162,7 +162,7 @@ row : Signal(r, U64), State(r, Todo) -> Elem(r)
 row = |key, todo| {
 	held = todo.signal()
 	Ui.hstack(
-		{ padding: Axes({ horizontal: 8, vertical: 3 }) },
+		{ padding: Axes({ horizontal: 8, vertical: 6 }) },
 		[
 			Ui.checkbox(held.map(|t| t.title), { checked: held.map(|t| t.done), on_change: todo.set_value(|was, checked| { ..was, done: checked }), title_display: Hidden }),
 			Ui.text_s(held.map(|t| t.title), held.map(|t| if (t.done) { color: SecondaryLabel } else {})),

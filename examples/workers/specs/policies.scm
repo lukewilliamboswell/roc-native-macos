@@ -11,7 +11,7 @@
     (click (button "Timed job"))
     (await-work)
     (expect-workers :limit 2 :running 0 :queued 0 :started 2 :answered 0 :lost 0 :stopped 1 :timed-out 1 :dropped 1)
-    (expect-dump (window :width 600 :height 283
+    (expect-dump (window :width 600 :height 295
                    (vstack :views 1
                      (vstack :views 2
                        (hstack :views 3

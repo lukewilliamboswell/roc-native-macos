@@ -12,7 +12,7 @@
     (fill (text-field) "fixture")
     (await-work)
     (expect-workers :limit 1 :live 1 :running 0 :queued 0 :started 1 :answered 3 :lost 0 :stopped 0 :timed-out 0 :dropped 0)
-    (expect-dump (window :width 600 :height 404
+    (expect-dump (window :width 600 :height 416
                    (vstack :views 1
                      (vstack :views 2
                        (hstack :views 3
@@ -45,7 +45,7 @@
                                (text "Inspected in a worker." :text-style callout)
                                (spacer)
                                (file-button "Choose…")))
-                           (box :border line:1:separator
+                           (box :border line:1:separator :fill text-background
                              (vstack :views 4
                                (hstack :views 3
                                  (text "hello.txt report.txt" :text-style headline)

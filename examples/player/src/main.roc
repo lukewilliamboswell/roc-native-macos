@@ -48,7 +48,7 @@ view = || {
 	status = cells.status.signal()
 	loaded = status.map(|s| s.state != Idle and s.state != Loading)
 	Ui.vstack(
-		{ spacing: 14, align: Fill, width: AtLeast(560) },
+		{ spacing: 10, align: Fill, padding: All(6), width: AtLeast(600) },
 		[
 			Ui.hstack(
 				{},
@@ -62,44 +62,66 @@ view = || {
 				],
 			),
 			Ui.drop_zone(
-				{ on_drop: Engine.handle_by(cells.track.signal(), received) },
+				{ on_drop: Engine.handle_by(cells.track.signal(), received), padding: All(10) },
 				Ui.text("Drop an audio file here", { style: Headline, color: SecondaryLabel, align: Center, width: Fill }),
 			),
-			Ui.text({ name: cells.name.signal(), status }.Signal.map(|{ name, status: s }| headline(name, s)), { design: MonospacedDigits }),
-			Ui.slider(status.map(|s| s.position_ms.to_i64_wrap()), { range: { min: 0, max: 60_000 }, on_input: Engine.handle(seeked), enabled: loaded, width: Fill }),
-			Ui.hstack(
-				{ spacing: 8 },
-				[
-					Ui.button("Play", { on_press: Engine.handle(|_| send([Play])), enabled: loaded, icon: Symbol("play.fill") }),
-					Ui.button("Pause", { on_press: Engine.handle(|_| send([Pause])), enabled: loaded, icon: Symbol("pause.fill") }),
-					Ui.button("Resume", { on_press: Engine.handle(|_| send([Resume])), enabled: loaded }),
-					Ui.button("Stop", { on_press: Engine.handle(|_| send([Stop])), enabled: loaded, icon: Symbol("stop.fill") }),
-					Ui.spacer(),
-					Ui.text("Volume", caption),
-					Ui.slider(status.map(|s| whole(s.volume * 100)), { range: { min: 0, max: 100 }, on_input: Engine.handle(|typed| send([Volume(number(typed) / 100)])), width: Fixed(120) }),
-				],
+			Ui.box(
+				{ fill: ControlBackground, radius: 12, padding: All(12), width: Fill },
+				Ui.vstack(
+					{ spacing: 8, align: Fill },
+					[
+						Ui.text({ name: cells.name.signal(), status }.Signal.map(|{ name, status: s }| headline(name, s)), { style: Headline, design: MonospacedDigits, overflow: TruncateMiddle, width: Fill }),
+						Ui.slider(status.map(|s| s.position_ms.to_i64_wrap()), { range: { min: 0, max: 60_000 }, on_input: Engine.handle(seeked), enabled: loaded, width: Fill }),
+						Ui.hstack(
+							{ spacing: 8 },
+							[
+								Ui.button("Play", { on_press: Engine.handle(|_| send([Play])), enabled: loaded, icon: Symbol("play.fill") }),
+								Ui.button("Pause", { on_press: Engine.handle(|_| send([Pause])), enabled: loaded, icon: Symbol("pause.fill") }),
+								Ui.button("Resume", { on_press: Engine.handle(|_| send([Resume])), enabled: loaded }),
+								Ui.button("Stop", { on_press: Engine.handle(|_| send([Stop])), enabled: loaded, icon: Symbol("stop.fill") }),
+								Ui.spacer(),
+								Ui.text("Volume", caption),
+								Ui.slider(status.map(|s| whole(s.volume * 100)), { range: { min: 0, max: 100 }, on_input: Engine.handle(|typed| send([Volume(number(typed) / 100)])), width: Fixed(120) }),
+							],
+						),
+					],
+				),
 			),
-			Ui.divider(),
-			Ui.hstack(
-				{},
-				[
-					Ui.text("Equalizer", { style: Headline }),
-					Ui.spacer(),
-					Ui.checkbox("Bypass", { checked: status.map(|s| s.eq.bypass), on_change: Engine.handle(|on| send([Bypass(on)])) }),
-					Ui.button("Flat", { on_press: Engine.handle(|_| send([Flat])) }),
-				],
+			Ui.box(
+				{ fill: ControlBackground, radius: 12, padding: All(12), width: Fill },
+				Ui.vstack(
+					{ spacing: 8, align: Fill },
+					[
+						Ui.hstack(
+							{},
+							[
+								Ui.text("Equalizer", { style: Headline }),
+								Ui.spacer(),
+								Ui.checkbox("Bypass", { checked: status.map(|s| s.eq.bypass), on_change: Engine.handle(|on| send([Bypass(on)])) }),
+								Ui.button("Flat", { on_press: Engine.handle(|_| send([Flat])) }),
+							],
+						),
+						Ui.vstack({ spacing: 2, align: Fill }, band_sliders(status)),
+					],
+				),
 			),
-			Ui.vstack({ spacing: 2, align: Fill }, band_sliders(status)),
-			Ui.divider(),
-			Ui.hstack(
-				{},
-				[
-					Ui.checkbox("Measure levels", { checked: cells.measuring.signal(), on_change: Engine.handle(|on| [cells.measuring.set(on), cells.level.set(Nothing)]) }),
-					Ui.spacer(),
-					Ui.text(cells.level.signal().map(readout), { design: MonospacedDigits }),
-				],
+			Ui.box(
+				{ fill: ControlBackground, radius: 12, padding: All(12), width: Fill },
+				Ui.vstack(
+					{ spacing: 8, align: Fill },
+					[
+						Ui.hstack(
+							{},
+							[
+								Ui.checkbox("Measure levels", { checked: cells.measuring.signal(), on_change: Engine.handle(|on| [cells.measuring.set(on), cells.level.set(Nothing)]) }),
+								Ui.spacer(),
+								Ui.text(cells.level.signal().map(readout), { design: MonospacedDigits }),
+							],
+						),
+						level_meter(status, cells.measuring.signal(), cells.level.signal().map(meter)),
+					],
+				),
 			),
-			Ui.progress(cells.level.signal().map(meter), { max: 60, width: Fill }),
 			Ui.text(cells.event.signal(), caption),
 			# The commands each press posted, sent in order.
 			Engine.on_post(cells.outbox.signal(), |commands| commands.map(Audio.send), Engine.ignore({})),
@@ -130,6 +152,47 @@ view = || {
 		],
 	)
 }
+
+## Keep the native RMS meter readable over either renderer.
+level_meter : Signal(ctx, Audio.Status), Signal(ctx, Bool), Signal(ctx, I64) -> Elem(ctx)
+level_meter = |status, measuring, level|
+	Ui.overlay(
+		{ vertical: Center, padding: Axes({ horizontal: 12, vertical: 0 }), height: Fixed(32) },
+		Engine.when(
+			measuring,
+			|| Engine.when(status.map(|s| s.state == Playing), meter_surface, meter_panel),
+			meter_panel,
+		),
+		Ui.progress(level, { max: 60, width: Fill }),
+	)
+
+meter_surface : () -> Elem(ctx)
+meter_surface = ||
+	Ui.surface(
+		Engine.const([]),
+		{
+			label: "Meter backlight",
+			pacing: Engine.const(Display),
+			background: Engine.const(meter_background),
+			shader: Engine.const(Shaders({ warp: None, composite: Some(meter_glow), params: [] })),
+			height: Fixed(32),
+		},
+	)
+
+meter_panel : () -> Elem(ctx)
+meter_panel = || Ui.box({ fill: meter_background, padding: Zero, width: Fill, height: Fixed(32) }, Ui.spacer())
+
+meter_background : Ui.Color
+meter_background = Adaptive({ light: 0xE2EBE8, dark: 0x233330 })
+
+meter_glow : Str
+meter_glow =
+	\\float4 composite(Frame f, Params p) {
+	\\    float2 from_center = (f.uv - 0.5) * float2(2.0, 1.5);
+	\\    float falloff = saturate(1.0 - length(from_center));
+	\\    float light = saturate(f.level) * falloff * 0.45;
+	\\    return opaque(mix(sample(f, f.uv).rgb, float3(0.25, 0.72, 0.60), light));
+	\\}
 
 ## One row per EQ band and one for the preamp: a label, a slider in whole
 ## dB and the gain the host applies.

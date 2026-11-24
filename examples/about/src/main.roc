@@ -14,8 +14,10 @@ view = |shown|
 	Ui.vstack(
 		{ spacing: 14, align: Center, padding: Axes({ horizontal: 32, vertical: 12 }), width: AtLeast(320) },
 		[
-			## Bound only by its width, the image keeps its aspect ratio.
-			Ui.asset_image(shown.signal(), { width: Fixed(128), label: "The chosen image" }),
+			Ui.box(
+				{ fill: Adaptive({ light: 0xE8EDF6, dark: 0x263246 }), radius: 18, padding: All(20) },
+				Ui.asset_image(shown.signal(), { width: Fixed(144), height: Fixed(116), scaling: Fit, label: "The chosen image" }),
+			),
 			Ui.text("About", { style: Title1, weight: Semibold }),
 			Ui.text("Version 1.0", { style: Callout, color: SecondaryLabel }),
 			Ui.segmented(

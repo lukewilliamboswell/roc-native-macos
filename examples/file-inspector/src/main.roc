@@ -49,7 +49,7 @@ view = || {
 	selected = cells.selected.signal()
 	files = cells.files.signal()
 	Ui.vstack(
-		{ spacing: 14, align: Fill, width: AtLeast(520) },
+		{ spacing: 14, align: Fill, padding: All(6), width: AtLeast(520) },
 		[
 			Ui.hstack(
 				{},
@@ -61,13 +61,13 @@ view = || {
 				],
 			),
 			Ui.drop_zone(
-				{ on_drop: Engine.handle(received) },
+				{ on_drop: Engine.handle(received), padding: All(24) },
 				Ui.vstack(
 					{ spacing: 4, align: Center, width: Fill },
 					[
-						Ui.image("arrow.down.doc", { style: Title1, color: SecondaryLabel }),
+						Ui.image("arrow.down.doc", { style: Title1, color: Accent }),
 						Ui.text("Drop files here", { style: Headline, color: SecondaryLabel }),
-						Ui.text("The app holds each file as a handle, never its bytes.", { style: Caption1, color: TertiaryLabel }),
+						Ui.text("Choose a file to see its digest, preview, and URL.", { style: Caption1, color: TertiaryLabel }),
 					],
 				),
 			),
@@ -109,7 +109,7 @@ view = || {
 			Engine.when(
 				selected.map(|s| s != Nothing),
 				|| Ui.box(
-					{ ..theme.panel, padding: All(14) },
+					{ ..theme.panel, fill: TextBackground, radius: 12, padding: All(16) },
 					Ui.vstack(
 						{ spacing: 8, align: Fill },
 						[
@@ -137,7 +137,7 @@ view = || {
 						],
 					),
 				),
-				|| Ui.text("Choose or drop files, then inspect one.", { color: TertiaryLabel, align: Center, width: Fill }),
+				|| Engine.text(""),
 			),
 			# The digest and the first bytes of the inspected file. Inspecting
 			# another file cancels what the last one still had in flight.

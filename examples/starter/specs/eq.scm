@@ -33,7 +33,7 @@
     (wait 200)
     (expect-eq :volume 50)
     (expect-snapshot :present true :loudest "7 -20, 18 -20")
-    (expect-dump (window :width 760 :height 803
+    (expect-dump (window :width 760 :height 859
                    (vstack :views 1
                      (vstack :views 9
                        (hstack :views 6
@@ -48,27 +48,69 @@
                        (hstack :views 2
                          (drop-zone
                            (overlay
-                             (surface "Visualizer" :width 506 :height 280 :pacing display :ticking #t
-                               (space :fit 1000.0 1000.0 :scale 0.280 :offset 113.0 0.0))
+                             (surface "Visualizer" :width 506 :height 332 :pacing display :ticking #t :trail empty :shader fallback
+                               (space :fit 1000.0 1000.0 :scale 0.332 :offset 87.0 0.0))
                              (vstack :views 0)))
-                         (vstack :views 5
-                           (text "Presets" :text-style headline)
-                           (hstack :views 2
-                             (text "●" :color accent)
-                             (button "Scope"))
-                           (hstack :views 2
-                             (text "" :color accent)
-                             (button "Spectrum Bars"))
-                           (hstack :views 2
-                             (text "" :color accent)
-                             (button "Echo Rings"))
+                         (vstack :views 4
+                           (hstack :views 3
+                             (text "Presets" :text-style headline)
+                             (spacer)
+                             (text "Simple visuals" :color secondary-label :text-style caption1))
+                           (text "Using Orb Garden" :color secondary-label :text-style caption1)
+                           (box :border line:1:separator :fill text-background
+                             (scroll :views 15 :height 190
+                               (hstack :views 2
+                                 (text "" :color accent)
+                                 (button "Scope"))
+                               (hstack :views 2
+                                 (text "" :color accent)
+                                 (button "Spectrum Bars"))
+                               (hstack :views 2
+                                 (text "" :color accent)
+                                 (button "Echo Rings"))
+                               (hstack :views 2
+                                 (text "" :color accent)
+                                 (button "Liquid Drift"))
+                               (hstack :views 2
+                                 (text "" :color accent)
+                                 (button "Blur Corridor"))
+                               (hstack :views 2
+                                 (text "" :color accent)
+                                 (button "Superscope Bloom"))
+                               (hstack :views 2
+                                 (text "" :color accent)
+                                 (button "Flux Streaks"))
+                               (hstack :views 2
+                                 (text "" :color accent)
+                                 (button "Phase Scope"))
+                               (hstack :views 2
+                                 (text "" :color accent)
+                                 (button "Peak Meter"))
+                               (hstack :views 2
+                                 (text "" :color accent)
+                                 (button "Plasma Weave"))
+                               (hstack :views 2
+                                 (text "" :color accent)
+                                 (button "Hyperspace"))
+                               (hstack :views 2
+                                 (text "" :color accent)
+                                 (button "Mirror Shard"))
+                               (hstack :views 2
+                                 (text "" :color accent)
+                                 (button "Spectrum Fire"))
+                               (hstack :views 2
+                                 (text "" :color accent)
+                                 (button "Ripple Pool"))
+                               (hstack :views 2
+                                 (text "●" :color accent)
+                                 (button "Orb Garden"))))
                            (hstack :views 3
                              (button "New")
                              (button "Duplicate")
                              (button "Edit"))))
                        (box :border line:1:separator
                          (hstack :views 8
-                           (text "0:00 / 0:00" :design monospaced-digits)
+                           (text "0:00 / 0:00" :design monospaced-digits :weight medium)
                            (slider :value 800.0)
                            (button "Previous")
                            (button "Pause")

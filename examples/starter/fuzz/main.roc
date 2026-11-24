@@ -168,6 +168,33 @@ preset_round_trip = Fuzz.target_with({
 	],
 })
 
+## Shader stages the numbers choose: sources that carry the generated name
+## (any text, so quotes, backslashes and line breaks), a stage sometimes
+## missing, and up to 18 params whose names, ranges and values are often
+## wrong.
+shader_stages : Str, (U64 -> U64) -> Preset.Stages
+shader_stages = |name, pick| {
+	frac = |i| (pick(i) % 4000).to_dec() / 1000 - 1
+	names = ["decay", "glow", "push", "9lives", "zoom_2", "Bad Name", "decay"]
+	{
+		warp: if (pick(9) % 4 == 0) None else Some("// ${name}\nfloat4 warp(Frame f, Params p) { return sample(f, f.uv); } // \"q\" \\"),
+		composite: if (pick(10) % 2 == 0) None else Some(name),
+		params: List.repeat(0, pick(11) % 19).map_with_index(
+			|_, k| {
+				n = pick(12 + k)
+				{
+					name: names.get(n % names.len()) ?? "p",
+					value: frac(13 + k),
+					low: frac(14 + k),
+					high: frac(15 + k),
+					follows: if (n % 3 == 0) Fixed else Feature(Preset.features.get(n % 26).map_ok(|f| if (n % 7 == 0) Band(n % 30) else f) ?? Level),
+					about: if (n % 2 == 0) "" else name,
+				}
+			},
+		),
+	}
+}
+
 ## The preset the numbers choose: the nth number picks the nth choice,
 ## going round the list again when it runs out.
 preset_from : GeneratedPreset -> Preset.Doc
@@ -201,7 +228,7 @@ preset_from = |{ name, numbers }| {
 		background: color(3),
 		layers,
 		feedback: { enabled: pick(4) % 2 == 0, zoom: signed(5, 400) + 900, rotation: signed(6, 900) - 300, half_life_ms: signed(7, 6000) },
-		shaders: if (pick(8) % 3 == 0) Shaders(JsonValue.Object([("warp", JsonValue.Text("w"))])) else NoShaders,
+		shaders: if (pick(8) % 3 == 0) NoShaders else Shaders(shader_stages(name, pick)),
 	}
 }
 

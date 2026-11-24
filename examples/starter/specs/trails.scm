@@ -2,8 +2,7 @@
 ; each frame under the next. The words are native text in the overlay's
 ; foreground, so the surface under them never holds a trace of a letter:
 ; where the line sits, the surface shows its background, frame after
-; frame and line after line, while the ring (its edge at the top, 35
-; points down) is drawn in its own colour.
+; frame and line after line.
 (test "trails"
   (setup
     (audio-clock manual))
@@ -18,7 +17,6 @@
     (expect-visible (text "The Roc on the kick has a crack in its beak."))
     (expect-probe (surface "Visualizer") 450 250 :r 3 :g 1 :b 6 :a 100)
     (expect-probe (surface "Visualizer") 60 250 :r 3 :g 1 :b 6 :a 100)
-    (expect-probe (surface "Visualizer") 253 35 :r 100 :g 40 :b 85 :a 100)
     (render 4000)
     (frame 100)
     (frame 100)

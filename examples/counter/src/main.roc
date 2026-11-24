@@ -10,12 +10,15 @@ main = Engine.program(|| Engine.state(0, view))
 view : State(In(Root, I64), I64) -> Elem(In(Root, I64))
 view = |count|
 	Ui.vstack(
-		{ spacing: 16, align: Center, padding: Axes({ horizontal: 24, vertical: 8 }), width: AtLeast(320) },
+		{ spacing: 16, align: Center, padding: Axes({ horizontal: 24, vertical: 14 }), width: AtLeast(320) },
 		[
 			Ui.text("Counter", { style: Headline, color: SecondaryLabel }),
 
 			## Interpolating a signal makes a text that follows it.
-			Ui.text("${count.signal()}", { size: Fixed(64), weight: Light, design: MonospacedDigits }),
+			Ui.box(
+				{ fill: ControlBackground, border: Line({ color: Separator, width: 1 }), radius: 16, padding: All(16), width: Fill },
+				Ui.text("${count.signal()}", { size: Fixed(72), weight: Medium, design: MonospacedDigits, align: Center, width: Fill }),
+			),
 			Ui.hstack(
 				{ spacing: 12 },
 				[
@@ -24,6 +27,5 @@ view = |count|
 					Ui.button("+", { on_press: count.update(|n| n + 1), icon: Symbol("plus"), title_display: Hidden, size: Large }),
 				],
 			),
-			Ui.text("Each click is one engine turn.", { style: Caption1, color: TertiaryLabel }),
 		],
 	)
