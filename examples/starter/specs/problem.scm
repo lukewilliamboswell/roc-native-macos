@@ -10,7 +10,7 @@
     (fill (text-area) "{\"version\": 2}")
     (expect-visible (text "version is 2; this app reads version 1"))
     (frame)
-    (expect-dump (window :width 760 :height 831
+    (expect-dump (window :width 760 :height 840
                    (vstack :views 1
                      (vstack :views 9
                        (hstack :views 6
@@ -98,26 +98,28 @@
                            (image speaker.wave.2.fill)
                            (slider :value 100.0)))
                        (segmented :items ("Hide Panels" "Queue" "EQ" "Editor") :selected "Editor")
-                       (vstack :views 5
-                         (hstack :views 4
-                           (text "Preset" :text-style headline)
-                           (text-field "Untitled")
-                           (button "Save As")
-                           (button "Delete…" :enabled #f))
-                         (text "version is 2; this app reads version 1" :color red :text-style callout)
-                         (hstack :views 4
-                           (dropdown "Add Layer" :items ("Add Layer" "Waveform" "Circular waveform" "Spectrum bars" "Ring" "Lissajous"))
-                           (spacer)
-                           (file-button "Import…")
-                           (button "Export…"))
+                       (scroll :views 1 :height 289
                          (vstack :views 1
-                           (checkbox "Feedback" :checked #f))
-                         (vstack :views 2
-                           (hstack :views 3
-                             (text "File" :text-style subheadline :weight semibold)
-                             (spacer)
-                             (button "Hide File"))
-                           (text-area "{\"version\": 2}")))
+                           (vstack :views 5
+                             (hstack :views 4
+                               (text "Preset" :text-style headline)
+                               (text-field "Untitled")
+                               (button "Save As")
+                               (button "Delete…" :enabled #f))
+                             (text "version is 2; this app reads version 1" :color red :text-style callout)
+                             (hstack :views 4
+                               (dropdown "Add Layer" :items ("Add Layer" "Waveform" "Circular waveform" "Spectrum bars" "Ring" "Lissajous"))
+                               (spacer)
+                               (file-button "Import…")
+                               (button "Export…"))
+                             (vstack :views 1
+                               (checkbox "Feedback" :checked #f))
+                             (vstack :views 2
+                               (hstack :views 3
+                                 (text "File" :text-style subheadline :weight semibold)
+                                 (spacer)
+                                 (button "Hide File"))
+                               (text-area "{\"version\": 2}")))))
                        (text "A new preset: add a layer, then Save As." :color secondary-label :text-style callout)
                        (shortcut)
                        (shortcut)

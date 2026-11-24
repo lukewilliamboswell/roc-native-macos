@@ -176,6 +176,26 @@ Bundle := [].{
 		if (source.contains(local)) Ok(source.replace_each(local, "platform \"${url}\"")) else Err(NoPlatformPath)
 	}
 
+	## A Python program (`python3 -I -u -c SCRIPT DIR`) serving DIR's files on
+	## every address, IPv6 and IPv4, at a port the system picks, which it
+	## prints as `python3 -m http.server` does. It binds as a plain TCP
+	## server: the module's own names itself first (`socket.getfqdn("::")`),
+	## a reverse lookup that can outlast the 30 s the scripts wait for the
+	## port, as it did on the macos-15 and macos-15-intel runners.
+	serve_script : Str
+	serve_script =
+		\\import functools, http.server, socket, socketserver, sys
+		\\class Server(http.server.ThreadingHTTPServer):
+		\\    address_family = socket.AF_INET6
+		\\    def server_bind(self):
+		\\        self.socket.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 0)
+		\\        socketserver.TCPServer.server_bind(self)
+		\\        self.server_name, self.server_port = "localhost", self.server_address[1]
+		\\handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory=sys.argv[1])
+		\\server = Server(("::", 0), handler)
+		\\print(f"Serving HTTP on :: port {server.server_port} (http://[::]:{server.server_port}/) ...", flush=True)
+		\\server.serve_forever()
+
 	## The port Python's `http.server` says it is serving on, from its first
 	## line: `Serving HTTP on :: port 54321 (http://[::]:54321/) ...`.
 	served_port : Str -> Try(U16, [NoPort])

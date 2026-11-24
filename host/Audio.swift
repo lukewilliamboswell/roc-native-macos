@@ -44,7 +44,7 @@ final class AudioService: PortService {
     // MARK: State (main thread only)
 
     /// `audio:manual`: render offline, advanced only by `audio:render`.
-    var manual = false
+    var manual = false { didSet { analysis.offline = manual } }
     private var engine: AVAudioEngine?
     private var player = AVAudioPlayerNode()
     private var eq = AudioService.makeEq()
@@ -798,11 +798,7 @@ final class AudioService: PortService {
         // in the ring: let the worker measure it, so what is published next
         // is the same on every run.
         if tapped, let to = renderedNodeFrames() {
-            let deadline = Bench.now() + 2
-            while Bench.now() < deadline {
-                if analysis.drained || analysis.isStalled { break }
-                Thread.sleep(forTimeInterval: 0.002)
-            }
+            awaitAnalysis { $0.drained }
             let c = analysis.counters()
             host?.trace("audio: rendered to \(Int(to)), tapped to \(Int(c.tappedTo)) in chunks of \(c.chunkFrames), \(Int(c.tapped)) taps, \(Int(c.consumed)) consumed, \(Int(c.busy)) busy")
         }
@@ -810,11 +806,26 @@ final class AudioService: PortService {
         publishSnapshot()
     }
 
-    /// Under the manual clock: wait, at most 2 s, until the analysis ring
-    /// has room for another chunk, unless a spec stalled the worker.
+    /// Under the manual clock: wait until the analysis ring has room for
+    /// another chunk, unless a spec stalled the worker.
     private func awaitAnalysisRoom() {
-        let deadline = Bench.now() + 2
-        while Bench.now() < deadline, !analysis.isStalled, analysis.counters().waiting >= AudioAnalysis.slotCount - 1 {
+        awaitAnalysis { $0.counters().waiting < AudioAnalysis.slotCount - 1 }
+    }
+
+    /// Under the manual clock: wait for the analysis worker until `done`
+    /// holds or a spec has stalled it, however slow the machine, so the
+    /// same steps measure the same chunks on every run. A worker that takes
+    /// no chunk for 60 s has stopped, which is fatal, never a silent skip.
+    private func awaitAnalysis(until done: (AudioAnalysis) -> Bool) {
+        var progress = analysis.counters().consumed, since = Bench.now()
+        while !analysis.isStalled, !done(analysis) {
+            let consumed = analysis.counters().consumed
+            if consumed != progress {
+                progress = consumed
+                since = Bench.now()
+            } else if Bench.now() - since > 60 {
+                fatal("audio: the analysis worker took no chunk for 60 s under the manual clock")
+            }
             Thread.sleep(forTimeInterval: 0.001)
         }
     }

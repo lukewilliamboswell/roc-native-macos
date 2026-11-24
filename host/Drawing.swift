@@ -472,6 +472,12 @@ final class DrawingSurface: NSView {
     static let historyPixels = 500_000.0
     static let sRGB = CGColorSpace(name: CGColorSpace.sRGB)!
 
+    /// The pixels a point covers in what the surface draws: its window's
+    /// backing scale, except in a spec, which draws at 2 on any display
+    /// (as `probe` renders Core Graphics), so a probe reads the same pixels
+    /// on a 1x screen as on a Retina one.
+    private var drawingScale: Double { driven ? 2 : Double(window?.backingScaleFactor ?? 2) }
+
     private var marks: [SceneMark] = []
     /// Scene units in points: nil for `points`, else the fitted width and height.
     private var space: (width: Double, height: Double)?
@@ -675,8 +681,7 @@ final class DrawingSurface: NSView {
     private func composite(_ steps: [DrawStep], _ trail: TrailSpec, at time: Double) {
         let width = Double(bounds.width), height = Double(bounds.height)
         guard width >= 1, height >= 1 else { releaseHistory(); return }
-        let backing = Double(window?.backingScaleFactor ?? 2)
-        let scale = min(backing, (DrawingSurface.historyPixels / (width * height)).squareRoot())
+        let scale = min(drawingScale, (DrawingSurface.historyPixels / (width * height)).squareRoot())
         let size = (width: Int((width * scale).rounded(.up)), height: Int((height * scale).rounded(.up)))
         if bitmaps.isEmpty || size != historySize || scale != historyScale {
             bitmaps = (0..<2).compactMap { _ in
@@ -950,7 +955,7 @@ final class DrawingSurface: NSView {
 
     /// The Metal layer to the view's size and backing scale.
     private func layoutMetal() {
-        metal?.layout(width: Double(bounds.width), height: Double(bounds.height), scale: Double(window?.backingScaleFactor ?? 2))
+        metal?.layout(width: Double(bounds.width), height: Double(bounds.height), scale: drawingScale)
     }
 
     /// Draw with Metal while display-paced, on the frame clock and Metal is
@@ -1394,7 +1399,15 @@ extension Host {
             for s in allSurfaces() { s.display() }
         case "window-size":
             guard f.count == 2, let w = Double(f[0]), let h = Double(f[1]), w > 0, h > 0 else { return .failed("window-size needs a width and a height", nil) }
-            window.setContentSize(NSSize(width: w, height: h))
+            let room = windowRoom()
+            window.setContentSize(NSSize(width: min(w, room.width), height: min(h, room.height)))
+            window.contentView?.layoutSubtreeIfNeeded()
+        case "screen-size":
+            // The window from here on has room for this much content, as on
+            // a screen this size, and the page scrolls what does not fit.
+            guard f.count == 2, let w = Double(f[0]), let h = Double(f[1]), w > 0, h > 0 else { return .failed("screen-size needs a width and a height", nil) }
+            SpecScreen.room = NSSize(width: w, height: h)
+            refit()
             window.contentView?.layoutSubtreeIfNeeded()
         case "renderer":
             // Display-paced surfaces from here on draw with this renderer

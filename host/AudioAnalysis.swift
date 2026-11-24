@@ -78,6 +78,10 @@ final class AudioAnalysis {
     static let maxChannels = 2
     /// How many times the tap tries the lock before it drops a buffer.
     static let lockAttempts = 4096
+    /// Whether buffers are rendered offline, by the manual clock's
+    /// `renderOffline` on the main thread: the tap then waits for the lock
+    /// rather than dropping a buffer. Set before the engine starts.
+    var offline = false
     /// Band edges in Hz: 24 bands, logarithmically spaced from 40 Hz to
     /// 16 kHz (each about a third of an octave wide, a ratio of 400^(1/24)).
     static let bandEdges: [Double] = (0...bandCount).map { 40 * pow(400, Double($0) / Double(bandCount)) }
@@ -330,12 +334,20 @@ final class AudioAnalysis {
         // The main thread and the worker hold the lock only to copy a few
         // values or one chunk. Try it a bounded number of times, never
         // blocking; if it is still held, drop the buffer rather than wait.
+        // Offline (the manual clock) this runs on the main thread inside
+        // `renderOffline`, where waiting is safe, so it takes the lock: a
+        // buffer dropped because the worker was descheduled holding it
+        // would make a spec's measurements depend on the machine's speed.
         var attempts = 0
-        while !os_unfair_lock_trylock(lock) {
-            attempts += 1
-            if attempts == AudioAnalysis.lockAttempts {
-                busy += 1  // a benign race: counted only for the report
-                return
+        if offline {
+            os_unfair_lock_lock(lock)
+        } else {
+            while !os_unfair_lock_trylock(lock) {
+                attempts += 1
+                if attempts == AudioAnalysis.lockAttempts {
+                    busy += 1  // a benign race: counted only for the report
+                    return
+                }
             }
         }
         defer { os_unfair_lock_unlock(lock) }

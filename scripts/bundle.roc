@@ -124,7 +124,7 @@ consumer_test! = |root, out, bundle| {
 	Path.create_all!(Path.utf8(served_dir))?
 	Path.copy!(Path.utf8("${out}/${bundle}"), Path.utf8("${served_dir}/${bundle}"))?
 	server = Cmd.new("python3")
-		.args(["-I", "-u", "-m", "http.server", "0", "--bind", "::", "--directory", OsStr.from_str(served_dir)])
+		.args(["-I", "-u", "-c", OsStr.from_str(Bundle.serve_script), OsStr.from_str(served_dir)])
 		.stdin(Null)
 		.stdout(Pipe)
 		.stderr(MergeWithStdout)

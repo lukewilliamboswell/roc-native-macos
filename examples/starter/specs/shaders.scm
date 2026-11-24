@@ -4,7 +4,8 @@
 ; depend on the analysis tap's timing. Their frames, drawn and shaded in
 ; the host, allocate nothing on the Roc side. A Mac without a Metal device
 ; stops at (require-metal) and passes; fallback.scm checks the Core
-; Graphics picture.
+; Graphics picture. Another GPU may round a shader's colours a unit or
+; two differently, so the probes allow 3.
 (test "shaders"
   (steps
     (require-metal)
@@ -12,14 +13,14 @@
     (frame 100)
     (frame 100)
     (expect-absent (text "Simple visuals"))
-    (expect-probe (surface "Visualizer") 253 166 :r 22 :g 5 :b 36 :a 100)
+    (expect-probe (surface "Visualizer") 253 166 :r 22 :g 5 :b 36 :a 100 :tolerance 3)
     (click (button "Liquid Drift"))
     (frame 100)
     (frame 100)
-    (expect-probe (surface "Visualizer") 253 166 :r 2 :g 1 :b 8 :a 100)
+    (expect-probe (surface "Visualizer") 253 166 :r 2 :g 1 :b 8 :a 100 :tolerance 3)
     (click (button "Plasma Weave"))
     (frame 100)
-    (expect-probe (surface "Visualizer") 253 166 :r 36 :g 40 :b 39 :a 100)
+    (expect-probe (surface "Visualizer") 253 166 :r 36 :g 40 :b 39 :a 100 :tolerance 3)
     (mark-metrics)
     (frame 100)
     (frame 100)
