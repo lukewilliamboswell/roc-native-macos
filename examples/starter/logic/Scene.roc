@@ -34,7 +34,7 @@ Scene := [].{
 	## What a layer traces: the waveform across the view or round a circle,
 	## the bands as bars, or a circle, at a size in per-mille of the view's
 	## shorter side.
-	Geometry : [Line({ samples : Str, height : Value }), Loop({ samples : Str, radius : Value }), Bars({ levels : Str, height : Value }), Circle({ radius : Value })]
+	Geometry : [Line({ samples : Str, height : Value }), Loop({ samples : Str, radius : Value }), Bars({ levels : Str, height : Value }), Circle({ radius : Value }), Figure({ size : Value })]
 
 	## One layer as drawn: its geometry, its colour and edge colour (the edge
 	## drawn at `brightness` percent over the base), the stroke's width in
@@ -48,7 +48,11 @@ Scene := [].{
 	Feedback : [NoTrail, Trail({ half_life_ms : I64, zoom : I64, rotation : I64 })]
 
 	## The whole picture.
-	Drawing : { background : Rgba, shapes : List(Shape), trail : Feedback }
+	Drawing : { background : Rgba, shapes : List(Shape), trail : Feedback, shader : Shader }
+
+	## The preset's GPU shaders as the surface takes them: each param a
+	## number, fixed or bound to its sound feature (`Number`).
+	Shader : [NoShader, Shaders({ warp : [None, Some(Str)], composite : [None, Some(Str)], params : List((Str, Number)) })]
 
 	## The native data sources a scene binds to.
 	waveform_source : Str
@@ -75,6 +79,7 @@ Scene := [].{
 		background: Scene.opaque(preset.background),
 		shapes: preset.layers.map(Scene.shape),
 		trail: if (preset.feedback.enabled) Trail({ half_life_ms: preset.feedback.half_life_ms, zoom: preset.feedback.zoom, rotation: preset.feedback.rotation }) else NoTrail,
+		shader: Scene.shader(preset.shaders),
 	}
 
 	opaque : Preset.Color -> Rgba
@@ -109,6 +114,7 @@ Scene := [].{
 			CircularWaveform => Loop({ samples: Scene.waveform_source, radius: size })
 			Bars => Bars({ levels: Scene.bands_source, height: size })
 			Ring => Circle({ radius: size })
+			Lissajous => Figure({ size: size })
 		}
 
 	## Measurements of the sound, each from 0 to 1000, as the analysis gives
@@ -160,6 +166,7 @@ Scene := [].{
 						Loop(g) => Loop({ ..g, radius: fixed(g.radius) })
 						Bars(g) => Bars({ ..g, height: fixed(g.height) })
 						Circle(g) => Circle({ radius: fixed(g.radius) })
+						Figure(g) => Figure({ size: fixed(g.size) })
 					},
 					width: fixed(s.width),
 					opacity: fixed(s.opacity),
@@ -182,6 +189,7 @@ Scene := [].{
 						Loop({ radius, .. }) => ("circular waveform", radius)
 						Bars({ height, .. }) => ("spectrum bars", height)
 						Circle({ radius }) => ("ring", radius)
+						Figure({ size: across }) => ("lissajous", across)
 					}
 				colors = if (s.color == s.edge) Scene.hex(s.color) else "${Scene.hex(s.color)} to ${Scene.hex(s.edge)}"
 				moving = [("size", size), ("thickness", s.width), ("opacity", s.opacity), ("brightness", s.brightness), ("rotation", s.rotation)].keep_oks(
@@ -232,6 +240,7 @@ Scene := [].{
 		Wave({ source : Str, area : Area, low : F64, high : F64 }),
 		Ring({ source : Str, x : F64, y : F64, radius : F64, depth : F64, low : F64, high : F64 }),
 		Bars({ source : Str, area : Area, low : F64, high : F64, gap : F64 }),
+		Lissajous({ across : Str, down : Str, area : Area, low : F64, high : F64 }),
 	]
 
 	## How an outline is drawn: its colour and width in scene units.
@@ -307,6 +316,36 @@ Scene := [].{
 			}
 		}
 
+	## A preset's shaders for the surface: each param fixed at its value, or
+	## its feature from 0 to 1 onto its range.
+	shader : Preset.Shaders -> Shader
+	shader = |shaders|
+		match shaders {
+			NoShaders => NoShader
+			Shaders(stages) =>
+				Shaders({
+					warp: stages.warp,
+					composite: stages.composite,
+					params: stages.params.map(
+						|param| {
+							bound =
+								match param.follows {
+									Fixed => Value(param.value.to_f64())
+									Feature(f) => {
+										scale = (param.high - param.low).to_f64()
+										offset = param.low.to_f64()
+										match f {
+											Band(n) => Element({ source: Scene.bands_source, index: n, scale, offset })
+											_ => Source({ source: Scene.source(f), scale, offset })
+										}
+									}
+								}
+							(param.name, bound)
+						},
+					),
+				})
+		}
+
 	## The marks that draw a drawing, layer by layer. Each layer is drawn
 	## about the centre: moved there, turned by its rotation, scaled by its
 	## size (a size that follows the sound scales the shape drawn at its
@@ -324,6 +363,7 @@ Scene := [].{
 				Loop({ radius, .. }) => radius
 				Bars({ height, .. }) => height
 				Circle({ radius }) => radius
+				Figure({ size: across }) => across
 			}
 		# The size the shape is drawn at, and the scale that takes it to the
 		# size that follows the sound.
@@ -369,6 +409,7 @@ Scene := [].{
 			Loop({ samples, .. }) => Ring({ source: samples, x: 0, y: 0, radius: size * 7 / 8, depth: size / 4, low: -1, high: 1 })
 			Bars({ levels, .. }) => Bars({ source: levels, area: { x: -450, y: -size / 2, width: 900, height: size }, low: 0, high: 1, gap: width * Scene.units_per_tenth_point })
 			Circle(_) => Oval({ x: -size, y: -size, width: size * 2, height: size * 2 })
+			Figure(_) => Lissajous({ across: "audio.left", down: "audio.right", area: { x: -size, y: -size, width: size * 2, height: size * 2 }, low: -0.6, high: 0.6 })
 		}
 }
 

@@ -11,7 +11,7 @@
     (await-work)
     (expect-visible (text "Read the words of verses.txt."))
     (choose "Queue")
-    (expect-dump (window :width 760 :height 679
+    (expect-dump (window :width 760 :height 731
                    (vstack :views 1
                      (vstack :views 9
                        (hstack :views 7
@@ -29,17 +29,20 @@
                        (hstack :views 2
                          (drop-zone
                            (overlay
-                             (surface "Visualizer" :width 506 :height 280 :pacing display :ticking #t
-                               (space :fit 1000.0 1000.0 :scale 0.280 :offset 113.0 0.0))
+                             (surface "Visualizer" :width 506 :height 332 :pacing display :ticking #t :trail empty :shader fallback
+                               (space :fit 1000.0 1000.0 :scale 0.332 :offset 87.0 0.0))
                              (vstack :views 1
                                (box :fill adaptive:141210:141210
                                  (vstack :views 1
                                    (scroll :views 1 :height 140
                                      (text "A click, and then the quiet,\na click, and then the room.\n\nCount them in the silence:\none, and two, and boom." :color adaptive:f4f1ea:f4f1ea :font-size 15)))))))
-                         (vstack :views 5
-                           (text "Presets" :text-style headline)
+                         (vstack :views 17
+                           (hstack :views 3
+                             (text "Presets" :text-style headline)
+                             (spacer)
+                             (text "Simple visuals" :color secondary-label :text-style caption1))
                            (hstack :views 2
-                             (text "●" :color accent)
+                             (text "" :color accent)
                              (button "Scope"))
                            (hstack :views 2
                              (text "" :color accent)
@@ -47,6 +50,42 @@
                            (hstack :views 2
                              (text "" :color accent)
                              (button "Echo Rings"))
+                           (hstack :views 2
+                             (text "" :color accent)
+                             (button "Liquid Drift"))
+                           (hstack :views 2
+                             (text "" :color accent)
+                             (button "Blur Corridor"))
+                           (hstack :views 2
+                             (text "" :color accent)
+                             (button "Superscope Bloom"))
+                           (hstack :views 2
+                             (text "" :color accent)
+                             (button "Flux Streaks"))
+                           (hstack :views 2
+                             (text "" :color accent)
+                             (button "Phase Scope"))
+                           (hstack :views 2
+                             (text "" :color accent)
+                             (button "Peak Meter"))
+                           (hstack :views 2
+                             (text "" :color accent)
+                             (button "Plasma Weave"))
+                           (hstack :views 2
+                             (text "" :color accent)
+                             (button "Hyperspace"))
+                           (hstack :views 2
+                             (text "" :color accent)
+                             (button "Mirror Shard"))
+                           (hstack :views 2
+                             (text "" :color accent)
+                             (button "Spectrum Fire"))
+                           (hstack :views 2
+                             (text "" :color accent)
+                             (button "Ripple Pool"))
+                           (hstack :views 2
+                             (text "●" :color accent)
+                             (button "Orb Garden"))
                            (hstack :views 3
                              (button "New")
                              (button "Duplicate")

@@ -74,6 +74,7 @@ logic/Queue.roc    the play queue, its generations and its room
 logic/Eq.roc       the EQ's settings in tenths of a dB
 logic/Preset.roc   the versioned preset document, its JSON file and its checks
 logic/Library.roc  the built-in presets, Ember Tunnel, palettes, and saving presets
+logic/Gallery.roc  the twelve shaded built-ins: Metal shaders, params and fallback layers
 logic/Scene.roc    what a preset draws, as the drawing surface takes it
 logic/Prefs.roc    the listener's choices kept between launches
 logic/JsonValue.roc JSON text and values
@@ -118,6 +119,16 @@ drawing, so the rest of the app never changes when those do:
   `audio.bands`, `audio.level`, `audio.bass`, ...), so the host animates
   the picture each display refresh without Roc running. The words sit in
   the overlay's foreground, so they never enter the picture's trails.
+
+A preset may carry its own GPU shaders (`Preset.Shaders`), which the
+surface runs with the Metal renderer: a warp that makes each frame from
+the last, and a composite that maps the frame to the screen. Where shaders
+do not run (Core Graphics, a Mac with no Metal device), the preset's layers
+and feedback are the whole picture, and the window says "Simple visuals"
+(`Store.shader_heard` keeps what the surface reports). The fifteen
+built-ins are Scope, Spectrum Bars and Echo Rings, and twelve shaded ones
+from the platform's visualizer example (`logic/Gallery.roc`), each with
+layers that stand in for its shaders; Orb Garden is the default.
 
 `Media.measuring` also holds the session's measurements on while a song
 plays (an `Audio.analysis` subscription whose answers are ignored), so the
@@ -179,15 +190,22 @@ Some rules the player keeps, each in one place:
   `Scene.shape` and `Scene.layer_marks`; it must be something the surface
   can bind to a source: a translation, rotation, scale, opacity or a
   pen's width (`thickness`).
-- **Shader stages**: a preset's optional `shaders` field holds a JSON
-  object, kept through its file and drawn without for now
-  (`Preset.Shaders`). When the surface takes user-written Metal shaders,
-  `Preset.from_json` reads its stages, uniforms and audio-bound parameters
-  into typed values, `Preset.problems` checks them, and `Scene` hands them
-  to the surface beside the marks.
-- **A built-in preset**: a value in `logic/Library.roc` added to
-  `builtins`, with an ID starting `builtin.`. Its `expect` checks every
-  built-in.
+- **A shader**: a preset's `shaders` hold a `warp`, a `composite` or both
+  (Metal Shading Language, each one function, `float4 warp(Frame f,
+  Params p)` or `float4 composite(Frame f, Params p)`, and its helpers),
+  and up to 16 params the stages read as `p.NAME`, each fixed or following
+  a sound feature over its range. The `Frame` (time, size, the previous
+  frame, the sound's measurements), the helpers and the limits are in [the
+  Ui reference's "Shaders"](https://lukewilliamboswell.github.io/roc-native-macos/ui.html).
+  Write one in the editor's Warp or Composite area: it draws as you type,
+  and a stage that does not compile is named with its line under the
+  sources (and in the notice) while the surface keeps the last good one.
+  `logic/Gallery.roc` holds twelve to read; `Preset.shader_problems` checks
+  the params.
+- **A built-in preset**: a value in `logic/Library.roc` (or
+  `logic/Gallery.roc`, for one with shaders) added to `builtins`, with an
+  ID starting `builtin.`. Its `expect` checks every built-in round-trips
+  through its file. `Library.default` is the preset a first launch shows.
 - **A widget**: a function in `Widgets.roc` returning `Elem(ctx)` for any
   `ctx`, handed what it shows (values, signals, handlers); local state
   inside it if only it reads that state.

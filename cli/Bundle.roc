@@ -10,6 +10,7 @@ import "../examples/starter/assets/polymorphic-defunctionalization.lrc" as scaff
 import "../examples/starter/assets/polymorphic-defunctionalization.mp3" as scaffold_assets_polymorphic_defunctionalization_mp3 : List(U8)
 import "../examples/starter/fuzz/main.roc" as scaffold_fuzz_main_roc : Str
 import "../examples/starter/logic/Eq.roc" as scaffold_logic_eq_roc : Str
+import "../examples/starter/logic/Gallery.roc" as scaffold_logic_gallery_roc : Str
 import "../examples/starter/logic/JsonValue.roc" as scaffold_logic_jsonvalue_roc : Str
 import "../examples/starter/logic/Library.roc" as scaffold_logic_library_roc : Str
 import "../examples/starter/logic/Lyrics.roc" as scaffold_logic_lyrics_roc : Str
@@ -19,9 +20,11 @@ import "../examples/starter/logic/Preset.roc" as scaffold_logic_preset_roc : Str
 import "../examples/starter/logic/Queue.roc" as scaffold_logic_queue_roc : Str
 import "../examples/starter/logic/Scene.roc" as scaffold_logic_scene_roc : Str
 import "../examples/starter/logic/main.roc" as scaffold_logic_main_roc : Str
+import "../examples/starter/specs/broken.scm" as scaffold_specs_broken_scm : Str
 import "../examples/starter/specs/default.scm" as scaffold_specs_default_scm : Str
 import "../examples/starter/specs/ember.scm" as scaffold_specs_ember_scm : Str
 import "../examples/starter/specs/eq.scm" as scaffold_specs_eq_scm : Str
+import "../examples/starter/specs/fallback.scm" as scaffold_specs_fallback_scm : Str
 import "../examples/starter/specs/fixtures/clicks.lrc" as scaffold_specs_fixtures_clicks_lrc : Str
 import "../examples/starter/specs/fixtures/clicks.wav" as scaffold_specs_fixtures_clicks_wav : List(U8)
 import "../examples/starter/specs/fixtures/ember-tunnel.json" as scaffold_specs_fixtures_ember_tunnel_json : Str
@@ -31,6 +34,7 @@ import "../examples/starter/specs/lyrics.scm" as scaffold_specs_lyrics_scm : Str
 import "../examples/starter/specs/plain.scm" as scaffold_specs_plain_scm : Str
 import "../examples/starter/specs/presets.scm" as scaffold_specs_presets_scm : Str
 import "../examples/starter/specs/problem.scm" as scaffold_specs_problem_scm : Str
+import "../examples/starter/specs/shaders.scm" as scaffold_specs_shaders_scm : Str
 import "../examples/starter/specs/trails.scm" as scaffold_specs_trails_scm : Str
 import "../examples/starter/specs/transport.scm" as scaffold_specs_transport_scm : Str
 import "../examples/starter/src/Editor.roc" as scaffold_src_editor_roc : Str
@@ -77,6 +81,7 @@ Bundle := [].{
 		{ path: "assets/polymorphic-defunctionalization.mp3", contents: Bytes(scaffold_assets_polymorphic_defunctionalization_mp3) },
 		{ path: "fuzz/main.roc", contents: Text(scaffold_fuzz_main_roc) },
 		{ path: "logic/Eq.roc", contents: Text(scaffold_logic_eq_roc) },
+		{ path: "logic/Gallery.roc", contents: Text(scaffold_logic_gallery_roc) },
 		{ path: "logic/JsonValue.roc", contents: Text(scaffold_logic_jsonvalue_roc) },
 		{ path: "logic/Library.roc", contents: Text(scaffold_logic_library_roc) },
 		{ path: "logic/Lyrics.roc", contents: Text(scaffold_logic_lyrics_roc) },
@@ -86,9 +91,11 @@ Bundle := [].{
 		{ path: "logic/Queue.roc", contents: Text(scaffold_logic_queue_roc) },
 		{ path: "logic/Scene.roc", contents: Text(scaffold_logic_scene_roc) },
 		{ path: "logic/main.roc", contents: Text(scaffold_logic_main_roc) },
+		{ path: "specs/broken.scm", contents: Text(scaffold_specs_broken_scm) },
 		{ path: "specs/default.scm", contents: Text(scaffold_specs_default_scm) },
 		{ path: "specs/ember.scm", contents: Text(scaffold_specs_ember_scm) },
 		{ path: "specs/eq.scm", contents: Text(scaffold_specs_eq_scm) },
+		{ path: "specs/fallback.scm", contents: Text(scaffold_specs_fallback_scm) },
 		{ path: "specs/fixtures/clicks.lrc", contents: Text(scaffold_specs_fixtures_clicks_lrc) },
 		{ path: "specs/fixtures/clicks.wav", contents: Bytes(scaffold_specs_fixtures_clicks_wav) },
 		{ path: "specs/fixtures/ember-tunnel.json", contents: Text(scaffold_specs_fixtures_ember_tunnel_json) },
@@ -98,6 +105,7 @@ Bundle := [].{
 		{ path: "specs/plain.scm", contents: Text(scaffold_specs_plain_scm) },
 		{ path: "specs/presets.scm", contents: Text(scaffold_specs_presets_scm) },
 		{ path: "specs/problem.scm", contents: Text(scaffold_specs_problem_scm) },
+		{ path: "specs/shaders.scm", contents: Text(scaffold_specs_shaders_scm) },
 		{ path: "specs/trails.scm", contents: Text(scaffold_specs_trails_scm) },
 		{ path: "specs/transport.scm", contents: Text(scaffold_specs_transport_scm) },
 		{ path: "src/Editor.roc", contents: Text(scaffold_src_editor_roc) },
