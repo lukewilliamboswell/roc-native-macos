@@ -31,7 +31,7 @@ Repo := [].{
 
 	## Every script, whose `expect`s the scripts stage runs.
 	scripts : List(Str)
-	scripts = ["scripts/check_all.roc", "scripts/build.roc", "scripts/link_inputs.roc", "scripts/bundle.roc", "scripts/release.roc", "scripts/record_demos.roc", "scripts/workflow.roc", "scripts/convert_cases.roc"]
+	scripts = ["scripts/check_all.roc", "scripts/build.roc", "scripts/link_inputs.roc", "scripts/bundle.roc", "scripts/release.roc", "scripts/record_demos.roc", "scripts/workflow.roc"]
 
 	## Files that would pin a compiler for the whole repository, which the
 	## model forbids: only the scripts' headers name one.

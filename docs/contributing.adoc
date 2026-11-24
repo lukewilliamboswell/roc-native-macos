@@ -251,13 +251,13 @@ example's `specs/fixtures/`, and its steps name them relative to the
 example. `blueprint run examples` runs each spec from the example's
 directory against the built app (`EXAMPLES="todos workers"` runs only
 those examples'), with a 120-second deadline. A new example needs a spec:
-write it with an empty `(expect-dump """ … """)` where a dump helps, run
+write it with `(expect-dump _)` where a dump helps, run
 `blueprint run examples -- --update`, and review the dumps it wrote before
 committing them. The `specs` stage of `check` parses every spec, on any
 system. The examples' specs and an app's (`macos.roc test`) are run by the
 same modules, `cli/Spec.roc` and `cli/SpecRun.roc`, which the scripts copy
 byte for byte, so `roc macos.roc test` in an example's directory runs the
-same specs. `scripts/convert_cases.roc` converted the 0.0.1 recorded cases.
+same specs.
 
 [#demos]
 === Demos

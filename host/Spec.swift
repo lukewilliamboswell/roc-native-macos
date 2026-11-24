@@ -288,10 +288,22 @@ extension Host {
             fresh.run(spec: steps)
             return .handedOver
         case "dump":
-            let size = window.contentView?.frame.size ?? .zero
+            // The window as an S-expression, a node a line (Dump.swift).
             emit("@\(line.k) obs")
-            emit("|--- \(Int(size.width))x\(Int(size.height))")
-            dump(root, 0) { print("|" + $0.replacingOccurrences(of: "\n", with: "\n|")) }
+            for l in dumpWindow() { emit("|" + l) }
+        case "tree":
+            // The one node a locator finds, as an S-expression.
+            let (parts, _) = Host.locator(f)
+            let found = locate(parts)
+            emit("@\(line.k) obs")
+            if found.nodes.count == 1 {
+                var out: [String] = []
+                tree(found.nodes[0], 0, &out)
+                for l in out { emit("|" + l) }
+            } else {
+                emit("|count \(found.nodes.count)")
+                for c in found.candidates { emit("|candidate \(SpecSteps.escape(c))") }
+            }
         case "find":
             let (parts, _) = Host.locator(f)
             let found = locate(parts)

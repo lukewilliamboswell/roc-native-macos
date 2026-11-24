@@ -2,7 +2,6 @@ import cli.Cmd
 import cli.Duration
 import cli.OsStr
 import cli.Path
-import Recorded
 import Spec
 
 ## Run one spec (`Spec.roc`) against a built program: lower its steps into
@@ -57,7 +56,7 @@ SpecRun := [].{
 			Err(CmdErr(error)) => return Ok(Failed(["${spec}: the app did not finish: ${Str.inspect(error)}"]))
 			Err(Interrupted) => return Ok(Failed(["${spec}: interrupted"]))
 		}
-		printed = Recorded.portable(Str.from_utf8_lossy(output.stdout_bytes), dir, "<app>")
+		printed = SpecRun.portable(Str.from_utf8_lossy(output.stdout_bytes), dir, "<app>")
 		run = Spec.read_run(printed)
 		if metrics {
 			return Ok(Measured(Spec.measure(parsed, run).map(|{ pos, text }| SpecRun.located(spec, { pos, message: text }))))
@@ -88,6 +87,22 @@ SpecRun := [].{
 		}
 	}
 
+	## What the host printed with the absolute path `root` (where the spec
+	## ran) written `placeholder`, so a dump does not depend on where it ran
+	## (a file's URL, for example). Where the path showed, the window's size
+	## depends on it too, so a dump's `(window :width W :height H` becomes
+	## `(window :width _ :height _`, which matches any size.
+	portable : Str, Str, Str -> Str
+	portable = |printed, root, placeholder|
+		if root.is_empty() or !printed.contains(root) {
+			printed
+		} else {
+			lines = Str.join_with(printed.split_on(root), placeholder)
+				.split_on("\n")
+				.map(|line| if (line.starts_with("|(window :width ")) Str.join_with(line.split_on(" ").map_with_index(|w, i| if (i == 2 or i == 4) "_${undigit(w)}" else w), " ") else line)
+			Str.join_with(lines, "\n")
+		}
+
 	## A problem as `file:line:col: message`.
 	located : Str, Spec.Problem -> Str
 	located = |spec, { pos, message }| "${spec}:${pos.line.to_str()}:${pos.column.to_str()}: ${message}"
@@ -108,6 +123,10 @@ SpecRun := [].{
 	names = |files| files.keep_if(|name| name.ends_with(".scm")).sort_with(compare)
 }
 
+## A word without its leading digits: `351)` is `)`.
+undigit : Str -> Str
+undigit = |word| Str.from_utf8_lossy(word.to_utf8().drop_if(|c| c >= '0' and c <= '9'))
+
 compare : Str, Str -> [Before, Same, After]
 compare = |a, b| compare_bytes(a.to_utf8(), b.to_utf8())
 
@@ -121,5 +140,11 @@ compare_bytes = |a, b|
 	}
 
 expect SpecRun.names(["b.scm", "a.scm", "notes.txt"]) == ["a.scm", "b.scm"]
+
+## The path becomes the placeholder, and the window's size a wildcard.
+expect SpecRun.portable("@2 obs\n|(window :width 570 :height 351\n|  (text \"file:///Users/me/app/a.txt\")))\n", "/Users/me/app", "<app>") == "@2 obs\n|(window :width _ :height _\n|  (text \"file://<app>/a.txt\")))\n"
+
+## Output that never printed the path is left as it was.
+expect SpecRun.portable("|(window :width 360 :height 145)\n", "/home/ci", "<app>") == "|(window :width 360 :height 145)\n"
 
 expect SpecRun.located("specs/a.scm", { pos: { line: 3, column: 5 }, message: "expected one (button \"+\"), saw none" }) == "specs/a.scm:3:5: expected one (button \"+\"), saw none"

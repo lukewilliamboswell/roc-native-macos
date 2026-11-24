@@ -16,54 +16,29 @@
     (click (button "Cancel"))
     (await-work)
     (expect-workers :limit 1 :live 0 :running 0 :queued 0 :answered 16 :stopped 1 :lost 0 :timed-out 0 :dropped 0)
-    (expect-dump """
-      --- 600x504
-      ui-vstack [1 views]
-        ui-vstack [2 views]
-          ui-hstack [3 views]
-            ui-text "Workers" {text-style=title2 weight=semibold}
-            ui-spacer
-            ui-text "Roc jobs off the main thread" {color=secondary-label text-style=caption1}
-          ui-vstack [2 views]
-            ui-hstack [3 views]
-              ui-spacer
-              ui-segmented [Mandelbrot] Lab
-              ui-spacer
-            ui-vstack [3 views]
-              ui-hstack [6 views]
-                ui-button "Draw"
-                ui-button "Cancel" (disabled)
-                ui-button "Zoom In"
-                ui-button "Reset"
-                ui-spacer
-                ui-segmented Fast Fine [Extreme]
-              ui-hstack [3 views]
-                ui-progress 0/8
-                ui-text "Cancelled." {text-style=callout}
-                ui-spacer
-              ui-box {border=line:1:separator}
-                ui-text "                                                                        
-                                                                              
-                                                                              
-                                                                              
-                                                                              
-                                                                              
-                                                                              
-                                                                              
-                                                                              
-                                                                              
-                                                                              
-                                                                              
-                                                                              
-                                                                              
-                                                                              
-                                                                              
-                                                                              
-                                                                              
-                                                                              
-                                                                              
-                                                                              
-                                                                              
-                                                                              
-                                                                              " {design=monospaced font-size=10}
-      """)))
+    (expect-dump (window :width 600 :height 504
+                   (vstack :views 1
+                     (vstack :views 2
+                       (hstack :views 3
+                         (text "Workers" :text-style title2 :weight semibold)
+                         (spacer)
+                         (text "Roc jobs off the main thread" :color secondary-label :text-style caption1))
+                       (vstack :views 2
+                         (hstack :views 3
+                           (spacer)
+                           (segmented :items ("Mandelbrot" "Lab") :selected "Mandelbrot")
+                           (spacer))
+                         (vstack :views 3
+                           (hstack :views 6
+                             (button "Draw")
+                             (button "Cancel" :enabled #f)
+                             (button "Zoom In")
+                             (button "Reset")
+                             (spacer)
+                             (segmented :items ("Fast" "Fine" "Extreme") :selected "Extreme"))
+                           (hstack :views 3
+                             (progress :value 0 :max 8)
+                             (text "Cancelled." :text-style callout)
+                             (spacer))
+                           (box :border line:1:separator
+                             (text "                                                                        \n                                                                        \n                                                                        \n                                                                        \n                                                                        \n                                                                        \n                                                                        \n                                                                        \n                                                                        \n                                                                        \n                                                                        \n                                                                        \n                                                                        \n                                                                        \n                                                                        \n                                                                        \n                                                                        \n                                                                        \n                                                                        \n                                                                        \n                                                                        \n                                                                        \n                                                                        \n                                                                        " :design monospaced :font-size 10))))))))))

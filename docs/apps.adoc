@@ -359,18 +359,16 @@ behaviour spec, steps a person could take and what the app should then show.
     (click (button "−"))
     (expect-visible (text "2"))
     (expect-absent (text "0"))
-    (expect-dump """
-      --- 360x237
-      ui-vstack [1 views]
-        ui-vstack [4 views]
-          ui-text "Counter" {color=secondary-label text-style=headline}
-          ui-text "2" {design=monospaced-digits font-size=64 weight=light}
-          ui-hstack [3 views]
-            ui-button "−"
-            ui-button "Reset"
-            ui-button "+"
-          ui-text "Each click is one engine turn." {color=tertiary-label text-style=caption1}
-      """)))
+    (expect-dump (window :width 360 :height 237
+                   (vstack :views 1
+                     (vstack :views 4
+                       (text "Counter" :color secondary-label :text-style headline)
+                       (text "2" :design monospaced-digits :font-size 64 :weight light)
+                       (hstack :views 3
+                         (button "−")
+                         (button "Reset")
+                         (button "+"))
+                       (text "Each click is one engine turn." :color tertiary-label :text-style caption1)))))))
 ----
 
 The platform performs each step on the app's real controls, through the same
@@ -385,24 +383,41 @@ FAIL specs/increment.scm
 
 A spec is one `(test "name" …)` form: an optional `(setup …)`, then
 `(steps …)` with at least one step, run in order from a fresh window. `;`
-starts a comment. Strings know the escapes `\n`, `\t`, `\"` and `\\`. A
-`"""` block, used by `expect-dump`, starts its text on the next line and
-ends at a line holding only the closing `"""`; whatever indents that line
-is taken off every line between, which is otherwise kept as written.
+starts a comment. Strings know the escapes `\n`, `\t`, `\"` and `\\`.
 `roc macos.roc test --check` parses every spec without building or running
 the app, on any system, and the spec's mistakes are reported where they are,
 as its failures are.
 
-`roc macos.roc test --update` rewrites each `expect-dump` body with what the
-app shows now, and nothing else: review the change before you commit it. A
-dump's measurements depend on the system's fonts, so its window size and any
-`NNNpt` value may each differ by up to 4 points. Where a dump holds the
-app's directory (a file's URL, say), the directory is written `<app>` and the
-window size `--- <size>`.
+[#dumps]
+=== Dumps
 
-For one release, `roc macos.roc test` also runs a 0.0.1 app's recorded
-cases, `tests/<case>.script` with its `tests/<case>.expected`. A checkout's
-`roc-stable scripts/convert_cases.roc -- APP_DIR` converts them to specs.
+The window is an S-expression too. `(expect-dump TREE)` expects the whole
+window, `(window :width W :height H …)` and every view in it, a node a line:
+each node is its kind (`vstack`, `button`, `text`, `list` and so on), then
+what it shows (a title, a text, a field's value), then keywords for what
+differs from the usual (`:color secondary-label`, `:enabled #f`,
+`:checked #t`, `:views 3`), then the nodes it holds. A list shows its
+visible rows and `(more)` when there are others. `(expect-tree LOCATOR
+TREE)` expects the one node a locator finds, such as
+`(expect-tree (list-row "Ada A. Liskov") (row :views 2 (image _) _))`.
+
+The comparison is node by node. `_` matches anything, a node or a word, so
+a hand-written tree can say only what matters. A `:width` or `:height`
+may differ by up to 4 points, since sizes depend on the system's fonts.
+Where a dump holds the app's directory (a file's URL, say), the directory is
+written `<app>`, and the window's size, which depends on it, `_`. A
+mismatch names the first node that differs by its path, its kind and place
+among its parent's nodes from 1:
+
+----
+specs/increment.scm:11:5: at window/vstack#1/vstack#1/hstack#3/button#2: expected "Rest", saw "Reset"
+----
+
+`roc macos.roc test --update` rewrites each `expect-dump` with what the app
+shows now, a node a line from where the tree starts, and nothing else: an
+`expect-tree`, like any other expectation, is never rewritten. Write
+`(expect-dump _)` for it to fill in, and review the change before you commit
+it.
 
 [#locators]
 === Locators
@@ -471,7 +486,8 @@ run. A spec ends after its last step, through the same teardown as quitting.
 | `(expect-checked LOC true)` | the checkbox is checked (`false`: unchecked)
 | `(expect-disabled LOC true)` | the control is disabled (`false`: enabled)
 | `(expect-workers :answered 8 …)` | the worker pool's counts named are these: `:limit`, `:live`, `:running`, `:queued`, `:started`, `:answered`, `:lost`, `:stopped`, `:timed-out` and `:dropped`
-| `(expect-dump """ … """)` | the window, as a dump prints it: its size (`--- 360x237`), then the view tree; a list shows its visible rows, and a text, box or drop zone the look attributes that differ from the usual (`{color=secondary-label text-style=caption1}`)
+| `(expect-dump (window …))` | the window and its view tree are this tree (xref:apps.adoc#dumps[Dumps])
+| `(expect-tree LOC (kind …))` | the one node LOC finds is this tree
 |===
 
 [#effects-in-a-spec]
@@ -647,8 +663,8 @@ it); when you move to another compiler, measure again and set them anew.
 
 `ROC_SPEC` holds the steps the tool lowered from a spec, one line each; the
 platform performs them and prints one tagged observation per expectation on
-standard output (`@3 obs`, then `|count 1`, `|text 2`), which the tool
-compares. The app's own output, such as `dbg`, goes to standard error, which
+standard output (`@3 obs`, then `|count 1`, `|text 2`, or a dump's tree a
+node a line), which the tool compares. The app's own output, such as `dbg`, goes to standard error, which
 a failure shows the end of.
 
 [#environment-variables]

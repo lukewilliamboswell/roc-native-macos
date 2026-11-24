@@ -1,5 +1,3 @@
-import Recorded
-
 ## Behaviour specs: `specs/<name>.scm`, one `(test "name" (setup …) (steps …))`
 ## form each, the surface roc-signals' specs use with native locators.
 ##
@@ -8,12 +6,16 @@ import Recorded
 ## Apple silicon Mac: `lower` turns the parsed steps into the line protocol
 ## the host performs when `ROC_SPEC` holds it, the host prints one tagged
 ## observation per expectation, and `judge` compares them here, reporting
-## `file:line:col: expected …, saw …`. `update` rewrites the bodies of
-## `expect-dump` steps with what the run printed, and nothing else.
+## `file:line:col: expected …, saw …`. `update` rewrites each
+## `expect-dump`'s tree with what the run showed, and lowers allocation
+## bounds, and nothing else.
 ##
-## `scripts/src/Spec.roc` is a byte-identical copy of `cli/Spec.roc`, as
-## `scripts/src/Recorded.roc` is of `cli/Recorded.roc`, and `check` fails
-## when they differ. Change `cli/Spec.roc`, then copy it.
+## The window is an S-expression too: the host dumps its view tree as one,
+## `(window :width 360 :height 237 (vstack :views 1 …))`, and `expect-dump`
+## and `expect-tree` hold one, compared node by node (`tree_matches`).
+##
+## `scripts/src/Spec.roc` is a byte-identical copy of `cli/Spec.roc`, and
+## `check` fails when they differ. Change `cli/Spec.roc`, then copy it.
 Spec := [].{
 
 	## A source position, from 1.
@@ -22,16 +24,16 @@ Spec := [].{
 	## What is wrong, and where.
 	Problem : { pos : Pos, message : Str }
 
-	## One s-expression and where it starts. A `Dump` is a `"""` block:
-	## its text, and the byte range of the whole literal in the source.
-	Sx := [Sym(Str, Pos), Text(Str, Pos), Int(I64, Pos), Dump({ text : Str, pos : Pos, start : U64, end : U64, indent : Str }), List(List(Sx), Pos)]
+	## One s-expression and where it starts.
+	Sx := [Sym(Str, Pos), Text(Str, Pos), Int(I64, Pos), List(List(Sx), Pos)]
 
 	## A locator: what to find, outermost first. `(within A B)` is A's
 	## parts then B's: B is looked for inside the one thing A finds.
 	Loc : List({ kind : Str, text : Str })
 
-	## A dump expected by `expect-dump`, and where its literal is.
-	DumpBody : { text : Str, start : U64, end : U64, indent : Str }
+	## A view tree a spec expects, written back as canonical text
+	## (`render`), and where it is written.
+	Tree : { text : Str, pos : Pos }
 
 	## The steps a spec can take.
 	Op : [
@@ -54,7 +56,8 @@ Spec := [].{
 		Window,
 		Wait(I64),
 		Reload,
-		ExpectDump(DumpBody),
+		ExpectDump(Tree),
+		ExpectTree(Loc, Tree),
 		ExpectVisible(Loc),
 		ExpectAbsent(Loc),
 		ExpectText(Loc, Str),
@@ -247,8 +250,8 @@ Spec := [].{
 		}
 	}
 
-	## The spec's source with each `expect-dump` body replaced by the dump
-	## the run printed for it, keeping its indentation, and each allocation
+	## The spec's source with each `expect-dump`'s tree replaced by the one
+	## the run showed, laid out a node a line from its column, and each allocation
 	## bound (`expect-allocations-at-most`, `expect-allocated-bytes-at-most`,
 	## and `expect-metric-delta-at-most` of `allocations`, `reallocations` or
 	## `allocated_bytes`) lowered to what the run saw when it saw less. A
@@ -266,8 +269,9 @@ Spec := [].{
 				$mark = seen.map_ok(counters_of).map_err(|_| NoMark)
 			}
 			match (step.op, seen) {
-				(ExpectDump(body), Ok(lines)) => {
-					$edits = $edits.append({ start: body.start, end: body.end, text: dump_literal(lines, body.indent) })
+				(ExpectDump(tree), Ok(lines)) => {
+					start = offset_of(bytes, tree.pos)
+					$edits = $edits.append({ start, end: form_end(bytes, start), text: dump_literal(lines, tree.pos.column - 1) })
 				}
 				(op, Ok(lines)) =>
 					match bound_of(op) {
@@ -352,7 +356,7 @@ Spec := [].{
 
 	## The step names, for an unknown step's message.
 	step_names : List(Str)
-	step_names = ["click", "fill", "submit", "toggle", "select", "hover", "choose", "press", "files", "drop", "move", "leave", "sweep", "scroll", "phase", "stats", "window", "wait", "reload", "expect-dump", "expect-visible", "expect-absent", "expect-text", "expect-checked", "expect-disabled", "expect-workers", "stub-http", "fail-http", "run-effect", "tick-interval", "fire-timer", "advance-time", "await-work", "expect-pending-effects", "expect-interval", "expect-request", "expect-cancelled", "mark-metrics", "expect-metric-delta", "expect-metric-delta-at-most", "expect-allocations-at-most", "expect-allocated-bytes-at-most", "expect-no-new-live-allocations"]
+	step_names = ["click", "fill", "submit", "toggle", "select", "hover", "choose", "press", "files", "drop", "move", "leave", "sweep", "scroll", "phase", "stats", "window", "wait", "reload", "expect-dump", "expect-tree", "expect-visible", "expect-absent", "expect-text", "expect-checked", "expect-disabled", "expect-workers", "stub-http", "fail-http", "run-effect", "tick-interval", "fire-timer", "advance-time", "await-work", "expect-pending-effects", "expect-interval", "expect-request", "expect-cancelled", "mark-metrics", "expect-metric-delta", "expect-metric-delta-at-most", "expect-allocations-at-most", "expect-allocated-bytes-at-most", "expect-no-new-live-allocations"]
 
 	## The page heap's metrics, which the host counts while a spec runs:
 	## calls of `roc_alloc`, `roc_realloc` and `roc_dealloc`, the net of
@@ -519,7 +523,7 @@ read_expr = |r0| {
 		Err(End) => Err({ pos: here(r), message: "unexpected end of file" })
 		Ok('(') => read_list(r)
 		Ok(')') => Err({ pos: here(r), message: "unexpected closing parenthesis" })
-		Ok('"') => if (starts_triple(r)) read_dump(r) else read_text(r)
+		Ok('"') => read_text(r)
 		Ok(_) => read_atom(r)
 	}
 }
@@ -551,7 +555,7 @@ read_text = |r0| {
 			s = Str.from_utf8($out) ? |_| { pos: start, message: "this string is not UTF-8" }
 			return Ok((Text(s, start), advance($r)))
 		} else if b == '\n' or b == '\r' {
-			return Err({ pos: start, message: "a string cannot hold a line break; write \\n, or use a \"\"\" block for a dump" })
+			return Err({ pos: start, message: "a string cannot hold a line break; write \\n" })
 		} else if b == '\\' {
 			at = here($r)
 			$r = advance($r)
@@ -570,48 +574,6 @@ read_text = |r0| {
 		}
 	}
 	Err({ pos: start, message: "this string is never closed" })
-}
-
-starts_triple : R -> Bool
-starts_triple = |r| r.bytes.sublist({ start: r.at, len: 3 }) == ['"', '"', '"']
-
-## A `"""` block: the opening quotes end their line, the closing quotes
-## start one, and whatever indents the closing quotes is taken from every
-## line between, which holds the text verbatim, with no escapes.
-read_dump : R -> Try((Spec.Sx, R), Spec.Problem)
-read_dump = |r0| {
-	start = here(r0)
-	open = advance_by(r0, 3)
-	if peek(open) != Ok('\n') {
-		return Err({ pos: start, message: "a \"\"\" block starts its text on the next line" })
-	}
-	body_at = open.at + 1
-	var $r = advance(open)
-	while $r.at < $r.bytes.len() and !starts_triple($r) {
-		$r = advance($r)
-	}
-	if $r.at >= $r.bytes.len() {
-		return Err({ pos: start, message: "this \"\"\" block is never closed" })
-	}
-	raw = $r.bytes.sublist({ start: body_at, len: $r.at - body_at })
-	lines = Str.from_utf8(raw).map_err(|_| { pos: start, message: "this block is not UTF-8" })?.split_on("\n")
-	indent = lines.last() ?? ""
-	if !indent.to_utf8().all(|b| b == ' ' or b == '\t') {
-		return Err({ pos: start, message: "the closing \"\"\" starts its own line" })
-	}
-	var $kept = []
-	for line in lines.drop_last(1) {
-		if line.starts_with(indent) {
-			$kept = $kept.append(line.drop_prefix(indent))
-		} else if line.trim().is_empty() {
-			$kept = $kept.append("")
-		} else {
-			return Err({ pos: start, message: "every line of a \"\"\" block is indented at least as far as its closing \"\"\"" })
-		}
-	}
-	text = Str.join_with($kept.map(|line| line.concat("\n")), "")
-	after = advance_by($r, 3)
-	Ok((Dump({ text, pos: start, start: r0.at, end: after.at, indent }), after))
 }
 
 is_delimiter : U8 -> Bool
@@ -638,7 +600,6 @@ pos_of = |sx|
 		Sym(_, p) => p
 		Text(_, p) => p
 		Int(_, p) => p
-		Dump({ pos, .. }) => pos
 		List(_, p) => p
 	}
 
@@ -648,7 +609,6 @@ show = |sx|
 		Sym(s, _) => s
 		Text(s, _) => Str.inspect(s)
 		Int(n, _) => n.to_str()
-		Dump(_) => "a \"\"\" block"
 		List(_, _) => "a list"
 	}
 
@@ -719,8 +679,10 @@ step_form = |form| {
 		("wait", _) => return usage("(wait MS)")
 		("reload", []) => Reload
 		("reload", _) => return usage("(reload)")
-		("expect-dump", [Dump({ text, start, end, indent, .. })]) => ExpectDump({ text, start, end, indent })
-		("expect-dump", _) => return usage("(expect-dump \"\"\" …dump… \"\"\")")
+		("expect-dump", [tree]) => ExpectDump(tree_of(tree, "window")?)
+		("expect-dump", _) => return usage("(expect-dump (window …)), or (expect-dump _) for `test --update` to fill in")
+		("expect-tree", [l, tree]) => ExpectTree(loc(l)?, tree_of(tree, "")?)
+		("expect-tree", _) => return usage("(expect-tree LOCATOR (kind …))")
 		("expect-visible", [l]) => ExpectVisible(loc(l)?)
 		("expect-visible", _) => return usage("(expect-visible LOCATOR)")
 		("expect-absent", [l]) => ExpectAbsent(loc(l)?)
@@ -937,6 +899,7 @@ lowered = |op|
 		Wait(ms) => ["wait", ms.to_str()]
 		Reload => ["reload"]
 		ExpectDump(_) => ["dump"]
+		ExpectTree(l, _) => ["tree"].concat(loc_fields(l))
 		ExpectVisible(l) => ["find"].concat(loc_fields(l))
 		ExpectAbsent(l) => ["find"].concat(loc_fields(l))
 		ExpectText(l, _) => ["find"].concat(loc_fields(l))
@@ -1028,7 +991,7 @@ found = |lines|
 observes : Spec.Op -> Bool
 observes = |op|
 	match op {
-		ExpectDump(_) | ExpectVisible(_) | ExpectAbsent(_) | ExpectText(_, _) | ExpectChecked(_, _) | ExpectDisabled(_, _) | ExpectWorkers(_) => Bool.True
+		ExpectDump(_) | ExpectTree(_, _) | ExpectVisible(_) | ExpectAbsent(_) | ExpectText(_, _) | ExpectChecked(_, _) | ExpectDisabled(_, _) | ExpectWorkers(_) => Bool.True
 		ExpectPendingEffects(_) | ExpectInterval(_, _) | ExpectRequest(_, _) | ExpectCancelled(_) => Bool.True
 		ExpectMetricDelta(_, _) | ExpectMetricDeltaAtMost(_, _, _) | ExpectAllocationsAtMost(_, _) | ExpectAllocatedBytesAtMost(_, _) | ExpectNoNewLiveAllocations => Bool.True
 		Press({ heard: Heard(_), .. }) => Bool.True
@@ -1045,7 +1008,13 @@ expectation = |op, seen, mark| {
 		Err(Missing) => return Err("expected an observation of this step, saw none: the host printed nothing for it")
 	}
 	match op {
-		ExpectDump(body) => dump_matches(body.text, lines)
+		ExpectDump(tree) => dump_matches(tree.text, lines)
+		ExpectTree(l, tree) =>
+			if lines.any(|line| line.starts_with("count ")) {
+				one(l, found(lines)).map_ok(|_| {})
+			} else {
+				dump_matches(tree.text, lines)
+			}
 		ExpectVisible(l) => one(l, found(lines)).map_ok(|_| {})
 		ExpectAbsent(l) => {
 			f = found(lines)
@@ -1321,28 +1290,167 @@ distance = |a, b| {
 	$row.last() ?? 0
 }
 
+## Whether the tree the host showed (`lines`, one node a line) matches the
+## one expected, written as `want`.
 dump_matches : Str, List(Str) -> Try({}, Str)
-dump_matches = |want, lines| {
-	got = Str.join_with(lines.map(|line| line.concat("\n")), "")
-	if Recorded.matches(want, got) {
-		Ok({})
-	} else {
-		w = want.split_on("\n")
-		g = got.split_on("\n")
-		var $k = 0.U64
-		while $k < w.len() and $k < g.len() and (w.get($k) ?? "") == (g.get($k) ?? "") {
-			$k = $k + 1
+dump_matches = |want, lines|
+	match (read_one(want), read_one(Str.join_with(lines, "\n"))) {
+		(Ok(w), Ok(g)) => tree_matches(w, g, [head_of(g)]).map_err(|message| "${message} (record an intended change with `test --update`)")
+		(_, Err(problem)) => Err("expected a view tree, saw something unreadable (${problem.message}): ${Str.join_with(lines, " ")}")
+		(Err(problem), _) => Err("the expected tree is unreadable: ${problem.message}")
+	}
+
+## How far a size may move between systems, in points: the system's fonts
+## decide it.
+tolerance_pt : I64
+tolerance_pt = 4
+
+## The keywords whose numbers are sizes, which match within the tolerance.
+sizes : List(Str)
+sizes = [":width", ":height"]
+
+## Whether `got` matches `want`, node by node: `_` matches anything, a
+## list matches a list of the same kind and as many items, each matching,
+## and a size within `tolerance_pt`. A mismatch names the first differing
+## node by its path, such as `window/vstack/hstack#3/button#2` (`#k` is a
+## node's place among its parent's nodes, from 1).
+tree_matches : Spec.Sx, Spec.Sx, List(Str) -> Try({}, Str)
+tree_matches = |want, got, trail| {
+	at = Str.join_with(trail, "/")
+	match (want, got) {
+		(Sym("_", _), _) => Ok({})
+		(List(ws, _), List(gs, _)) => {
+			if head_of(want) != head_of(got) {
+				return Err("at ${at}: expected (${head_of(want)} …), saw ${render_short(got)}")
+			}
+			if ws.len() != gs.len() {
+				return Err("at ${at}: expected ${render_short(want)}, saw ${render_short(got)}")
+			}
+			var $child = 0.U64
+			var $prev = ""
+			for (w, g) in List.map2(ws, gs, |a, b| (a, b)) {
+				name = head_of(g)
+				match (w, g) {
+					(Int(a, _), Int(b, _)) if sizes.contains($prev) and (a - b).abs() <= tolerance_pt => {}
+					(_, List(_, _)) => {
+						$child = $child + 1
+						tree_matches(w, g, trail.append("${name}#${$child.to_str()}"))?
+					}
+					_ =>
+						if !same_atom(w, g) {
+							what = if ($prev.starts_with(":")) " ${$prev}" else ""
+							return Err("at ${at}${what}: expected ${render(w)}, saw ${render(g)}")
+						}
+				}
+				$prev = match w {
+					Sym(word, _) => word
+					_ => ""
+				}
+			}
+			Ok({})
 		}
-		first = "line ${($k + 1).to_str()}: expected ${Str.inspect(w.get($k) ?? "")}, saw ${Str.inspect(g.get($k) ?? "")}"
-		Err("the dump differs at ${first} (record an intended change with `test --update`); it printed:\n${got}")
+		_ => if (same_atom(want, got)) Ok({}) else Err("at ${at}: expected ${render(want)}, saw ${render(got)}")
 	}
 }
 
-## A `"""` literal holding `lines`, each indented by `indent`.
-dump_literal : List(Str), Str -> Str
-dump_literal = |lines, indent| {
-	body = Str.join_with(lines.map(|line| if (line.is_empty()) "\n" else "${indent}${line}\n"), "")
-	"\"\"\"\n${body}${indent}\"\"\""
+## A list's kind, its first word; empty for anything else.
+head_of : Spec.Sx -> Str
+head_of = |sx|
+	match sx {
+		List([Sym(h, _), ..], _) => h
+		_ => ""
+	}
+
+same_atom : Spec.Sx, Spec.Sx -> Bool
+same_atom = |a, b|
+	match (a, b) {
+		(Sym("_", _), _) => Bool.True
+		(Sym(x, _), Sym(y, _)) => x == y
+		(Text(x, _), Text(y, _)) => x == y
+		(Int(x, _), Int(y, _)) => x == y
+		_ => Bool.False
+	}
+
+## An s-expression as canonical text, on one line.
+render : Spec.Sx -> Str
+render = |sx|
+	match sx {
+		Sym(word, _) => word
+		Text(text, _) => quote(text)
+		Int(n, _) => n.to_str()
+		List(items, _) => "(${Str.join_with(items.map(render), " ")})"
+	}
+
+## A node's head, without what it holds, for a message.
+render_short : Spec.Sx -> Str
+render_short = |sx|
+	match sx {
+		List(items, _) => {
+			atoms = items.keep_if(
+				|i| match i {
+					List(_, _) => Bool.False
+					_ => Bool.True
+				},
+			)
+			held = items.len() - atoms.len()
+			"(${Str.join_with(atoms.map(render), " ")}${if (held > 0) " …${held.to_str()} nodes" else ""})"
+		}
+		other => render(other)
+	}
+
+quote : Str -> Str
+quote = |text| "\"${text.replace_each("\\", "\\\\").replace_each("\"", "\\\"").replace_each("\n", "\\n").replace_each("\t", "\\t")}\""
+
+## A tree a spec expects, of the kind `head` (any kind, when empty), or `_`.
+tree_of : Spec.Sx, Str -> Try(Spec.Tree, Spec.Problem)
+tree_of = |sx, kind|
+	match sx {
+		Sym("_", pos) => Ok({ text: "_", pos })
+		List([Sym(h, _), ..], pos) if kind.is_empty() or h == kind => Ok({ text: render(sx), pos })
+		other => Err({ pos: pos_of(other), message: if (kind.is_empty()) "expected a view tree, such as (button \"+\"), or _" else "expected the window's tree, (${kind} :width W :height H …), or _" })
+	}
+
+## The end of the form that starts at `at`: past its closing parenthesis,
+## its closing quote, or its last character.
+form_end : List(U8), U64 -> U64
+form_end = |bytes, at| {
+	var $i = at
+	var $depth = 0.U64
+	var $in_text = Bool.False
+	while $i < bytes.len() {
+		b = bytes.get($i) ?? 0
+		if $in_text {
+			if b == '\\' {
+				$i = $i + 1
+			} else if b == '"' {
+				$in_text = Bool.False
+				if $depth == 0 {
+					return $i + 1
+				}
+			}
+		} else if $depth == 0 and $i > at and is_delimiter(b) {
+			return $i
+		} else if b == '"' {
+			$in_text = Bool.True
+		} else if b == '(' {
+			$depth = $depth + 1
+		} else if b == ')' {
+			if $depth <= 1 {
+				return $i + 1
+			}
+			$depth = $depth - 1
+		}
+		$i = $i + 1
+	}
+	$i
+}
+
+## The tree the host showed, a node a line, each line after the first
+## indented to `column`.
+dump_literal : List(Str), U64 -> Str
+dump_literal = |lines, column| {
+	pad = Str.join_with(List.repeat(" ", column), "")
+	Str.join_with(lines.map_with_index(|line, i| if (i == 0) line else "${pad}${line}"), "\n")
 }
 
 failure_message : Str, List(Str) -> Str
@@ -1364,10 +1472,9 @@ counter =
 	\\  (steps
 	\\    (click (button "+"))
 	\\    (expect-text (text "1") "1") ; a comment
-	\\    (expect-dump """
-	\\      --- 360x237
-	\\      ui-vstack [1 views]
-	\\      """)))
+	\\    (expect-dump (window :width 360 :height 237
+	\\                   (vstack :views 1
+	\\                     (button "+"))))))
 	\\
 
 expect {
@@ -1379,7 +1486,7 @@ expect {
 				and second.op == ExpectText([{ kind: "text", text: "1" }], "1")
 				and (
 					match third.op {
-						ExpectDump({ text, indent, .. }) => text == "--- 360x237\nui-vstack [1 views]\n" and indent == "      "
+						ExpectDump({ text, pos }) => text == "(window :width 360 :height 237 (vstack :views 1 (button \"+\")))" and pos == { line: 5, column: 18 }
 						_ => Bool.False
 					}
 				)
@@ -1464,13 +1571,13 @@ expect {
 
 ## A run that saw what the spec expects has no problems.
 expect {
-	run = Spec.read_run("hello\n@2 obs\n|count 1\n|text 1\n@3 obs\n|--- 361x237\n|ui-vstack [1 views]\n@done\n")
+	run = Spec.read_run("hello\n@2 obs\n|count 1\n|text 1\n@3 obs\n|(window :width 361 :height 237\n|  (vstack :views 1\n|    (button \"+\")))\n@done\n")
 	Spec.parse(counter).map_ok(|p| Spec.judge(p, run)) == Ok([])
 }
 
 ## A miss says where, what was expected and what the run saw.
 expect {
-	run = Spec.read_run("@2 obs\n|count 0\n|candidate 2\n|candidate Counter\n@3 obs\n|--- 360x237\n|ui-vstack [1 views]\n@done\n")
+	run = Spec.read_run("@2 obs\n|count 0\n|candidate 2\n|candidate Counter\n@3 obs\n|(window :width 360 :height 237 (vstack :views 1 (button \"+\")))\n@done\n")
 	Spec.parse(counter).map_ok(|p| Spec.judge(p, run)) == Ok([{ pos: { line: 4, column: 5 }, message: "expected one (text \"1\"), saw none; the nearest are \"2\", \"Counter\"" }])
 }
 
@@ -1480,11 +1587,46 @@ expect {
 	Spec.parse(counter).map_ok(|p| Spec.judge(p, run)) == Ok([{ pos: { line: 3, column: 5 }, message: "no button \"+\"; the nearest are \"−\"" }])
 }
 
-## Updating rewrites the dump's body, and only it.
+## Updating rewrites the dump's tree, a node a line from its column, and
+## only it.
 expect {
-	run = Spec.read_run("@3 obs\n|--- 400x237\n|ui-vstack [2 views]\n@done\n")
+	run = Spec.read_run("@3 obs\n|(window :width 400 :height 237\n|  (vstack :views 2\n|    (button \"+\")\n|    (button \"-\")))\n@done\n")
 	updated = Spec.parse(counter).map_ok(|p| Spec.update(counter, p, run))
-	updated == Ok(counter.replace_each("360x237", "400x237").replace_each("[1 views]", "[2 views]"))
+	want =
+		\\(test "increment"
+		\\  (steps
+		\\    (click (button "+"))
+		\\    (expect-text (text "1") "1") ; a comment
+		\\    (expect-dump (window :width 400 :height 237
+		\\                   (vstack :views 2
+		\\                     (button "+")
+		\\                     (button "-"))))))
+		\\
+	updated == Ok(want)
+}
+
+## A placeholder `_` is filled in, and the form around it kept.
+expect {
+	source = "(test \"x\"\n  (steps\n    (expect-dump _)))\n"
+	run = Spec.read_run("@1 obs\n|(window :width 1 :height 2\n|  (spacer))\n@done\n")
+	Spec.parse(source).map_ok(|p| Spec.update(source, p, run)) == Ok("(test \"x\"\n  (steps\n    (expect-dump (window :width 1 :height 2\n                   (spacer)))))\n")
+}
+
+## A differing node is named by its path; `_` and sizes within the
+## tolerance match.
+expect {
+	got = "(window :width 362 :height 237 (vstack :views 2 (text \"a\" :color red) (hstack :views 2 (button \"x\") (button \"y\" :enabled #f))))"
+	check = |want| dump_matches(want, [got])
+	(
+		check("(window :width 360 :height 237 (vstack :views 2 (text _ :color red) _))"),
+		check("(window :width 360 :height 237 (vstack :views 2 (text \"a\" :color red) (hstack :views 2 (button \"x\") (button \"z\" :enabled #f))))"),
+		check("(window :width 300 :height 237 _)"),
+	)
+		== (
+			Ok({}),
+			Err("at window/vstack#1/hstack#2/button#2: expected \"z\", saw \"y\" (record an intended change with `test --update`)"),
+			Err("at window :width: expected 300, saw 362 (record an intended change with `test --update`)"),
+		)
 }
 
 ## Mistakes are reported where they are.

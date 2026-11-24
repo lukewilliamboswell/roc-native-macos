@@ -9,23 +9,21 @@
     (expect-visible (text "200"))
     (expect-visible (text "Hello, world."))
     (expect-disabled (button "Cancel") true)
-    (expect-dump """
-      --- 560x221
-      ui-vstack [1 views]
-        ui-vstack [6 views]
-          ui-text "HTTP fetch" {text-style=title2 weight=semibold}
-          ui-form [1 views]
-            ui-hstack [4 views]
-              ui-image globe
-              ui-text-field "https://example.com/"
-              ui-button "Fetch"
-              ui-button "Cancel" (disabled)
-          ui-checkbox "Time out after 2 s" [ ]
-          ui-divider
-          ui-hstack [2 views]
-            ui-box {fill=green}
-              ui-text "200" {color=adaptive:ffffff:ffffff text-style=caption1 weight=bold}
-            ui-text "#1: 13 bytes from https://example.com/" {color=secondary-label}
-          ui-box {border=line:1:separator fill=text-background}
-            ui-text "Hello, world." {design=monospaced text-style=callout}
-      """)))
+    (expect-dump (window :width 560 :height 221
+                   (vstack :views 1
+                     (vstack :views 6
+                       (text "HTTP fetch" :text-style title2 :weight semibold)
+                       (form :views 1
+                         (hstack :views 4
+                           (image globe)
+                           (text-field "https://example.com/")
+                           (button "Fetch")
+                           (button "Cancel" :enabled #f)))
+                       (checkbox "Time out after 2 s" :checked #f)
+                       (divider)
+                       (hstack :views 2
+                         (box :fill green
+                           (text "200" :color adaptive:ffffff:ffffff :text-style caption1 :weight bold))
+                         (text "#1: 13 bytes from https://example.com/" :color secondary-label))
+                       (box :border line:1:separator :fill text-background
+                         (text "Hello, world." :design monospaced :text-style callout))))))))
