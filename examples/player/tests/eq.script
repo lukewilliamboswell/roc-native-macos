@@ -1,0 +1,1 @@
+audio:manual;files:tests/fixtures/tones-44100.wav;wait:300;click:Play;audio:render:100;audio:tone:250;audio:tone:4000;slide:6,-12;audio:render:100;audio:status;audio:eq;audio:tone:250;audio:tone:4000;toggle:Bypass;audio:render:100;audio:eq;audio:tone:250;audio:tone:4000;toggle:Bypass;audio:render:100;audio:tone:250;audio:tone:4000;audio:status;quit

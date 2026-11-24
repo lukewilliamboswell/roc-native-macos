@@ -1,0 +1,1 @@
+audio:manual;files:tests/fixtures/invalid.wav;wait:400;audio:status;dump;files:tests/fixtures/clicks.wav;wait:300;audio:status;quit
