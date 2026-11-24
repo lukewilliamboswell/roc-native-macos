@@ -10,5 +10,5 @@
     (wait 900)
     (drop "/usr/share/dict/README") (wait 800)
     (drop "/usr/share/dict/web2") (wait 1000)
-    (click (button "Inspect")) (wait 2800)
+    (click (button "Inspect" 1)) (wait 2800)
     (click (button "Clear")) (wait 1200)))
