@@ -50,6 +50,13 @@ Audio := [].{
 	##   bands, -24 to +12 dB. `Bypass(on)`: the unprocessed signal at the
 	##   same volume, keeping the settings for when it is off again. `Flat`:
 	##   every band and the preamp to 0 dB.
+	## - `VisualOffset(ms)`: show the measurements a drawing surface reads
+	##   (and `analysis` sends) `ms` milliseconds later than the sound they
+	##   measure, -500 to +500: positive when the picture leads what the
+	##   listener hears, negative when it trails. The session already allows
+	##   for the output's reported latency; this is for what an output does
+	##   not report (a Bluetooth speaker, a TV), so an app keeps one per
+	##   `Status.output`, and sends it when the output changes.
 	## - `Close`: stop, and let go of the file and the audio engine.
 	##
 	## A value out of range is clamped (status reports what applies), a value
@@ -68,6 +75,7 @@ Audio := [].{
 		Preamp(F32),
 		Bypass(Bool),
 		Flat,
+		VisualOffset(F32),
 		Close,
 	]
 
@@ -99,10 +107,19 @@ Audio := [].{
 
 	## Where playback stands: sent when it subscribes, on every change, and
 	## every `every_ms` while playing. Only the newest waits while the app is
-	## busy. `latency_ms` is how long after `position_ms` a sample is heard.
+	## busy. `latency_ms` is how long after its render a sample is heard (the
+	## output's reported latency), which the measurements a surface reads
+	## already allow for, and `visual_offset_ms` the `VisualOffset` that
+	## applies. `output` is the device playing (its name, and its UID, which
+	## stays the same across launches), both empty before the session starts
+	## or under a spec's manual clock.
 	## `generation` changes with every load, seek, stop and restart: a
 	## drawing surface's `reset` signal, so its trails start again.
-	Status : { track : U64, generation : U64, state : State, position_ms : U64, duration_ms : U64, volume : F32, latency_ms : F32, eq : Eq }
+	Status : { track : U64, generation : U64, state : State, position_ms : U64, duration_ms : U64, volume : F32, latency_ms : F32, visual_offset_ms : F32, output : Output, eq : Eq }
+
+	## An output device: its name, as the Sound settings show it, and its
+	## Core Audio UID.
+	Output : { name : Str, uid : Str }
 
 	## One measurement of a 2048-sample window (43 ms at 48 kHz) of the
 	## signal after the EQ and before the volume, the window nearest the
@@ -182,26 +199,27 @@ expect {
 		match endpoints.command.send(command) {
 			PortCommand({ port, message, .. }) => "${port} ${message.json}"
 		}
-	[sent(Seek(1500)), sent(Play), sent(Gain({ band: 3, db: -12 })), sent(Bypass(Bool.True)), sent(LoadAsset({ track: 2, path: "song.mp3" }))]
+	[sent(Seek(1500)), sent(Play), sent(Gain({ band: 3, db: -12 })), sent(Bypass(Bool.True)), sent(LoadAsset({ track: 2, path: "song.mp3" })), sent(VisualOffset(-20))]
 		== [
 			"roc-native-macos/audio/command {\"Seek\":\"1500\"}",
 			"roc-native-macos/audio/command \"Play\"",
 			"roc-native-macos/audio/command {\"Gain\":{\"band\":3,\"db\":-12}}",
 			"roc-native-macos/audio/command {\"Bypass\":true}",
 			"roc-native-macos/audio/command {\"LoadAsset\":{\"path\":\"song.mp3\",\"track\":\"2\"}}",
+			"roc-native-macos/audio/command {\"VisualOffset\":-20}",
 		]
 }
 
 ## The host's status and events decode as the app's types.
 expect {
 	status : Try(Audio.Status, Port.Error)
-	status = endpoints.status.message(PortAnswer({ json: "{\"duration_ms\":\"1000\",\"eq\":{\"bypass\":false,\"gains_db\":[0.0,-12.0],\"preamp_db\":0.0},\"generation\":\"3\",\"latency_ms\":0.0,\"position_ms\":\"250\",\"state\":\"Playing\",\"track\":\"7\",\"volume\":1.0}", blobs: [], files: [] }))
+	status = endpoints.status.message(PortAnswer({ json: "{\"duration_ms\":\"1000\",\"eq\":{\"bypass\":false,\"gains_db\":[0.0,-12.0],\"preamp_db\":0.0},\"generation\":\"3\",\"latency_ms\":0.0,\"output\":{\"name\":\"MacBook Air Speakers\",\"uid\":\"BuiltInSpeakerDevice\"},\"position_ms\":\"250\",\"state\":\"Playing\",\"track\":\"7\",\"visual_offset_ms\":-20.0,\"volume\":1.0}", blobs: [], files: [] }))
 	ended : Try(Audio.Event, Port.Error)
 	ended = endpoints.events.message(PortAnswer({ json: "{\"Ended\":{\"track\":\"7\"}}", blobs: [], files: [] }))
 	failed : Try(Audio.Event, Port.Error)
 	failed = endpoints.events.message(PortAnswer({ json: "{\"Failed\":{\"error\":{\"Corrupt\":\"bad header\"},\"track\":\"2\"}}", blobs: [], files: [] }))
-	(status.map_ok(|s| (s.state, s.position_ms, s.generation, s.eq.gains_db)), ended, failed)
-		== (Ok((Playing, 250, 3, [0, -12])), Ok(Ended({ track: 7 })), Ok(Failed({ track: 2, error: Corrupt("bad header") })))
+	(status.map_ok(|s| (s.state, s.position_ms, s.generation, s.eq.gains_db, s.visual_offset_ms, s.output.uid)), ended, failed)
+		== (Ok((Playing, 250, 3, [0, -12], -20, "BuiltInSpeakerDevice")), Ok(Ended({ track: 7 })), Ok(Failed({ track: 2, error: Corrupt("bad header") })))
 }
 
 ## Four ports, named once.

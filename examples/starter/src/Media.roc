@@ -92,6 +92,8 @@ Media := [].{
 		duration_ms: p.duration_ms,
 		volume: 1,
 		latency_ms: 0,
+		visual_offset_ms: 0,
+		output: { name: "", uid: "" },
 		eq: { bypass: Bool.False, preamp_db: 0, gains_db: [] },
 	}
 

@@ -93,7 +93,7 @@ modes = || Ui.segmented(cells.mode.signal(), { choices: ["Scope", "Echo", "Bands
 
 ## Where playback stood when the host last said.
 idle : Audio.Status
-idle = { track: 0, generation: 0, state: Idle, position_ms: 0, duration_ms: 0, volume: 1, latency_ms: 0, eq: { bypass: Bool.False, preamp_db: 0, gains_db: List.repeat(0, 10) } }
+idle = { track: 0, generation: 0, state: Idle, position_ms: 0, duration_ms: 0, volume: 1, latency_ms: 0, visual_offset_ms: 0, output: { name: "", uid: "" }, eq: { bypass: Bool.False, preamp_db: 0, gains_db: List.repeat(0, 10) } }
 
 ## The gallery: a picker of the presets, a file to play through them, and
 ## the preset filling the window, with what it is and what its shaders are
