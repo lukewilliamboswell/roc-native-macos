@@ -45,7 +45,9 @@ PATH, or `$ROC`. Building the platform is two steps over committed inputs:
   host --reproduce` builds each twice and compares.
 . *Linker stubs.* The macOS TAPI stubs in `platform/targets/macos-sysroot`,
   one set for both architectures, come from the linker-input release that
-  `link-inputs.lock.json` selects, verified by size and SHA-256, and each
+  `link-inputs.lock.json` selects (only `publish-link-inputs.yml` writes
+  the lock; until the first release there is none, and the stubs are
+  generated from the catalog), verified by size and SHA-256, and each
   host's references are audited against what `host/interfaces.json`
   exports for its architecture, then the system imports of the `roc`
   compiler's run shims, which `roc main.roc` links the host with, against
@@ -617,7 +619,6 @@ Check both appearances with `ROC_APPEARANCE=dark` and a screenshot
 (`window`, then `screencapture -l<number> -o`).
 
 [#findings]
-[#findings]
 == Constraints to build with
 
 These hold for the compilers and the host as they are; each is a rule to
@@ -639,6 +640,10 @@ runtime error instead of failing. `roc test` reports it; give a store at
 least two cells.
 `watch` and `watch_latest`:: `watch` never cancels what it issued; a
 start/stop effect such as an interval needs `watch_latest`.
+Keywords and arity:: `app` is a keyword, so it cannot name a variable or a
+record field. A function with no arguments is written `() -> T` in
+annotations and `|| ...` in definitions, as `Ui.divider : () -> Elem(ctx)`
+is.
 Props records:: A nominal record of `??` defaulted fields as an argument
 (`Ui.vstack({ align: Fill }, kids)`) takes every default for `{}` and for the
 fields a literal omits, for every field type `Ui` uses, inside a `map` lambda
