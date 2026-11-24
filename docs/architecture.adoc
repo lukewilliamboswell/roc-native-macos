@@ -365,7 +365,7 @@ and calls on the main thread, between engine turns. A tick draws one frame
 for the time it will be seen, on `ProcessInfo.systemUptime`'s monotonic
 clock (which the display link's and Core Audio's host times share): its
 `targetTimestamp`, plus, with Metal, how late after their targets its
-last frames were presented (xref:architecture.adoc#av-timing[Audio
+last frames were presented (xref:architecture.adoc#audio[Audio,
 timing]), and marks the view for display. The run loop delivers only the latest refresh, so a busy main
 thread skips frames rather than queueing them. The next frame's time covers
 the gap, and since a trail's fade and motion are rates, the picture keeps
@@ -994,7 +994,6 @@ on every transport change. A native consumer samples the history directly
 time (see Timing), and every transport change calls
 `SurfaceSources.changed` for the `audio.*` names. None of this runs Roc off
 the main thread or waits on a consumer.
-[#av-timing]
 Timing:: A frame shows the sound heard when it reaches the screen.
 +
 --
