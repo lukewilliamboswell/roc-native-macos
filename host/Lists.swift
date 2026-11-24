@@ -33,6 +33,15 @@ final class ListBox: Box, NSTableViewDataSource, NSTableViewDelegate {
     /// The rows the list holds: every row, or a windowed list's window.
     private(set) var rows: [Node] = []
     private var cells: [ObjectIdentifier: (row: Node, cell: NSTableCellView)] = [:]
+
+    /// Keep only the cells of rows `owner` still holds. A loop, not
+    /// `cells.filter`: Swift 6.3 specializes Dictionary's rethrowing
+    /// `filter` with typed-throws runtime calls.
+    private func keepCells(of owner: Node) {
+        var gone: [ObjectIdentifier] = []
+        for (key, entry) in cells where entry.row.parent !== owner { gone.append(key) }
+        for key in gone { cells.removeValue(forKey: key) }
+    }
     private var updating = false
     private var bulk = false
     private var changes = 0
@@ -198,7 +207,7 @@ final class ListBox: Box, NSTableViewDataSource, NSTableViewDelegate {
         if windowed {
             quiet = true
             rows = owner.children.filter { $0.name != nil }
-            cells = cells.filter { $0.value.row.parent === owner }
+            keepCells(of: owner)
             if shownTotal != total {
                 // The view kept more or fewer rows: the table's rows are new.
                 shownTotal = total
@@ -233,7 +242,7 @@ final class ListBox: Box, NSTableViewDataSource, NSTableViewDelegate {
             quiet = true
             rows = owner.children.filter { $0.name != nil }
             // Only the rows that were shown have cells: keep those still here.
-            cells = cells.filter { $0.value.row.parent === owner }
+            keepCells(of: owner)
             table.reloadData()
         }
         bulk = false

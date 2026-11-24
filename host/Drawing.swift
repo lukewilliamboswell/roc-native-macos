@@ -878,7 +878,7 @@ final class DrawingSurface: NSView {
         }
         var pending = false
         for stage in [ShaderStage.warp, .composite] {
-            let source = stage == .warp ? shaders.warp : shaders.composite
+            let source = stage.isWarp ? shaders.warp : shaders.composite
             if source.isEmpty {
                 set(stage, nil)
                 shaderErrors[stage] = nil
@@ -907,10 +907,10 @@ final class DrawingSurface: NSView {
     }
 
     private func set(_ stage: ShaderStage, _ program: ShaderProgram?) {
-        let old = stage == .warp ? warpProgram : compositeProgram
+        let old = stage.isWarp ? warpProgram : compositeProgram
         if old === program { return }
-        if stage == .warp { warpProgram = program } else { compositeProgram = program }
-        if stage == .warp, old == nil || program == nil { metal?.clear() }
+        if stage.isWarp { warpProgram = program } else { compositeProgram = program }
+        if stage.isWarp, old == nil || program == nil { metal?.clear() }
         wantFrame()
     }
 
@@ -920,7 +920,7 @@ final class DrawingSurface: NSView {
         guard warpProgram != nil || compositeProgram != nil else { return }
         warpProgram = nil
         compositeProgram = nil
-        for stage in [ShaderStage.warp, .composite] where !(stage == .warp ? shaders.warp : shaders.composite).isEmpty {
+        for stage in [ShaderStage.warp, .composite] where !(stage.isWarp ? shaders.warp : shaders.composite).isEmpty {
             shaderErrors[stage] = [ShaderError(stage: stage, line: 0, column: 0, message: "the GPU stopped the frame (\(why)); the surface draws without its shaders until they change")]
         }
         metal?.clear()
@@ -1145,7 +1145,12 @@ final class DrawingSurface: NSView {
     /// trail (`:trail held` once its trail has a bitmap, `empty` before).
     var dumpHead: String {
         let pacing = displayPaced ? "display" : "on-demand"
-        let held = metal.map { $0.target?.hasHistory ?? false } ?? (current != nil)
+        // `if case`, not `current != nil`: Swift 6.3 resolves `!=` on an
+        // optional CF type to `Equatable`'s, through the CoreFoundation
+        // overlay's `_CFObject` conformance, which the catalog does not own.
+        var hasImage = false
+        if case .some = current { hasImage = true }
+        let held = metal.map { $0.target?.hasHistory ?? false } ?? hasImage
         let history = trail == nil ? "" : " :trail \(held ? "held" : "empty")"
         let shading = shaderWord.map { " :shader \($0)" } ?? ""
         return "\(Host.quote(label)) :width \(Int(bounds.width)) :height \(Int(bounds.height)) :pacing \(pacing)\(displayPaced ? " :ticking \(ticking ? "#t" : "#f")" : "")\(history)\(shading)"

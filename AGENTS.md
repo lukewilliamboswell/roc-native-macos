@@ -25,6 +25,11 @@ in `docs/contributing.adoc` ("The check gate").
   `libhost.a`. A symbol the build's audit names joins the catalog in a
   reviewed edit that names its library and its evidence, never to silence a
   link error; a catalog change is a new linker-input release.
+- **The host is built with exactly the pinned Xcode**, so its bytes and the
+  symbols it references are reproducible: `scripts/build.roc` stops before
+  compiling on any other Xcode or Swift than `.github/actions/setup-xcode`
+  pins, and moving the pin is a deliberate change (`docs/contributing.adoc`,
+  "The pinned Xcode").
 - **Roc runs on the main thread, or on its own worker thread.** The page's
   engine is single-threaded and not re-entrant: its entry points are called
   on the AppKit main thread, one turn at a time, and work done elsewhere

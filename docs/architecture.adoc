@@ -1386,7 +1386,10 @@ through `roc src/main.roc`, so a run mode the stubs cannot link fails the gate.
 
 Swift is compiled with `-disable-autolink-frameworks` and
 `-disable-force-load-symbols`, so the frameworks linked are exactly the
-catalog's. Roc then links each `X.framework/X.tbd` it finds. The resulting
+catalog's, and with `-Xcc -fno-objc-msgsend-selector-stubs`, so every
+Objective-C call is to the catalog's `_objc_msgSend` rather than to an
+`_objc_msgSend$<selector>` stub for the linker to synthesize, which Swift
+6.3 and later emit on arm64 by default. Roc then links each `X.framework/X.tbd` it finds. The resulting
 binaries load only `AppKit`, `Foundation`, `CoreGraphics`, `AVFAudio`, `AudioToolbox`, `CoreAudio`,
 `Accelerate`, `libSystem`, `libobjc` and the Swift runtime and overlays in
 `/usr/lib/swift`. `Accelerate`'s stub lists the vDSP functions under the

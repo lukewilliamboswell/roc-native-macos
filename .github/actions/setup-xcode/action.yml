@@ -6,17 +6,28 @@ description: >-
   Swift symbol references in every run. The macos-15 image's default Xcode
   (16.4, Swift 6.1) references Swift runtime symbols that Swift 6.2 inlines.
 
+# These defaults are the one pin of the host's toolchain: scripts/build.roc
+# reads them (Build.toolchain_pin) and refuses to build the host with any
+# other Xcode unless ROC_HOST_TOOLCHAIN=any.
+#
 # To move to another Xcode: pick one the runner image lists
 # (https://github.com/actions/runner-images/blob/main/images/macos/macos-15-arm64-Readme.md),
-# change both values below, run `blueprint run check` with it, and add any
-# symbol the audit names to host/interfaces.json with its owning library.
+# change all four values below, run `blueprint run check` with it
+# (ROC_HOST_TOOLCHAIN=any until the pin is changed), and add any symbol the
+# audit names to host/interfaces.json with its owning library and evidence.
 inputs:
   xcode:
     description: Xcode application to select, under /Applications
     default: Xcode_26.3.app
+  version:
+    description: The Xcode version it must report (xcodebuild -version)
+    default: "26.3"
   build:
     description: The Xcode build version it must report (xcodebuild -version)
     default: 17C529
+  swift:
+    description: The Swift version its swiftc must report (swiftc --version)
+    default: 6.2.4
 
 runs:
   using: composite
@@ -25,7 +36,9 @@ runs:
       shell: bash
       env:
         XCODE: ${{ inputs.xcode }}
+        VERSION: ${{ inputs.version }}
         BUILD: ${{ inputs.build }}
+        SWIFT: ${{ inputs.swift }}
       run: |
         set -euo pipefail
         developer="/Applications/$XCODE/Contents/Developer"
@@ -34,5 +47,8 @@ runs:
         echo "DEVELOPER_DIR=$developer" >> "$GITHUB_ENV"
         reported=$(DEVELOPER_DIR="$developer" xcodebuild -version)
         echo "$reported"
+        grep -qx "Xcode $VERSION" <<<"$reported" || { echo "::error::expected Xcode $VERSION"; exit 1; }
         grep -qx "Build version $BUILD" <<<"$reported" || { echo "::error::expected Xcode build $BUILD"; exit 1; }
-        DEVELOPER_DIR="$developer" swiftc --version
+        swift=$(DEVELOPER_DIR="$developer" swiftc --version)
+        echo "$swift"
+        grep -q "Apple Swift version $SWIFT " <<<"$swift" || { echo "::error::expected Swift $SWIFT"; exit 1; }

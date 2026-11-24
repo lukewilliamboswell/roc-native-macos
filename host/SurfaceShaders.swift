@@ -36,6 +36,16 @@ enum ShaderStage {
         case .composite: return "composite"
         }
     }
+
+    /// Whether this is the warp stage. A `switch`, not `stage == .warp`:
+    /// Swift 6.3 calls `==` on a plain enum through the standard library's
+    /// `Equatable` dispatch thunk, a symbol the catalog does not own.
+    var isWarp: Bool {
+        switch self {
+        case .warp: return true
+        case .composite: return false
+        }
+    }
 }
 
 /// One compile error, at the app's line and column (0 when it is in the
@@ -56,9 +66,9 @@ struct StageErrors {
     var composite: [ShaderError] = []
 
     subscript(stage: ShaderStage) -> [ShaderError]? {
-        get { stage == .warp ? warp : composite }
+        get { stage.isWarp ? warp : composite }
         set {
-            if stage == .warp { warp = newValue ?? [] } else { composite = newValue ?? [] }
+            if stage.isWarp { warp = newValue ?? [] } else { composite = newValue ?? [] }
         }
     }
 }
@@ -124,7 +134,7 @@ final class ShaderCompile {
         d.vertexFunction = renderer.fullVertex
         d.fragmentFunction = fragment
         d.colorAttachments[0].pixelFormat = MetalRenderer.colorFormat
-        if stage == .warp {
+        if stage.isWarp {
             // Drawn first in the multisampled pass the scene draws in.
             d.rasterSampleCount = MetalRenderer.samples
             d.stencilAttachmentPixelFormat = .stencil8

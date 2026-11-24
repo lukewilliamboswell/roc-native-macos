@@ -519,10 +519,14 @@ final class Host: NSObject, NSTextFieldDelegate {
             if !documentKeys.isEmpty { documentKeys.removeAll { $0 === d } }
             if !hovered.isEmpty { hovered.removeAll { $0 === d } }
         }
-        refs = refs.filter { entry in
+        // A loop, not `refs.filter`: Swift 6.3 specializes Dictionary's
+        // rethrowing `filter` with typed-throws runtime calls.
+        var gone: [UInt32] = []
+        for (key, value) in refs {
             var inside = false
-            n.walk { if $0 === entry.value { inside = true } }
-            return !inside
+            n.walk { if $0 === value { inside = true } }
+            if inside { gone.append(key) }
         }
+        for key in gone { refs.removeValue(forKey: key) }
     }
 }

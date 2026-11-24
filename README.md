@@ -94,7 +94,9 @@ Both are chapters of [the manual](https://lukewilliamboswell.github.io/roc-nativ
 Each example is a complete app. To try one, download the examples archive
 from the [latest release](https://github.com/lukewilliamboswell/roc-native-macos/releases/latest)
 and run it with `macos.roc`, as [Try an example](https://lukewilliamboswell.github.io/roc-native-macos/apps.html#try-an-example)
-describes.
+describes. It needs only Roc: no checkout, Xcode or Swift. Building the
+examples from a checkout builds the platform from source, which is for
+contributors.
 
 <table>
 <tr>
