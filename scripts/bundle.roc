@@ -124,7 +124,7 @@ consumer_test! = |root, out, bundle| {
 	Path.create_all!(Path.utf8(served_dir))?
 	Path.copy!(Path.utf8("${out}/${bundle}"), Path.utf8("${served_dir}/${bundle}"))?
 	server = Cmd.new("python3")
-		.args(["-I", "-u", "-c", OsStr.from_str(serve_script), OsStr.from_str(served_dir)])
+		.args(["-I", "-u", "-c", OsStr.from_str(Bundle.serve_script), OsStr.from_str(served_dir)])
 		.stdin(Null)
 		.stdout(Pipe)
 		.stderr(MergeWithStdout)
@@ -154,26 +154,6 @@ consumer_test! = |root, out, bundle| {
 		}
 	}
 }
-
-## A static file server for the directory its argument names, on every
-## address (IPv6 and IPv4) at a port the system picks, which it prints as
-## `python3 -m http.server` does. It binds as a plain TCP server: the
-## module's own server looks up the bind address's name first
-## (`socket.getfqdn("::")`), a reverse lookup that can outlast the 30 s
-## the tool waits: on the macos-15-intel runner it printed nothing in time.
-serve_script : Str
-serve_script =
-	\\import functools, http.server, socket, socketserver, sys
-	\\class Server(http.server.ThreadingHTTPServer):
-	\\    address_family = socket.AF_INET6
-	\\    def server_bind(self):
-	\\        self.socket.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 0)
-	\\        socketserver.TCPServer.server_bind(self)
-	\\        self.server_name, self.server_port = "localhost", self.server_address[1]
-	\\handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory=sys.argv[1])
-	\\server = Server(("::", 0), handler)
-	\\print(f"Serving HTTP on :: port {server.server_port} (http://[::]:{server.server_port}/) ...", flush=True)
-	\\server.serve_forever()
 
 ## The port the server reports, from its first line of output.
 served! : Cmd.Child => Try(U16, Str)

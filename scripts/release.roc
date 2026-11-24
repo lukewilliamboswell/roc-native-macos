@@ -323,7 +323,7 @@ test! = |root, dir, binaries| {
 build_all! : Str, Str, Str, { bundle : Str, tool : Str }, List(Str) => Try({}, Str)
 build_all! = |work, top, dir, { bundle, tool }, examples| {
 	server = Cmd.new("python3")
-		.args(["-I", "-u", "-m", "http.server", "0", "--bind", "::", "--directory", OsStr.from_str(dir)])
+		.args(["-I", "-u", "-c", OsStr.from_str(Bundle.serve_script), OsStr.from_str(dir)])
 		.stdin(Null)
 		.stdout(Pipe)
 		.stderr(MergeWithStdout)
