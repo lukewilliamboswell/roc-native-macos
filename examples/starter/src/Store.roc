@@ -1,4 +1,5 @@
 import pf.Engine exposing [File, Signal]
+import pf.Ui
 import logic.Eq
 import logic.Library
 import logic.Lyrics
@@ -89,7 +90,11 @@ Store := [Music].{
 
 			## Which panel is open below the transport.
 			panel: Engine.cell("Hide Panels"),
-			editor: Engine.cell(Store.editing(Library.scope)),
+			editor: Engine.cell(Store.editing(Library.default)),
+
+			## What the surface's shaders are doing: running, drawing the simple
+			## fallback, or failing to compile.
+			shader_status: Engine.cell(NoShader),
 
 			## A preset file being imported, read on the page (`Editor.importing`).
 			importing: Engine.cell(NotImporting),
@@ -122,7 +127,7 @@ Store := [Music].{
 	start = |boot| {
 		mine = Library.from_storage(Engine.boot_storage(boot, Store.presets_key) ?? "")
 		saved_prefs = Prefs.decode(Engine.boot_storage(boot, Store.prefs_key) ?? "")
-		chosen = Library.find(mine, saved_prefs.preset) ?? Library.scope
+		chosen = Library.find(mine, saved_prefs.preset) ?? Library.default
 		Store.store
 			.with_initial(Store.cells.mine, mine)
 			.with_initial(Store.cells.chosen, chosen.id)
@@ -472,11 +477,43 @@ Store := [Music].{
 	## editor is open, so every edit is seen as it is made; otherwise the
 	## chosen one.
 	shown : { mine : List(Preset.Doc), chosen : Str, editor : Editor, panel : Str } -> Preset.Doc
-	shown = |{ mine, chosen, editor, panel }| if (panel == "Editor") editor.draft else Library.find(mine, chosen) ?? Library.scope
+	shown = |{ mine, chosen, editor, panel }| if (panel == "Editor") editor.draft else Library.find(mine, chosen) ?? Library.default
 
 	## The scene the visualization draws.
 	drawing : { mine : List(Preset.Doc), chosen : Str, editor : Editor, panel : Str } -> Scene.Drawing
 	drawing = |state| Scene.of(Store.shown(state))
+
+	## What the surface said its shaders are doing. A stage that does not
+	## compile is named, with its line and message, in the notice; the
+	## surface goes on drawing that stage's last good source.
+	shader_heard : Ui.ShaderStatus -> List(Engine.Write(_))
+	shader_heard = |status|
+		match status {
+			Failed(errors) => [Store.cells.shader_status.set(status), Store.cells.notice.set(Store.shader_problem(errors))]
+			_ => [Store.cells.shader_status.set(status)]
+		}
+
+	## A shader's compile errors in a line: the first, and how many more.
+	shader_problem : List(Ui.ShaderError) -> Str
+	shader_problem = |errors|
+		match errors {
+			[] => "The shader does not compile."
+			[first, .. as rest] => {
+				more = if (rest.is_empty()) "" else " (and ${Store.counted(rest.len(), "more error")})"
+				"The ${Store.shader_place(first)}: ${first.message}${more}. The last good shader goes on drawing."
+			}
+		}
+
+	## Where a shader error is: `warp, line 3`.
+	shader_place : Ui.ShaderError -> Str
+	shader_place = |e| {
+		stage =
+			match e.stage {
+				Warp => "warp"
+				Composite => "composite"
+			}
+		if (e.line == 0) stage else "${stage}, line ${e.line.to_str()}"
+	}
 
 	## Choosing a preset from the list: the editor follows, so it always
 	## edits what is chosen.
@@ -537,7 +574,7 @@ Store := [Music].{
 		if Library.is_builtin(id) {
 			[Store.cells.notice.set("Built-in presets cannot be deleted.")]
 		} else {
-			[Store.cells.mine.set(Library.removed(mine, id)), Store.cells.chosen.set(Library.scope.id), Store.cells.editor.set(Store.editing(Library.scope)), Store.cells.notice.set("Deleted the preset.")]
+			[Store.cells.mine.set(Library.removed(mine, id)), Store.cells.chosen.set(Library.default.id), Store.cells.editor.set(Store.editing(Library.default)), Store.cells.notice.set("Deleted the preset.")]
 		}
 
 	## A preset file chosen to import: it is read (`Editor.importing`).

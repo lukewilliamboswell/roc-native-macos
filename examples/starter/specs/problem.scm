@@ -10,7 +10,7 @@
     (fill (text-area) "{\"version\": 2}")
     (expect-visible (text "version is 2; this app reads version 1"))
     (frame)
-    (expect-dump (window :width 760 :height 768
+    (expect-dump (window :width 760 :height 820
                    (vstack :views 1
                      (vstack :views 9
                        (hstack :views 6
@@ -25,13 +25,15 @@
                        (hstack :views 2
                          (drop-zone
                            (overlay
-                             (surface "Visualizer" :width 506 :height 280 :pacing display :ticking #t
-                               (space :fit 1000.0 1000.0 :scale 0.280 :offset 113.0 0.0))
+                             (surface "Visualizer" :width 506 :height 332 :pacing display :ticking #t
+                               (space :fit 1000.0 1000.0 :scale 0.332 :offset 87.0 0.0))
                              (vstack :views 0)))
-                         (vstack :views 5
-                           (text "Presets" :text-style headline)
+                         (vstack :views 17
                            (hstack :views 2
-                             (text "●" :color accent)
+                             (text "Presets" :text-style headline)
+                             (spacer))
+                           (hstack :views 2
+                             (text "" :color accent)
                              (button "Scope"))
                            (hstack :views 2
                              (text "" :color accent)
@@ -39,6 +41,42 @@
                            (hstack :views 2
                              (text "" :color accent)
                              (button "Echo Rings"))
+                           (hstack :views 2
+                             (text "" :color accent)
+                             (button "Liquid Drift"))
+                           (hstack :views 2
+                             (text "" :color accent)
+                             (button "Blur Corridor"))
+                           (hstack :views 2
+                             (text "" :color accent)
+                             (button "Superscope Bloom"))
+                           (hstack :views 2
+                             (text "" :color accent)
+                             (button "Flux Streaks"))
+                           (hstack :views 2
+                             (text "" :color accent)
+                             (button "Phase Scope"))
+                           (hstack :views 2
+                             (text "" :color accent)
+                             (button "Peak Meter"))
+                           (hstack :views 2
+                             (text "" :color accent)
+                             (button "Plasma Weave"))
+                           (hstack :views 2
+                             (text "" :color accent)
+                             (button "Hyperspace"))
+                           (hstack :views 2
+                             (text "" :color accent)
+                             (button "Mirror Shard"))
+                           (hstack :views 2
+                             (text "" :color accent)
+                             (button "Spectrum Fire"))
+                           (hstack :views 2
+                             (text "" :color accent)
+                             (button "Ripple Pool"))
+                           (hstack :views 2
+                             (text "●" :color accent)
+                             (button "Orb Garden"))
                            (hstack :views 3
                              (button "New")
                              (button "Duplicate")
@@ -62,7 +100,7 @@
                            (button "Delete…" :enabled #f))
                          (text "version is 2; this app reads version 1" :color red :text-style callout)
                          (hstack :views 4
-                           (dropdown "Add Layer" :items ("Add Layer" "Waveform" "Circular waveform" "Spectrum bars" "Ring"))
+                           (dropdown "Add Layer" :items ("Add Layer" "Waveform" "Circular waveform" "Spectrum bars" "Ring" "Lissajous"))
                            (spacer)
                            (file-button "Import…")
                            (button "Export…"))
