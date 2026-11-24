@@ -283,7 +283,8 @@ Release := [].{
 	## What `roc bump --expect` must check before `version` is released,
 	## given the latest final release (empty when there is none). A first
 	## release has nothing to compare with. A version past the latest's
-	## breaking boundary (the major, or before 1.0 the minor) permits every
+	## breaking boundary (the major; before 1.0 the minor; before 0.1 the
+	## patch, as Cargo reads `0.0.z`) permits every
 	## API change, as roc-automation's release utility accepts without a diff.
 	## Otherwise the API comparison decides.
 	bump_plan : Str, Str -> Try([FirstRelease, NewBoundary, Compare], [NotAfter])
@@ -298,12 +299,14 @@ Release := [].{
 			Ok(Compare)
 		}
 
-	## The breaking-change boundary of a version: `[major]`, or `[0, minor]`
-	## before 1.0.
+	## The breaking-change boundary of a version: `[major]`, `[0, minor]`
+	## before 1.0, or `[0, 0, patch]` before 0.1, where every release may
+	## break.
 	boundary : Str -> List(U64)
 	boundary = |version| {
 		numbers = Release.number_part(version).split_on(".").map(|part| U64.from_str(part) ?? 0)
 		match numbers {
+			[0, 0, patch, ..] => [0, 0, patch]
 			[0, minor, ..] => [0, minor]
 			[major, ..] => [major]
 			[] => []
@@ -453,6 +456,8 @@ expect Release.bump_plan("0.1.0", "") == Ok(FirstRelease)
 expect Release.bump_plan("0.2.0", "0.1.3") == Ok(NewBoundary)
 expect Release.bump_plan("1.0.0-rc1", "0.9.0") == Ok(NewBoundary)
 expect Release.bump_plan("0.1.4", "0.1.3") == Ok(Compare)
+expect Release.bump_plan("0.0.2", "0.0.1") == Ok(NewBoundary)
+expect Release.bump_plan("0.1.0", "0.0.9") == Ok(NewBoundary)
 expect Release.bump_plan("1.3.0", "1.2.0") == Ok(Compare)
 expect Release.bump_plan("0.1.3", "0.1.3") == Err(NotAfter)
 expect Release.bump_plan("0.1.0", "0.2.0") == Err(NotAfter)

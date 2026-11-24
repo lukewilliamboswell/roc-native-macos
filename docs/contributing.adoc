@@ -482,8 +482,9 @@ bundle.
 `release -- bump VERSION LATEST URL` runs `roc bump --old URL --expect
 VERSION platform/main.roc` against the latest final release's bundle, so a
 version that understates the API change never goes out. A first release, or
-a version past the latest one's breaking boundary (the major, or before 1.0
-the minor), needs no comparison. A dry run only reports the bump the change
+a version past the latest one's breaking boundary (the major; before 1.0
+the minor; before 0.1 the patch, since every `0.0.z` may break), needs no
+comparison. A dry run only reports the bump the change
 needs. Run `roc bump --old <latest bundle URL> platform/main.roc` to choose a
 version before writing its notes.
 
