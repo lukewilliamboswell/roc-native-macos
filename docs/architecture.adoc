@@ -1039,11 +1039,18 @@ through the visualizer's Sync Test:
 | Pipeline | Clicks flashed | Mean | 95th percentile | Window lag
 | `installTap`, nearest window centre to the render position | 0–1 of 13 | +86 to +131 ms (when one flashed) | – | 66–91 ms
 | render notification, same choice | 13 of 13 | +1 to +30 ms | 10 to 46 ms | 14–43 ms
-| render notification, the frame drawn for when it is seen, the window ending at the sound heard then, one frame queued at most | 65 of 65 (5 runs) | +8.0 ms (runs +6.8 to +10.4) | 20.9 ms (largest 21.2, earliest +4.3: none led) | 21–22 ms
+| render notification, the frame drawn for when it is seen, the window ending at the sound heard then, one frame queued at most | 90 of 91 (7 runs; the one missed as the screen locked) | +7.9 ms (runs +6.8 to +10.4) | 10.4 ms (largest 21.2, earliest +4.3: none led) | 21–22 ms
 |===
 +
 The window lag is how long after its window's centre was heard each frame
 was seen: half a window, 21 ms, is the least the window-end choice allows.
+Frame pacing holds with the shaded presets too: the visualizer's
+`specs/av-pacing.scm` plays the starter's song through each of the twelve
+for three seconds in a 1400 × 860-point window at the display's backing
+scale (2), and on that Mac every one drew 191–195 frames with no refresh
+missed and none skipped, frame time 16.7 ms at the 50th and 99th
+percentiles, and a GPU time a frame of 1.4–3.2 ms (50th percentile) and
+2.0–3.5 ms (99th).
 The offsets fall a refresh apart (16.7 ms), since a run's clicks keep one
 phase against the display. A measurement trusts the system's times; what a
 camera sees is checked by hand before a release
