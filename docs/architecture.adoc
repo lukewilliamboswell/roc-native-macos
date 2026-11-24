@@ -1058,10 +1058,12 @@ The manual clock:: A spec's `(audio-clock manual)` enables
 `enableManualRenderingMode(.offline)` at 48 kHz stereo: nothing plays to a
 device, and only a `(render MS)` step advances the clock, in 1024-frame
 renders. The render notification runs within each render, so after each
-one the host waits (at most 2 s) while the ring is all but full, unless a
-spec stalled the worker, and at the end until the worker has measured
-everything: every buffer rendered is measured, whatever the worker's speed,
-then the host publishes.
+one the host waits while the ring is all but full, unless a spec stalled
+the worker, and at the end until the worker has measured everything. The
+waits have no deadline, and offline the tap takes the ring's lock rather
+than only trying it, so every buffer rendered is measured however slow the
+machine, then the host publishes. A worker that takes no chunk for 60 s
+has stopped, which is fatal.
 `.dataPlayedBack` completions do not fire in this mode, so a render that
 reaches the end ends the source itself, through the same generation check.
 The node times follow from the frames rendered, so every spec
