@@ -53,6 +53,14 @@ import src/Repo
 ##   built and run at a token size, so it never goes stale, then its specs
 ##   (`bench/<name>/specs/*.scm`): the work a turn does, counted, at two
 ##   sizes. Its timings are only reported.
+## - `matrix`: every build an author can ask `roc build` for. Each of
+##   `Repo.matrix_examples` (`arith` and `workers`) built with every `--opt`
+##   (`speed`, `size`, `dev`, `interpreter`) and `--specialize` for this
+##   Mac's own target, each build running the example's one spec, then
+##   `arith` with every `--opt` but `interpreter` (which builds only for the
+##   native target) for the other Mac targets, `x64v1mac` among them:
+##   linked, and run too where this Mac runs them (`x64v1mac` under
+##   Rosetta, or on an Intel Mac). Its programs go to `build/matrix/`.
 ## - `bundle`: the platform bundle from the inputs `build` made, and an
 ##   author's first steps against it with the `macos.roc` tool: `init`,
 ##   `build`, `test` and (but on an Intel Mac) `fuzz --check` the starter app
@@ -126,6 +134,7 @@ run_stage! = |stage, update, colour|
 		"test" => test!()
 		"examples" => examples!(update, colour)
 		"bench" => bench!(update)
+		"matrix" => matrix!(colour)
 		"bundle" => run!("roc-stable", ["scripts/bundle.roc", "--", "--prebuilt", "--test"])
 		_ => Ok(["no such stage"])
 	}
@@ -226,7 +235,7 @@ scripts! = || {
 test! : () => Try(List(Str), _)
 test! = || {
 	var $problems = run!("roc", ["test", "platform/main.roc"])?
-	intel = (Cmd.new("uname").args(["-m"]).capture!() ?? "").trim() == "x86_64"
+	intel = intel!()
 	for example in examples_found!()? {
 		dir = "examples/${example.name}"
 		$problems = $problems.concat(run!("roc", ["test", "${dir}/${example.entry}"])?)
@@ -366,6 +375,72 @@ examples! = |update, colour| {
 	}
 	Ok($problems)
 }
+
+## Every build an app author can ask `roc build` for: each of
+## `Repo.matrix_examples` built with every `--opt` and `--specialize` for
+## every Mac target, or for this Mac's own (`Repo.matrix`), into
+## `build/matrix/`. A build for a target this Mac runs (natively, or
+## `x64v1mac` under Rosetta) also runs the example's one spec; the others
+## are linked only. A link is where a library call the catalog does not own
+## fails.
+matrix! : Bool => Try(List(Str), _)
+matrix! = |colour| {
+	root = Env.cwd!()?.display()
+	intel = intel!()
+	# Rosetta runs x86-64 programs on Apple silicon when it is installed.
+	rosetta = !intel and match Cmd.new("arch").args(["-x86_64", "/usr/bin/true"]).stdin(Null).run!() {
+		Ok(output) => output.status == Exited(0)
+		Err(_) => Bool.False
+	}
+	machine = Repo.matrix_runs({ intel, rosetta })
+	builds = Repo.matrix(machine)
+	native = machine.native
+	Path.create_all!(Path.utf8("build/matrix"))?
+	planned = Repo.matrix_examples.map(|example| (example, if (example.every_target) builds else builds.keep_if(|build| build.target == native)))
+	total = planned.fold(0, |sum, (_, each)| sum + each.len())
+	note!("Building ${Repo.matrix_examples.len().to_str()} examples ${total.to_str()} ways")
+	start = Monotonic.now!()
+	var $index = 0
+	var $problems = []
+	for (example, each) in planned {
+		dir = "${root}/examples/${example.name}"
+		for build in each {
+			$index = $index + 1
+			flags = Repo.matrix_flags(build)
+			program = "${root}/build/matrix/${Repo.matrix_name(example.name, build)}"
+			shown = "${example.name} ${Str.join_with(flags, " ")}"
+			build_start = Monotonic.now!()
+			built = Cmd.new("roc").args(["build", "src/main.roc", "--output=${program}"].concat(flags).map(OsStr.from_str)).cwd(Path.utf8(dir)).stdin(Null).run!()?
+			outcome = if built.status != Exited(0) {
+				Err("roc build ${Str.join_with(flags, " ")} failed (${Str.inspect(built.status)}):\n${Str.from_utf8_lossy(built.stdout_bytes)}${Str.from_utf8_lossy(built.stderr_bytes)}")
+			} else if build.run {
+				match SpecRun.run!({ program, dir, spec: example.spec, update: Bool.False, metrics: Bool.False, args: [], env: [] })? {
+					Failed(problems) => Err(Str.join_with(problems, "\n  "))
+					_ => Ok("PASS")
+				}
+			} else {
+				Ok("LINK")
+			}
+			label = match outcome {
+				Ok(word) => word
+				Err(_) => "FAIL"
+			}
+			note!(Repo.progress({ index: $index, total, name: shown, outcome: Repo.paint(label, colour), ms: Monotonic.elapsed!(build_start).to_millis() }))
+			match outcome {
+				Ok(_) => {}
+				Err(problem) => {
+					$problems = $problems.append("${shown}: ${problem}")
+				}
+			}
+		}
+	}
+	note!("Summary: ${(total - $problems.len()).to_str()} of ${total.to_str()} builds passed in ${Repo.millis(Monotonic.elapsed!(start).to_millis())}")
+	Ok($problems)
+}
+
+## Whether this is an Intel Mac.
+intel! : () => Bool
+intel! = || (Cmd.new("uname").args(["-m"]).capture!() ?? "").trim() == "x86_64"
 
 ## Whether `METRICS=1` asks the examples and bench stages to print what each
 ## spec measured, without judging it (`macos.roc test --metrics`).

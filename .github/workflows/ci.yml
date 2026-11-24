@@ -20,8 +20,11 @@ name: CI
 #            (macos-15-intel) with the same hosts: the glue the Intel `roc`
 #            generates, the stub audit of the hosts and of the Intel `roc`'s
 #            own run shims, every example built natively for Intel and its
-#            specs run (and the counter's through `roc src/main.roc`), and
-#            the bundle's consumer test, whose macos.roc builds a universal app
+#            specs run (and the counter's through `roc src/main.roc`), the
+#            matrix (arith and workers built with every --opt and
+#            --specialize and run as x64mac, arith also run as x64v1mac and
+#            linked as arm64mac),
+#            and the bundle's consumer test, whose macos.roc builds a universal app
 #            and runs its Intel half. roc-fuzz has no Intel Mac target, so the
 #            starter's fuzz targets are checked on Apple silicon only.
 #            Blueprint's environment is Apple silicon
@@ -123,7 +126,7 @@ jobs:
     name: Check
     needs: [nightly, host]
     runs-on: macos-15
-    timeout-minutes: 45
+    timeout-minutes: 60
     permissions:
       contents: read
     steps:
@@ -151,7 +154,7 @@ jobs:
     name: Check on an Intel Mac
     needs: [nightly, host]
     runs-on: macos-15-intel
-    timeout-minutes: 75
+    timeout-minutes: 90
     permissions:
       contents: read
     steps:
@@ -168,4 +171,4 @@ jobs:
         with:
           name: libhost
           path: platform/targets
-      - run: roc-stable scripts/check_all.roc -- scripts tool glue build test examples bundle
+      - run: roc-stable scripts/check_all.roc -- scripts tool glue build test examples matrix bundle

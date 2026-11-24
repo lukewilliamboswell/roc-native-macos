@@ -332,6 +332,7 @@ The README shows each example running. What each one uses:
 
 | `starter` | What `init` writes: an expense tracker laid out as a project, with modules in `src/` (a store with a table and decisions, a window composing them, a reusable `stat` and a `card` widget with local state, each used more than once), a worker importing a CSV file, saving to local storage, an icon, a pure logic package in `logic/` with `expect` tests, and roc-fuzz targets for it in `fuzz/`
 | `counter` | Local state (`Engine.state`), icon buttons, a large monospaced readout
+| `arith` | Rows of numbers recomputed from a count on each click: `U128` and `I128` multiplication, division, remainder, shifts, bit counts and powers, `Dec` arithmetic and rounding, `F64` and `F32` maths, and conversions between them and strings; the platform's checks build it every way `roc build` can
 | `todos` | A store with a table, `table_view` rows (row templates) in a `Ui.scroll` inside a `box`, a form with Return-to-submit, a segmented filter, a Command-N shortcut, done rows greyed by `text_s`, an empty state, a shared `Theme`, saving to local storage and reading it back at boot, and `expect` tests
 | `gallery` | `tabs` over labelled sections: a dropdown, a slider and progress bar, a text area, text styles, semantic and adaptive colours, SF Symbols, Command-N/Command-K shortcuts
 | `contacts` | 10,000 generated rows in a sidebar `Ui.table_list` (`NSTableView`, drawing only the rows near those in sight), a search field filtering through the list's query, a detail pane for the selected row
@@ -1036,6 +1037,15 @@ does; `roc macos.roc build` makes both and joins them into a universal one. On a
 bare `roc build` need no `--target`. A machine whose CPU does not report
 x86-64-v3 (an Intel virtual machine, say, or Rosetta) gets Roc's baseline
 target, `x64v1mac`, which the platform supports too.
+
+Every `--opt` and `--specialize` works, for every target: `--opt=speed`
+(Roc's default), `--opt=size` (the tool's, for now), `--opt=dev` and
+`--opt=interpreter`, each with `--specialize=yes` or `--specialize=no`. Each
+combination links with the platform alone and runs the same app, with the
+same results. `--opt=interpreter` builds only for the Mac `roc` runs on, as
+Roc allows; `--opt=dev` cross-compiles like the others. Run an `x64mac`
+program on an Intel Mac, not under Rosetta, which does not offer the
+x86-64-v3 instructions it is built for (`x64v1mac` runs under Rosetta).
 
 A `.app` copied to a Mac from elsewhere (downloaded, or built on Linux or
 Windows) may be quarantined by Gatekeeper, which then refuses to open it.
