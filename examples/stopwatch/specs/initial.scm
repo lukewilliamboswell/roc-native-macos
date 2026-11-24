@@ -1,10 +1,11 @@
 ; A fresh stopwatch reads zero, with Lap disabled and no laps.
 (test "initial"
   (steps
-    (expect-dump (window :width 420 :height 236
+    (expect-dump (window :width 420 :height 269
                    (vstack :views 1
                      (vstack :views 4
-                       (text "0:00.00" :design monospaced-digits :font-size 56 :weight light)
+                       (box
+                         (text "0:00.00" :design monospaced-digits :font-size 60 :weight medium))
                        (hstack :views 3
                          (button "Reset")
                          (button "Lap" :enabled #f)

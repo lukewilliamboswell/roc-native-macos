@@ -27,7 +27,10 @@ view = || {
 	Ui.vstack(
 		{ spacing: 18, align: Fill, width: AtLeast(380) },
 		[
-			Ui.text(cells.elapsed_ms.signal().map(clock), { size: Fixed(56), weight: Light, design: MonospacedDigits, align: Center, width: Fill }),
+			Ui.box(
+				{ fill: ControlBackground, radius: 16, padding: Axes({ horizontal: 18, vertical: 14 }), width: Fill },
+				Ui.text(cells.elapsed_ms.signal().map(clock), { size: Fixed(60), weight: Medium, design: MonospacedDigits, align: Center, width: Fill }),
+			),
 			Ui.hstack(
 				{ spacing: 12, distribution: FillEqually, width: Fill },
 				[
@@ -51,7 +54,19 @@ view = || {
 				Ui.vstack(
 					{ spacing: 6, align: Fill },
 					[
-						Engine.when(laps.map(|held| held.is_empty()), || Ui.text("Press Lap while the watch runs.", { color: TertiaryLabel }), || Engine.text("")),
+						Engine.when(
+							laps.map(|held| held.is_empty()),
+							|| Ui.text("Press Lap while the watch runs.", { color: TertiaryLabel }),
+							|| Ui.hstack(
+								{},
+								[
+									Ui.text("Lap", { style: Caption1, color: SecondaryLabel, width: Fixed(64) }),
+									Ui.text("Split", { style: Caption1, color: SecondaryLabel }),
+									Ui.spacer(),
+									Ui.text("Total", { style: Caption1, color: SecondaryLabel }),
+								],
+							),
+						),
 						Engine.each(laps.map(splits), |lap| lap.number.to_str(), |row| lap_row(row.item())),
 					],
 				),

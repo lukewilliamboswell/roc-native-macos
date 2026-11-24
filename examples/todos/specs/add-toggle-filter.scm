@@ -7,7 +7,7 @@
     (submit (text-field))
     (toggle (checkbox "Buy milk"))
     (choose "Done")
-    (expect-dump (window :width 480 :height 392
+    (expect-dump (window :width 480 :height 416
                    (vstack :views 1
                      (vstack :views 4
                        (hstack :views 3
@@ -20,7 +20,7 @@
                            (button "Add")))
                        (vstack :views 2
                          (segmented :items ("All" "Open" "Done") :selected "Done")
-                         (box :border line:1:separator
+                         (box :border line:1:separator :fill text-background
                            (scroll :views 1 :height 220
                              (hstack :views 4
                                (checkbox "Buy milk" :checked #t)
@@ -29,7 +29,7 @@
                                (button "Remove")))))
                        (shortcut)))))
     (choose "Open")
-    (expect-dump (window :width 480 :height 392
+    (expect-dump (window :width 480 :height 416
                    (vstack :views 1
                      (vstack :views 4
                        (hstack :views 3
@@ -42,7 +42,7 @@
                            (button "Add")))
                        (vstack :views 2
                          (segmented :items ("All" "Open" "Done") :selected "Open")
-                         (box :border line:1:separator
+                         (box :border line:1:separator :fill text-background
                            (scroll :views 1 :height 220
                              (hstack :views 4
                                (checkbox "Walk the dog" :checked #f)

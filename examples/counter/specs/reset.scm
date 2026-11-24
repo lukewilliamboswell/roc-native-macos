@@ -6,13 +6,13 @@
     (expect-visible (text "2"))
     (click (button "Reset"))
     (expect-visible (text "0"))
-    (expect-dump (window :width 360 :height 237
+    (expect-dump (window :width 360 :height 261
                    (vstack :views 1
-                     (vstack :views 4
+                     (vstack :views 3
                        (text "Counter" :color secondary-label :text-style headline)
-                       (text "0" :design monospaced-digits :font-size 64 :weight light)
+                       (box :border line:1:separator
+                         (text "0" :design monospaced-digits :font-size 72 :weight medium))
                        (hstack :views 3
                          (button "−")
                          (button "Reset")
-                         (button "+"))
-                       (text "Each click is one engine turn." :color tertiary-label :text-style caption1)))))))
+                         (button "+"))))))))
