@@ -35,7 +35,7 @@
       "version": "NOASSERTION",
       "producer": "Person: Luke Boswell",
       "license": "CC-BY-4.0",
-      "license_url": "https://creativecommons.org/licenses/by/4.0/",
+      "license_url": "",
       "identity": "https://gist.github.com/lukewilliamboswell/be88b49154f602495f2821a01f995d1f",
       "download": "https://gist.githubusercontent.com/lukewilliamboswell/be88b49154f602495f2821a01f995d1f/raw/polymorphic-defunctionalization-through-lambda-set-specialization-compact.mp3",
       "sha256": "fe7cddae1237460fa7498b2f213666ae0fc16d89894903c8a2f40b2618d21ba5",
