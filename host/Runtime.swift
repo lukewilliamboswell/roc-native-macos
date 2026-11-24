@@ -22,8 +22,32 @@ public func rocAlloc(_ size: Int, _ alignment: Int) -> UnsafeMutableRawPointer {
         fatal("out of memory allocating \(size) bytes")
     }
     if poisonAllocations { memset(out!, 0x5A, max(size, 1)) }
+    if countAllocations {
+        pageHeap.allocations += 1
+        pageHeap.bytes += size
+    }
     return out!
 }
+
+/// The page instance's heap traffic, counted only while a spec runs
+/// (`ROC_SPEC`), for its allocation metrics: every `roc_alloc`,
+/// `roc_realloc` and `roc_dealloc` of the page's instance, and the bytes
+/// `roc_alloc` and `roc_realloc` were asked for. Main thread only, like
+/// the page's instance; a worker instance's heap (`WorkerContext`) is not
+/// counted. A file handle's release is not a heap release, so it is not
+/// counted either.
+struct HeapCounts {
+    var allocations = 0
+    var reallocations = 0
+    var deallocations = 0
+    var bytes = 0
+}
+
+var pageHeap = HeapCounts()
+
+/// Whether to count: only in a spec run, so a normal run pays one test of
+/// a constant per call.
+let countAllocations = getenv("ROC_SPEC") != nil
 
 /// `ROC_POISON=1` fills every new allocation with 'Z', to expose reads of
 /// uninitialized memory.
@@ -39,6 +63,7 @@ public func rocDealloc(_ ptr: UnsafeMutableRawPointer?, _ alignment: Int) {
         if pthread_main_np() == 0 { fatal("a page file handle was released off the main thread") }
         if fileHandles.route(ptr) { return }
     }
+    if countAllocations { pageHeap.deallocations += 1 }
     free(ptr)
 }
 
@@ -48,6 +73,10 @@ public func rocRealloc(_ ptr: UnsafeMutableRawPointer?, _ size: Int, _ alignment
     // Every allocation is 16-byte aligned by posix_memalign, and realloc
     // keeps malloc's 16-byte alignment, which covers every Roc layout here.
     guard let next = realloc(ptr, max(size, 1)) else { fatal("out of memory reallocating \(size) bytes") }
+    if countAllocations {
+        pageHeap.reallocations += 1
+        pageHeap.bytes += size
+    }
     return next
 }
 

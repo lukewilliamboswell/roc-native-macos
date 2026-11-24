@@ -224,7 +224,7 @@ package_counter! = |dir| {
 	}
 	spec = "specs/${Bundle.package_case}.scm"
 	note!("RUN the extracted counter.app/Contents/MacOS/counter with ${spec}")
-	passes!({ program: "${extracted_app}/Contents/MacOS/counter", dir: app_dir, spec, update: Bool.False, args: [], env: [] }, "the extracted counter.app's program")?
+	passes!({ program: "${extracted_app}/Contents/MacOS/counter", dir: app_dir, spec, update: Bool.False, metrics: Bool.False, args: [], env: [] }, "the extracted counter.app's program")?
 	workflow = "${app_dir}/.github/workflows/release.yml"
 	if Cmd.check_available!("actionlint") {
 		step!(Cmd.new("actionlint").args([OsStr.from_str(workflow)]), "actionlint counter/.github/workflows/release.yml") ? |_| "actionlint found problems in the workflow init writes"
@@ -267,17 +267,17 @@ assets_app! = |root, dir, url| {
 	}
 	# The program inside the bundle, which has no assets/ beside it.
 	note!("RUN ${name}.app/Contents/MacOS/${name} with ${spec}")
-	passes!({ program: "${app_dir}/${name}.app/Contents/MacOS/${name}", dir: app_dir, spec, update: Bool.False, args: [], env: [] }, "${name}.app's own program")?
+	passes!({ program: "${app_dir}/${name}.app/Contents/MacOS/${name}", dir: app_dir, spec, update: Bool.False, metrics: Bool.False, args: [], env: [] }, "${name}.app's own program")?
 	# `macos.roc dev`: `roc main.roc` here, which finds assets/ in this directory.
 	note!("RUN roc macos.roc dev (in ${name}/) with ${spec}")
-	passes!({ program: "roc", dir: app_dir, spec, update: Bool.False, args: ["macos.roc", "dev"], env: [("XDG_CACHE_HOME", cache)] }, "roc macos.roc dev (in ${name}/)")
+	passes!({ program: "roc", dir: app_dir, spec, update: Bool.False, metrics: Bool.False, args: ["macos.roc", "dev"], env: [("XDG_CACHE_HOME", cache)] }, "roc macos.roc dev (in ${name}/)")
 }
 
 ## A spec run that must pass, or the reason it did not.
 passes! : SpecRun.Run, Str => Try({}, Str)
 passes! = |run, what|
 	match SpecRun.run!(run) {
-		Ok(Passed) | Ok(Updated) => Ok({})
+		Ok(Passed) | Ok(Updated) | Ok(Measured(_)) => Ok({})
 		Ok(Failed(problems)) => Err("${what} did not pass ${run.spec}:\n  ${Str.join_with(problems, "\n  ")}")
 		Err(error) => Err("${what} could not run ${run.spec}: ${Str.inspect(error)}")
 	}

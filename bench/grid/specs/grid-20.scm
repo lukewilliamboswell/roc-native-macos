@@ -14,6 +14,7 @@
     (expect-metric-delta create_element 0)
     (expect-metric-delta-at-most derived_calls_into_roc 48)
     (expect-metric-delta-at-most patches_emitted 3)
+    (expect-allocations-at-most 50)
     (mark-metrics)
     (fire-timer 500)
     (fire-timer 500)

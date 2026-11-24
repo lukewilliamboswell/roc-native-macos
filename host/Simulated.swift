@@ -158,6 +158,11 @@ extension Host {
             }
             emit("@\(line.k) obs")
             emit("|work \(hex)")
+            // The page heap's counts so far (Runtime.swift).
+            emit("|heap allocations \(pageHeap.allocations)")
+            emit("|heap reallocations \(pageHeap.reallocations)")
+            emit("|heap deallocations \(pageHeap.deallocations)")
+            emit("|heap allocated_bytes \(pageHeap.bytes)")
         case "effects":
             emit("@\(line.k) obs")
             for effect in held.issued {

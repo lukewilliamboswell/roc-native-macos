@@ -74,7 +74,10 @@ Spec := [].{
 		ExpectCancelled(I64),
 		MarkMetrics,
 		ExpectMetricDelta(Str, I64),
-		ExpectMetricDeltaAtMost(Str, I64),
+		ExpectMetricDeltaAtMost(Str, I64, Pos),
+		ExpectAllocationsAtMost(I64, Pos),
+		ExpectAllocatedBytesAtMost(I64, Pos),
+		ExpectNoNewLiveAllocations,
 	]
 
 	## One step and where it is written.
@@ -245,21 +248,41 @@ Spec := [].{
 	}
 
 	## The spec's source with each `expect-dump` body replaced by the dump
-	## the run printed for it, keeping its indentation. Only dumps change.
+	## the run printed for it, keeping its indentation, and each allocation
+	## bound (`expect-allocations-at-most`, `expect-allocated-bytes-at-most`,
+	## and `expect-metric-delta-at-most` of `allocations`, `reallocations` or
+	## `allocated_bytes`) lowered to what the run saw when it saw less. A
+	## bound is never raised: a run that saw more fails. Nothing else changes.
 	update : Str, Parsed, Run -> Str
 	update = |source, { steps, .. }, run| {
+		bytes = source.to_utf8()
 		var $edits = []
 		var $k = 0.U64
+		var $mark = Err(NoMark)
 		for step in steps {
 			$k = $k + 1
-			match (step.op, observation(run, $k)) {
+			seen = observation(run, $k)
+			if step.op == MarkMetrics {
+				$mark = seen.map_ok(counters_of).map_err(|_| NoMark)
+			}
+			match (step.op, seen) {
 				(ExpectDump(body), Ok(lines)) => {
 					$edits = $edits.append({ start: body.start, end: body.end, text: dump_literal(lines, body.indent) })
 				}
+				(op, Ok(lines)) =>
+					match bound_of(op) {
+						Ok({ name, most, pos }) => {
+							(seen_value, _) = change(name, counters_of(lines), $mark)
+							if seen_value >= 0 and seen_value < most {
+								start = offset_of(bytes, pos)
+								$edits = $edits.append({ start, end: number_end(bytes, start), text: seen_value.to_str() })
+							}
+						}
+						Err(_) => {}
+					}
 				_ => {}
 			}
 		}
-		bytes = source.to_utf8()
 		var $out = []
 		var $at = 0.U64
 		for edit in $edits {
@@ -267,6 +290,51 @@ Spec := [].{
 			$at = edit.end
 		}
 		Str.from_utf8_lossy($out.concat(bytes.drop_first($at)))
+	}
+
+	## The lowered steps with one more, a `metrics` observation after the
+	## last, for `measure`.
+	lower_measured : Parsed -> Str
+	lower_measured = |parsed| Spec.lower(parsed).concat("${(parsed.steps.len() + 1).to_str()}\tmetrics\n")
+
+	## What a run measured (`macos.roc test --metrics`): for each step that
+	## expects a metric, every heap metric and each work metric that is not
+	## zero, as changed since its mark; and, after the last step, the same
+	## since the window mounted. Run it on `lower_measured`'s steps.
+	measure : Parsed, Run -> List({ pos : Pos, text : Str })
+	measure = |{ steps, .. }, run| {
+		var $out = []
+		var $k = 0.U64
+		var $mark = Err(NoMark)
+		shown = |lines, mark| {
+			now = counters_of(lines)
+			names = Spec.heap_metrics.concat(Spec.metric_names.map(|m| m.name))
+			parts = names.keep_oks(
+				|name| {
+					(d, _) = change(name, now, mark)
+					if (d != 0 or Spec.heap_metrics.contains(name)) Ok("${name} ${d.to_str()}") else Err(Zero)
+				},
+			)
+			Str.join_with(parts, ", ")
+		}
+		for step in steps {
+			$k = $k + 1
+			seen = observation(run, $k)
+			match seen {
+				Ok(lines) if step.op == MarkMetrics => {
+					$mark = Ok(counters_of(lines))
+				}
+				Ok(lines) if observes(step.op) and (bound_of(step.op).is_ok() or is_metric(step.op)) => {
+					$out = $out.append({ pos: step.pos, text: shown(lines, $mark) })
+				}
+				_ => {}
+			}
+		}
+		last = steps.last().map_ok(|s| s.pos) ?? { line: 1, column: 1 }
+		match observation(run, $k + 1) {
+			Ok(lines) => $out.append({ pos: last, text: "since the window mounted: ${shown(lines, Err(NoMark))}" })
+			Err(_) => $out
+		}
 	}
 
 	## How a step is written back, for messages: `(button "+")`.
@@ -284,7 +352,18 @@ Spec := [].{
 
 	## The step names, for an unknown step's message.
 	step_names : List(Str)
-	step_names = ["click", "fill", "submit", "toggle", "select", "hover", "choose", "press", "files", "drop", "move", "leave", "sweep", "scroll", "phase", "stats", "window", "wait", "reload", "expect-dump", "expect-visible", "expect-absent", "expect-text", "expect-checked", "expect-disabled", "expect-workers", "stub-http", "fail-http", "run-effect", "tick-interval", "fire-timer", "advance-time", "await-work", "expect-pending-effects", "expect-interval", "expect-request", "expect-cancelled", "mark-metrics", "expect-metric-delta", "expect-metric-delta-at-most"]
+	step_names = ["click", "fill", "submit", "toggle", "select", "hover", "choose", "press", "files", "drop", "move", "leave", "sweep", "scroll", "phase", "stats", "window", "wait", "reload", "expect-dump", "expect-visible", "expect-absent", "expect-text", "expect-checked", "expect-disabled", "expect-workers", "stub-http", "fail-http", "run-effect", "tick-interval", "fire-timer", "advance-time", "await-work", "expect-pending-effects", "expect-interval", "expect-request", "expect-cancelled", "mark-metrics", "expect-metric-delta", "expect-metric-delta-at-most", "expect-allocations-at-most", "expect-allocated-bytes-at-most", "expect-no-new-live-allocations"]
+
+	## The page heap's metrics, which the host counts while a spec runs:
+	## calls of `roc_alloc`, `roc_realloc` and `roc_dealloc`, the net of
+	## allocations over deallocations, and the bytes allocations and
+	## reallocations asked for.
+	heap_metrics : List(Str)
+	heap_metrics = ["allocations", "reallocations", "deallocations", "live_allocations", "allocated_bytes"]
+
+	## The metrics whose `-at-most` bounds `--update` ratchets down.
+	ratcheted : List(Str)
+	ratcheted = ["allocations", "reallocations", "allocated_bytes"]
 
 	## The work metrics a spec may name, and the engine's work counters each
 	## sums. Counter `k` is the `k`th of the work record the engine returns
@@ -681,8 +760,14 @@ step_form = |form| {
 		("mark-metrics", _) => return usage("(mark-metrics)")
 		("expect-metric-delta", [Sym(name, np), Int(n, _)]) if n >= 0 => ExpectMetricDelta(metric_name(name, np)?, n)
 		("expect-metric-delta", _) => return usage("(expect-metric-delta METRIC N)")
-		("expect-metric-delta-at-most", [Sym(name, np), Int(n, _)]) if n >= 0 => ExpectMetricDeltaAtMost(metric_name(name, np)?, n)
+		("expect-metric-delta-at-most", [Sym(name, np), Int(n, bp)]) if n >= 0 => ExpectMetricDeltaAtMost(metric_name(name, np)?, n, bp)
 		("expect-metric-delta-at-most", _) => return usage("(expect-metric-delta-at-most METRIC N)")
+		("expect-allocations-at-most", [Int(n, bp)]) if n >= 0 => ExpectAllocationsAtMost(n, bp)
+		("expect-allocations-at-most", _) => return usage("(expect-allocations-at-most N)")
+		("expect-allocated-bytes-at-most", [Int(n, bp)]) if n >= 0 => ExpectAllocatedBytesAtMost(n, bp)
+		("expect-allocated-bytes-at-most", _) => return usage("(expect-allocated-bytes-at-most N)")
+		("expect-no-new-live-allocations", []) => ExpectNoNewLiveAllocations
+		("expect-no-new-live-allocations", _) => return usage("(expect-no-new-live-allocations)")
 		_ => return Err({ pos, message: "unknown step ${head}; the steps are ${Str.join_with(Spec.step_names, ", ")}" })
 	}
 	Ok({ pos, op })
@@ -740,10 +825,10 @@ worker_counts = |args|
 
 metric_name : Str, Spec.Pos -> Try(Str, Spec.Problem)
 metric_name = |name, pos|
-	if Spec.metric_names.any(|m| m.name == name) {
+	if Spec.metric_names.any(|m| m.name == name) or Spec.heap_metrics.contains(name) {
 		Ok(name)
 	} else {
-		Err({ pos, message: "unknown metric ${name}; the metrics are ${Str.join_with(Spec.metric_names.map(|m| m.name), ", ")}" })
+		Err({ pos, message: "unknown metric ${name}; the metrics are ${Str.join_with(Spec.heap_metrics.concat(Spec.metric_names.map(|m| m.name)), ", ")}" })
 	}
 
 ## The little-endian number of `size` bytes at `at`; 0 past the end.
@@ -871,7 +956,10 @@ lowered = |op|
 		ExpectCancelled(_) => ["effects"]
 		MarkMetrics => ["metrics"]
 		ExpectMetricDelta(_, _) => ["metrics"]
-		ExpectMetricDeltaAtMost(_, _) => ["metrics"]
+		ExpectMetricDeltaAtMost(_, _, _) => ["metrics"]
+		ExpectAllocationsAtMost(_, _) => ["metrics"]
+		ExpectAllocatedBytesAtMost(_, _) => ["metrics"]
+		ExpectNoNewLiveAllocations => ["metrics"]
 	}
 
 loc_fields : Spec.Loc -> List(Str)
@@ -942,12 +1030,12 @@ observes = |op|
 	match op {
 		ExpectDump(_) | ExpectVisible(_) | ExpectAbsent(_) | ExpectText(_, _) | ExpectChecked(_, _) | ExpectDisabled(_, _) | ExpectWorkers(_) => Bool.True
 		ExpectPendingEffects(_) | ExpectInterval(_, _) | ExpectRequest(_, _) | ExpectCancelled(_) => Bool.True
-		ExpectMetricDelta(_, _) | ExpectMetricDeltaAtMost(_, _) => Bool.True
+		ExpectMetricDelta(_, _) | ExpectMetricDeltaAtMost(_, _, _) | ExpectAllocationsAtMost(_, _) | ExpectAllocatedBytesAtMost(_, _) | ExpectNoNewLiveAllocations => Bool.True
 		Press({ heard: Heard(_), .. }) => Bool.True
 		_ => Bool.False
 	}
 
-expectation : Spec.Op, Try(List(Str), [Missing]), Try(List(U64), [NoMark]) -> Try({}, Str)
+expectation : Spec.Op, Try(List(Str), [Missing]), Try(Counters, [NoMark]) -> Try({}, Str)
 expectation = |op, seen, mark| {
 	if !observes(op) {
 		return Ok({})
@@ -1006,8 +1094,11 @@ expectation = |op, seen, mark| {
 				Err("expected the worker pool's ${shown(wrong)}, saw ${shown(saw)}")
 			}
 		}
-		ExpectMetricDelta(name, want) => metric_delta(name, lines, mark, |d| d == want.to_u64_wrap(), "exactly ${want.to_str()}")
-		ExpectMetricDeltaAtMost(name, most) => metric_delta(name, lines, mark, |d| d <= most.to_u64_wrap(), "at most ${most.to_str()}")
+		ExpectMetricDelta(name, want) => metric_delta(name, lines, mark, |d| d == want, "exactly ${want.to_str()}")
+		ExpectMetricDeltaAtMost(name, most, _) => metric_delta(name, lines, mark, |d| d <= most, "at most ${most.to_str()}")
+		ExpectAllocationsAtMost(most, _) => metric_delta("allocations", lines, mark, |d| d <= most, "at most ${most.to_str()}")
+		ExpectAllocatedBytesAtMost(most, _) => metric_delta("allocated_bytes", lines, mark, |d| d <= most, "at most ${most.to_str()}")
+		ExpectNoNewLiveAllocations => metric_delta("live_allocations", lines, mark, |d| d <= 0, "at most 0 (nothing left behind)")
 		ExpectPendingEffects(want) => {
 			e = effects(lines)
 			pending = e.issued.keep_if(|x| x.state == "pending" and x.kind != "interval")
@@ -1055,13 +1146,46 @@ expectation = |op, seen, mark| {
 	}
 }
 
-## The work counters a `metrics` observation holds: `work HEX`, the work
-## record's bytes.
-counters_of : List(Str) -> List(U64)
-counters_of = |lines|
-	match lines.find_first(|line| line.starts_with("work ")) {
+## What a `metrics` observation holds: the work counters (`work HEX`, the
+## work record's bytes) and the page heap's counts (`heap NAME N`).
+Counters : { work : List(U64), heap : List({ name : Str, value : I64 }) }
+
+counters_of : List(Str) -> Counters
+counters_of = |lines| {
+	work = match lines.find_first(|line| line.starts_with("work ")) {
 		Ok(line) => Spec.work_counters(hex_bytes(line.drop_prefix("work ")))
 		Err(_) => []
+	}
+	heap = lines.keep_oks(
+		|line|
+			match line.split_on(" ") {
+				["heap", name, n] => I64.from_str(n).map_ok(|value| { name, value }).map_err(|_| NotACount)
+				_ => Err(NotACount)
+			},
+	)
+	{ work, heap }
+}
+
+## A metric's value in an observation's counters.
+value_of : Counters, Str -> I64
+value_of = |c, name| {
+	heap = |n| c.heap.find_first(|h| h.name == n).map_ok(|h| h.value) ?? 0
+	if name == "live_allocations" {
+		heap("allocations") - heap("deallocations")
+	} else if Spec.heap_metrics.contains(name) {
+		heap(name)
+	} else {
+		(Spec.metric(c.work, name) ?? 0).to_i64_wrap()
+	}
+}
+
+## How a metric changed from the mark (or, with none, from the window's
+## mount) to these counters, and which it was measured from.
+change : Str, Counters, Try(Counters, [NoMark]) -> (I64, Str)
+change = |name, now, mark|
+	match mark {
+		Ok(before) => (value_of(now, name) - value_of(before, name), "since (mark-metrics)")
+		Err(NoMark) => (value_of(now, name), "since the window mounted")
 	}
 
 hex_bytes : Str -> List(U8)
@@ -1076,17 +1200,48 @@ hex_bytes = |text| {
 	$out
 }
 
-metric_delta : Str, List(Str), Try(List(U64), [NoMark]), (U64 -> Bool), Str -> Try({}, Str)
+metric_delta : Str, List(Str), Try(Counters, [NoMark]), (I64 -> Bool), Str -> Try({}, Str)
 metric_delta = |name, lines, mark, holds, wanted| {
-	# With no mark, the change is measured from the window's mount.
-	(before, since) = match mark {
-		Ok(counters) => (counters, "since (mark-metrics)")
-		Err(NoMark) => ([], "since the window mounted")
-	}
-	b = Spec.metric(before, name) ?? 0
-	a = Spec.metric(counters_of(lines), name) ?? 0
-	delta = if (a >= b) a - b else 0
+	(delta, since) = change(name, counters_of(lines), mark)
 	if (holds(delta)) Ok({}) else Err("expected ${name} to change by ${wanted} ${since}, saw ${delta.to_str()}")
+}
+
+## Whether a step expects a metric.
+is_metric : Spec.Op -> Bool
+is_metric = |op|
+	match op {
+		ExpectMetricDelta(_, _) | ExpectMetricDeltaAtMost(_, _, _) | ExpectAllocationsAtMost(_, _) | ExpectAllocatedBytesAtMost(_, _) | ExpectNoNewLiveAllocations => Bool.True
+		_ => Bool.False
+	}
+
+## A ratcheted bound's metric, its bound and where the bound is written.
+bound_of : Spec.Op -> Try({ name : Str, most : I64, pos : Spec.Pos }, [NotABound])
+bound_of = |op|
+	match op {
+		ExpectMetricDeltaAtMost(name, most, pos) if Spec.ratcheted.contains(name) => Ok({ name, most, pos })
+		ExpectAllocationsAtMost(most, pos) => Ok({ name: "allocations", most, pos })
+		ExpectAllocatedBytesAtMost(most, pos) => Ok({ name: "allocated_bytes", most, pos })
+		_ => Err(NotABound)
+	}
+
+## The byte offset of a position in the source, counted as the reader counts.
+offset_of : List(U8), Spec.Pos -> U64
+offset_of = |bytes, pos| {
+	var $r = { bytes, at: 0, line: 1, column: 1 }
+	while $r.at < bytes.len() and ($r.line < pos.line or ($r.line == pos.line and $r.column < pos.column)) {
+		$r = advance($r)
+	}
+	$r.at
+}
+
+## The end of the number that starts at `at`.
+number_end : List(U8), U64 -> U64
+number_end = |bytes, at| {
+	var $i = at
+	while $i < bytes.len() and (bytes.get($i) ?? 0) >= '0' and (bytes.get($i) ?? 0) <= '9' {
+		$i = $i + 1
+	}
+	$i
 }
 
 ## The effects the app issued in this window, from `effect K KIND STATE
@@ -1273,6 +1428,32 @@ expect {
 }
 
 expect Spec.parse("(test \"x\" (steps (expect-metric-delta rows_painted 1)))").is_err()
+
+alloc =
+	\\(test "alloc"
+	\\  (steps
+	\\    (mark-metrics)
+	\\    (click (button "+"))
+	\\    (expect-allocations-at-most 40)
+	\\    (expect-metric-delta-at-most allocated_bytes 9000)
+	\\    (expect-no-new-live-allocations)))
+	\\
+
+alloc_run : Str -> Spec.Run
+alloc_run = |after| Spec.read_run("@1 obs\n|heap allocations 100\n|heap deallocations 90\n|heap allocated_bytes 1000\n${after}@done\n")
+
+## Heap metrics change from the mark; a bound shows what the run saw.
+expect {
+	after = "@3 obs\n|heap allocations 130\n|heap deallocations 125\n|heap allocated_bytes 3000\n@4 obs\n|heap allocations 130\n|heap deallocations 125\n|heap allocated_bytes 3000\n@5 obs\n|heap allocations 130\n|heap deallocations 115\n"
+	Spec.parse(alloc).map_ok(|p| Spec.judge(p, alloc_run(after)).map(|x| x.message))
+		== Ok(["expected live_allocations to change by at most 0 (nothing left behind) since (mark-metrics), saw 5"])
+}
+
+## --update lowers a bound the run beat, and never raises one.
+expect {
+	after = "@3 obs\n|heap allocations 130\n|heap deallocations 130\n@4 obs\n|heap allocated_bytes 99999\n@5 obs\n|heap allocations 130\n|heap deallocations 130\n"
+	Spec.parse(alloc).map_ok(|p| Spec.update(alloc, p, alloc_run(after))) == Ok(alloc.replace_each("at-most 40)", "at-most 30)"))
+}
 
 ## A request that differs, and effects still pending, are reported.
 expect {

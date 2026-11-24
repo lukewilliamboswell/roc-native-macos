@@ -41,7 +41,8 @@ import src/Repo
 ##   example.
 ## - `test`: `roc test` on the platform root and on every example.
 ## - `examples`: every example's specs (`examples/<name>/specs/*.scm`, or
-##   only the examples `EXAMPLES="counter todos"` names), and
+##   only the examples `EXAMPLES="counter todos"` names; `METRICS=1` prints
+##   what each measured instead of judging it), and
 ##   any legacy recorded scripted runs; `examples --update` rewrites the
 ##   specs' dumps (and records the cases) with what they print now. Then the
 ##   counter's first spec once more through Roc's run mode, `roc main.roc`,
@@ -244,8 +245,9 @@ bench! = |update| {
 		dir = script.drop_suffix("/run.sh")
 		name = dir.drop_prefix("bench/")
 		for spec in SpecRun.names(names_in!("${dir}/specs")) {
-			outcome = SpecRun.run!({ program: "${root}/${dir}/${name}", dir: "${root}/${dir}", spec: "specs/${spec}", update, args: [], env: [] })?
+			outcome = SpecRun.run!({ program: "${root}/${dir}/${name}", dir: "${root}/${dir}", spec: "specs/${spec}", update, metrics: measuring!(), args: [], env: [] })?
 			match outcome {
+				Measured(lines) => note!(Str.join_with(lines.map(|line| "${dir}/${line}"), "\n"))
 				Passed => note!("PASS ${dir}/specs/${spec}")
 				Updated => note!("SAVE ${dir}/specs/${spec}")
 				Failed(problems) => {
@@ -341,6 +343,11 @@ examples! = |update, colour| {
 	Ok($problems)
 }
 
+## Whether `METRICS=1` asks the examples and bench stages to print what each
+## spec measured, without judging it (`macos.roc test --metrics`).
+measuring! : () => Bool
+measuring! = || (Env.var_str!(OsStr.from_str("METRICS")) ?? "") == "1"
+
 ## The file names in a directory, or none when there is no such directory.
 names_in! : Str => List(Str)
 names_in! = |dir|
@@ -361,9 +368,13 @@ run_spec! = |{ example, name }, how| {
 		return Ok(Err("examples/${example}/${example} is not built: run `blueprint run build` first"))
 	}
 	(program, args) = if (how == RunMode) ("roc", ["main.roc"]) else (exe, [])
-	outcome = SpecRun.run!({ program, dir, spec: name, update: how == Update, args, env: [] })?
+	outcome = SpecRun.run!({ program, dir, spec: name, update: how == Update, metrics: how != RunMode and measuring!(), args, env: [] })?
 	Ok(
 		match outcome {
+			Measured(lines) => {
+				note!(Str.join_with(lines.map(|line| "examples/${example}/${line}"), "\n"))
+				Ok(Passed)
+			}
 			Passed => Ok(Passed)
 			Updated => Ok(Recorded)
 			Failed(problems) => Err(Str.join_with(problems, "\n  "))

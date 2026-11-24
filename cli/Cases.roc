@@ -37,8 +37,8 @@ Cases := [].{
 	## What one case came to.
 	Outcome : [Passed, Recorded, Failed(Str)]
 
-	run! : { update : Bool, check : Bool } => Try({}, _)
-	run! = |{ update, check }| {
+	run! : { update : Bool, check : Bool, metrics : Bool } => Try({}, _)
+	run! = |{ update, check, metrics }| {
 		if !(Path.exists!(Path.utf8("main.roc"))?) {
 			return Err(NoMainRoc)
 		}
@@ -70,8 +70,14 @@ Cases := [].{
 		Stdout.line!("Running ${checked.len().to_str()} specs${if (found.is_empty()) "" else " and ${found.len().to_str()} recorded cases"}${if (update) ", rewriting their dumps" else ""}...")?
 		var $failed = []
 		for spec in checked {
-			ran = SpecRun.run!({ program: "${root}/${program}", dir: root, spec, update, args: [], env: [] })?
+			ran = SpecRun.run!({ program: "${root}/${program}", dir: root, spec, update, metrics, args: [], env: [] })?
 			match ran {
+				Measured(lines) => {
+					Stdout.line!("MEASURE ${spec}")?
+					for line in lines {
+						Stdout.line!("  ${line}")?
+					}
+				}
 				Passed => Stdout.line!("PASS ${spec}")?
 				Updated => Stdout.line!("SAVE ${spec}")?
 				Failed(problems) => {
@@ -83,7 +89,7 @@ Cases := [].{
 				}
 			}
 		}
-		for name in found {
+		for name in if (metrics) [] else found {
 			result = case!(root, "${root}/${program}", name, update)?
 			match result {
 				Passed => Stdout.line!("PASS ${Cases.dir}/${name}")?
@@ -96,6 +102,10 @@ Cases := [].{
 		}
 		if !found.is_empty() {
 			Stdout.line!("tests/*.script cases run for this release only: write them as specs/*.scm (`roc macos.roc test --help`).")?
+		}
+		if metrics {
+			Stdout.line!("Measured ${checked.len().to_str()} specs: set a spec's bounds from what it measured, such as (expect-allocations-at-most N), and `--update` lowers them as the app improves.")?
+			return Ok({})
 		}
 		if $failed.is_empty() {
 			Stdout.line!(if (update) "Ran ${total.to_str()}, rewriting what they printed: review the change to specs/ before you commit it." else "All ${total.to_str()} passed.")?

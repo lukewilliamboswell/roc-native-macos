@@ -396,8 +396,8 @@ run_case! = |app_dir, { exe, assets }, name| {
 	}
 	spec = "specs/${name}"
 	env = if (assets.is_empty()) [] else [("ROC_ASSETS", assets)]
-	match SpecRun.run!({ program: exe, dir: app_dir, spec, update: Bool.False, args: [], env }) {
-		Ok(Passed) | Ok(Updated) => Ok({})
+	match SpecRun.run!({ program: exe, dir: app_dir, spec, update: Bool.False, metrics: Bool.False, args: [], env }) {
+		Ok(Passed) | Ok(Updated) | Ok(Measured(_)) => Ok({})
 		Ok(Failed(problems)) => Err(Str.join_with(problems, "\n  "))
 		Err(error) => Err("${exe} could not run ${spec}: ${Str.inspect(error)}")
 	}

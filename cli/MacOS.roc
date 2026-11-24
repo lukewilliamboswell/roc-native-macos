@@ -24,7 +24,7 @@ import Package
 MacOS :: [].{
 
 	## What the user asked for.
-	Command : [Help, CommandHelp(Str), Init(Str), Build(Meta.Fields), Run(Meta.Fields), Dev, Test({ update : Bool, check : Bool }), Package(Package.Options), CiPackage(Meta.Fields), CiRelease]
+	Command : [Help, CommandHelp(Str), Init(Str), Build(Meta.Fields), Run(Meta.Fields), Dev, Test({ update : Bool, check : Bool, metrics : Bool }), Package(Package.Options), CiPackage(Meta.Fields), CiRelease]
 
 	## The commands, in the order `help` lists them.
 	commands : List(Str)
@@ -74,9 +74,10 @@ MacOS :: [].{
 			["ci", "package", .. as rest] => MacOS.options("ci package", rest, nothing).map_ok(|chosen| CiPackage(chosen.fields))
 			["ci", "release"] => Ok(CiRelease)
 			["dev"] => Ok(Dev)
-			["test"] => Ok(Test({ update: Bool.False, check: Bool.False }))
-			["test", "--update"] => Ok(Test({ update: Bool.True, check: Bool.False }))
-			["test", "--check"] => Ok(Test({ update: Bool.False, check: Bool.True }))
+			["test"] => Ok(Test({ update: Bool.False, check: Bool.False, metrics: Bool.False }))
+			["test", "--update"] => Ok(Test({ update: Bool.True, check: Bool.False, metrics: Bool.False }))
+			["test", "--check"] => Ok(Test({ update: Bool.False, check: Bool.True, metrics: Bool.False }))
+			["test", "--metrics"] => Ok(Test({ update: Bool.False, check: Bool.False, metrics: Bool.True }))
 			[command, .. as extra] if MacOS.commands.contains(command) => Err(UnexpectedArguments({ command, extra }))
 			[command, ..] => Err(UnknownCommand(command))
 		}
@@ -238,7 +239,7 @@ MacOS :: [].{
 			"test" =>
 				\\Build the app and run its specs.
 				\\
-				\\Usage: roc macos.roc test [--update | --check]
+				\\Usage: roc macos.roc test [--update | --check | --metrics]
 				\\
 				\\Run from the app's directory, containing main.roc, on an Apple silicon Mac.
 				\\Each specs/<name>.scm holds one spec, (test "name" (steps ...)): steps such as
@@ -247,7 +248,11 @@ MacOS :: [].{
 				\\(expect-dump """ ... """), whose window and point sizes may differ by up to 4.
 				\\A failure names the spec's file, line and column. --update rewrites each
 				\\expect-dump with what the app shows now, and nothing else; review the change
-				\\before you commit it. --check only parses the specs, on any system. For this
+				\\before you commit it, and lowers each allocation bound, such as
+				\\(expect-allocations-at-most N), to what the app allocated when that was less;
+				\\it never raises one. --metrics runs every spec and prints what it measured
+				\\(allocations, bytes, the engine's work) without judging it, to set first
+				\\bounds from. --check only parses the specs, on any system. For this
 				\\release, tests/<case>.script cases (and their .expected output) still run.
 			_ => return MacOS.usage
 		}
@@ -263,7 +268,7 @@ MacOS :: [].{
 			"build" | "run" => "Use it as `roc macos.roc ${command} [METADATA FLAGS]`; `roc macos.roc ${command} --help` lists the flags."
 			"package" => "Use it as `roc macos.roc package [--sign] [--notarize] [METADATA FLAGS]`; `roc macos.roc package --help` lists the flags."
 			"ci" | "ci package" => "Use it as `roc macos.roc ci package [METADATA FLAGS]` or `roc macos.roc ci release`; ci decides how to sign from the secrets that are set. `roc macos.roc ci --help` describes them."
-			"test" => "Use it as `roc macos.roc test [--update | --check]`."
+			"test" => "Use it as `roc macos.roc test [--update | --check | --metrics]`."
 			_ => "`roc macos.roc help` describes it."
 		}
 
@@ -375,7 +380,7 @@ metadata_help =
 ## Each command line names its command, with the defaults filled in.
 expect {
 	actual = [[], ["help"], ["init"], ["init", "my-app"], ["build"], ["run", "--id", "org.me.app", "--name", "My App"], ["dev"], ["test"], ["test", "--update"]].map(MacOS.parse)
-	expected = [Ok(Help), Ok(Help), Ok(Init(".")), Ok(Init("my-app")), Ok(Build(Meta.none)), Ok(Run({ ..Meta.none, id: "org.me.app", name: "My App" })), Ok(Dev), Ok(Test({ update: Bool.False, check: Bool.False })), Ok(Test({ update: Bool.True, check: Bool.False }))]
+	expected = [Ok(Help), Ok(Help), Ok(Init(".")), Ok(Init("my-app")), Ok(Build(Meta.none)), Ok(Run({ ..Meta.none, id: "org.me.app", name: "My App" })), Ok(Dev), Ok(Test({ update: Bool.False, check: Bool.False, metrics: Bool.False })), Ok(Test({ update: Bool.True, check: Bool.False, metrics: Bool.False }))]
 	actual == expected
 }
 

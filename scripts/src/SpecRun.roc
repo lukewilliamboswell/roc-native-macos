@@ -14,14 +14,17 @@ import Spec
 ## and `check` fails when the two differ. Change this one, then copy it.
 SpecRun := [].{
 
-	## What a spec came to: it passed, `--update` rewrote its dumps (and
-	## everything else held), or why it failed, one line per problem.
-	Outcome : [Passed, Updated, Failed(List(Str))]
+	## What a spec came to: it passed, `--update` rewrote its dumps or
+	## lowered its allocation bounds (and everything else held), why it
+	## failed, one line per problem, or with `metrics` what it measured, one
+	## line per step that expects a metric and one for the whole run.
+	Outcome : [Passed, Updated, Failed(List(Str)), Measured(List(Str))]
 
 	## How to run it: the program, the app's directory it runs from, the
-	## spec's path relative to that directory, whether to rewrite its
-	## dumps, and the program's arguments and extra environment.
-	Run : { program : Str, dir : Str, spec : Str, update : Bool, args : List(Str), env : List((Str, Str)) }
+	## spec's path relative to that directory, whether to rewrite its dumps
+	## and bounds, whether only to report what it measured, and the
+	## program's arguments and extra environment.
+	Run : { program : Str, dir : Str, spec : Str, update : Bool, metrics : Bool, args : List(Str), env : List((Str, Str)) }
 
 	## Parse a spec file, for `--check`: its problem as `file:line:col: …`.
 	check! : Str, Str => Try({}, Str)
@@ -34,7 +37,7 @@ SpecRun := [].{
 	}
 
 	run! : Run => Try(Outcome, _)
-	run! = |{ program, dir, spec, update, args, env }| {
+	run! = |{ program, dir, spec, update, metrics, args, env }| {
 		path = Path.utf8("${dir}/${spec}")
 		source = Path.read_utf8!(path)?
 		parsed = match Spec.parse(source) {
@@ -44,7 +47,7 @@ SpecRun := [].{
 		command = Cmd.new(OsStr.from_str(program))
 			.args(args.map(OsStr.from_str))
 			.cwd(Path.utf8(dir))
-			.env("ROC_SPEC", OsStr.from_str(Spec.lower(parsed)))
+			.env("ROC_SPEC", OsStr.from_str(if (metrics) Spec.lower_measured(parsed) else Spec.lower(parsed)))
 			.env("TZ", "UTC")
 			.envs(env.map(|(k, v)| (OsStr.from_str(k), OsStr.from_str(v))))
 			.stdin(Null)
@@ -56,6 +59,9 @@ SpecRun := [].{
 		}
 		printed = Recorded.portable(Str.from_utf8_lossy(output.stdout_bytes), dir, "<app>")
 		run = Spec.read_run(printed)
+		if metrics {
+			return Ok(Measured(Spec.measure(parsed, run).map(|{ pos, text }| SpecRun.located(spec, { pos, message: text }))))
+		}
 		(judged, wrote) = if update {
 			rewritten = Spec.update(source, parsed, run)
 			if rewritten != source {
