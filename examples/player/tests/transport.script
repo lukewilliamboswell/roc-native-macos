@@ -1,0 +1,1 @@
+audio:manual;files:tests/fixtures/clicks.wav;wait:300;click:Play;audio:render:300;audio:status;click:Pause;audio:render:200;audio:status;slide:1,800;wait:200;audio:status;click:Resume;audio:render:100;wait:200;audio:status;dump;quit

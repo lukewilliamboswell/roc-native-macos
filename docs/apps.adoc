@@ -338,6 +338,7 @@ The README shows each example running. What each one uses:
 | `about` | Images from the app's `assets/` (`Ui.asset_image`): a PNG that is also the app's icon, and a PDF drawn as vectors
 | `file-inspector` | `Ui.file_button` and a `Ui.drop_zone` delivering `File` handles, sizes in KB and MB; for an inspected file its SHA-256 (`sha256`), its first 200 bytes as text or "binary" (`slice`, `read_bytes`), its URL (`object_url`) and "Save Copy…" (`File.save`); Clear releases the handles
 | `visualizer` | A drawing surface (`Ui.surface`) paced by the display, with a wave and a marker fed by the platform's synthetic sources, a trail that drifts and fades (`Echo`), Clear trail (`reset`), and a caption over the picture (`Ui.overlay`)
+| `player` | `Audio`: a local file played from a file button or drop zone, the transport (Play, Pause, Resume, Stop), seek and volume sliders, ten EQ sliders with a preamp, Bypass and Flat, and a level readout from the measurements while "Measure levels" is checked; its recorded cases play generated fixtures (`scripts/audio_fixtures.roc`) without speakers
 | `workers` | Worker tasks: the Mandelbrot set drawn as text by eight jobs at once, with progress, a heartbeat that keeps counting, Cancel and Zoom In (a new picture stops the old one's jobs); a Lab tab with a job that crashes (only it is lost), 24 jobs at once, an `on_cancel: Finish` job, a timed-out job, and a dropped file read and copied into a report by a job (`File.read!`, `Files.build!`), digested and saved by the page, and searched by a preparation a worker keeps
 |===
 
@@ -463,6 +464,16 @@ Steps are separated by `;` and run every 100 ms.
 | `renderer:metal`, `renderer:cg`, `renderer:auto`, `renderer` | draws display-paced surfaces with Metal (Core Graphics on a Mac without a GPU), with Core Graphics (a scripted run's default), or with Metal where there is a GPU, from here on; `renderer` alone prints each surface's renderer
 | `bench:<n>` | draws `n` trail frames offscreen at three sizes with each renderer, and prints the time a frame (it measures this Mac, so keep it out of recorded cases)
 | `clock:display`, `clock:manual` | draws display-paced surfaces at the display's refresh from here on, with the synthetic sources moving with time (for a demo), or back to `frame` steps
+| `slide:<k>,<value>` | moves the k-th slider (from 1, in the tree's order) to `value`, as a drag ending there would
+| `audio:manual` | plays audio with a controlled clock: the session renders offline at 48 kHz, never to a speaker, and only `audio:render` moves it; before the first audio command
+| `audio:render:<ms>` | with `audio:manual`, renders `ms` of output, lets the measurements catch up, then publishes the status and the newest snapshot
+| `audio:status` | prints the transport: its state, position and duration in ms, the track, how many times it has ended and whether the measurements run
+| `audio:tone:<hz>` | prints the level of the `hz` component of the last render's output, in whole dBFS (a full-scale sine is 0)
+| `audio:eq` | prints the EQ as it applies: bypass, the preamp, each band's gain in whole dB and the volume
+| `audio:snapshot` | prints the newest measurement: its time, sample rate, RMS and peak level, whether every value is finite, and its two loudest bands above -60 dB
+| `audio:history` | prints the measurements kept: how many of the bound, their time span, whether all are of the current source position and in order, and the chunks waiting for the analysis and whether older ones were skipped
+| `audio:sources` | prints what a drawing surface would read now from each `audio.*` source
+| `audio:stall:on`, `audio:stall:off` | stops and restarts the analysis worker taking chunks, as a worker that falls behind would
 | `wait:<ms>` | waits
 | `dump` | prints the window size (`--- 360x237`), then the view tree; a list shows its visible rows, and a text, box or drop zone the look attributes that differ from the usual (`{color=secondary-label text-style=caption1}`)
 | `window` | prints `window <number>`, for `screencapture -l<number>`
@@ -479,7 +490,7 @@ same frames on any Mac. `probe` draws at 2 pixels a point, whatever the
 screen, so probe away from the edges of shapes.
 
 A case reads `files:` and `drop:` paths relative to the app's directory. An
-unknown step, or a `click:`, `toggle:`, `choose:`, `select:` or `scroll:` that finds no
+unknown step, or a `click:`, `toggle:`, `choose:`, `select:`, `scroll:` or `slide:` that finds no
 such control, stops the app with an error naming the step, so the case
 fails.
 

@@ -491,7 +491,106 @@ outcome. Uploads, fetched files and pasted files are not built.
 
 Workers:: See xref:ui.adoc#workers[Workers] below.
 
-Not built:: ports and crypto keys.
+Audio:: See xref:ui.adoc#audio[Audio] below.
+
+Not built:: crypto keys, and ports of an app's own: the host serves the
+platform's audio ports and no others.
+
+[#audio]
+== Audio
+
+`Audio` plays one local audio file natively, with a transport, a 10-band
+EQ and opt-in measurements of the signal. The host serves it as typed ports
+(roc-signals' `Port`), so an app declares them once, sends commands from an
+effect plan and follows subscriptions from watch sites:
+
+[source,roc]
+----
+import pf.Audio
+import pf.Engine
+
+main = Engine.program_store({}, |_| store, |_| view()).with_ports(Audio.ports)
+
+## A press posts commands, in order, to an outbox cell…
+play = Engine.handle(|_| [cells.outbox.update(|box| box.post([Play]))])
+load = Engine.handle_by(cells.track.signal(), |track, { files, .. }|
+    match files.first() {
+        Ok(file) => [cells.track.set(track + 1), cells.outbox.update(|box| box.post([Load({ track: track + 1, file })]))]
+        Err(_) => []
+    })
+
+## …which one site sends.
+Engine.on_post(cells.outbox.signal(), |commands| commands.map(Audio.send), Engine.ignore({}))
+
+## What happened, where playback stands, and (while checked) measurements.
+Engine.watch(Engine.const({}), |_| [Audio.events({})], Engine.react(|_, event| …))
+Engine.watch(Engine.const({}), |_| [Audio.status({ every_ms: 200 })], Engine.react(|_, status| …))
+Engine.watch_latest(cells.measuring.signal(), |on| if (on) [Audio.analysis({ every_ms: 100 })] else [], Engine.react(|_, snapshot| …))
+----
+
+`examples/player` is a whole player: a file button and a drop zone, the
+transport, a seek and a volume slider, the EQ's sliders, Bypass and Flat,
+and a level readout.
+
+Commands:: `Load({ track, file })` opens a whole `File` (a slice is
+`Failed(Unsupported(…))`) and stops at its start; `track` is the app's own
+number for it, which every event and status carries. The host keeps its own
+reference to the file while it is loaded, so dropping the handle does not
+stop playback, and the handle still counts against the 64 an app holds only
+while the app holds it. `Play` plays from where playback stands (from the
+start after `Ended`); `Pause` holds the playhead and `Resume` continues;
+`Stop` lets go of what is scheduled and goes back to the start; `Seek(ms)`
+moves the playhead, clamped to the duration: playing goes on playing, paused
+stays paused, stopped stays stopped. `Volume(v)` is the output volume, 0 to
+1. `Close` lets go of the file and the audio engine. Commands take effect in
+the order they are sent: a seek after a load seeks the new source.
+Events:: `Audio.events({})` delivers `Loaded({ track, duration_ms, frames,
+sample_rate, channels })`, `Failed({ track, error })` and `Ended({ track })`,
+up to 64 waiting while the app is busy. `Ended` is natural completion,
+delivered once per start: a seek, a stop or a new load discards any
+completion of what came before, so an `Ended` never names an older source.
+An error is recoverable (load another file): `Unsupported(why)` for a format
+the decoder does not play (Core Audio's `typ?` or `fmt?`) or a slice,
+`Corrupt(why)` for a file that is not the audio it claims to be, and
+`Output(why)` when the audio output cannot start.
+Status:: `Audio.status({ every_ms })` delivers `{ track, generation, state,
+position_ms, duration_ms, volume, latency_ms, eq }` when it subscribes, on
+every change, and every `every_ms` (16 to 60,000; the player uses 200, five
+a second) while playing; only the newest waits. `state` is `Idle`, `Loading`,
+`Stopped`, `Playing`, `Paused` or `Ended`. Times are milliseconds on the
+source's timeline: `position_ms` is where playback has rendered to, and a
+sample is heard `latency_ms` (the output's presentation latency) after it.
+`generation` changes with every load, seek, stop and restart, as a drawing
+surface's reset signal.
+EQ:: Ten one-octave bands centred at `Audio.band_centres_hz`, 32, 64, 125,
+250, 500, 1000, 2000, 4000, 8000 and 16,000 Hz. `Gain({ band, db })` sets
+band 0 to 9 within -12 to +12 dB; `Preamp(db)`, the gain before the bands for
+headroom, within -24 to +12 dB; `Bypass(on)` plays the unprocessed signal at
+the same volume and keeps the settings for when it is off; `Flat` sets every
+band and the preamp to 0 dB. The EQ starts flat, at unity. A value out of
+range is clamped, and the status reports what applies; a value that is not a
+number is ignored; a band outside 0 to 9 is a host error. A band whose
+centre is above 45% of the source's sample rate (16 kHz below 35.6 kHz) is
+bypassed and keeps its gain. Changes take effect at once and never move the
+playhead.
+Measurements:: `Audio.analysis({ every_ms })` turns the measurements on for
+as long as it lives (unchecking the player's box ends it, and the last
+subscription to go turns the work off), and delivers at most every
+`every_ms` the newest snapshot of the current source position: `{ track,
+at_ms, rms_db, peak_db, bands_db, envelope }`. They measure the signal after
+the EQ and before the volume, so a cut shows and a low volume does not. A
+window is 2048 samples at the source's rate (43 ms at 48 kHz, 46 ms at
+44.1 kHz), one every 512 samples, and `at_ms` is its centre on the source
+timeline. `rms_db` is the mean-square level with the channels' powers
+averaged (a full-scale sine reads -3 dBFS) and `peak_db` the largest sample;
+`bands_db` is the energy in each of 24 bands, logarithmically spaced from
+40 Hz to 16 kHz (`Audio.band_edges_hz`), from a Hann-windowed 2048-point FFT
+with the channels' powers averaged (so opposite-phase stereo still reads),
+in dB relative to a full-scale sine all in one band; `envelope` is the
+window's mono signal as 32 min/max pairs. Silence and a band above half the
+sample rate read -120 dB, never infinity. Only the first two channels are
+measured. A seek, a stop or a new source discards the old measurements, and
+nothing is sent while paused or ended.
 
 [#workers]
 == Workers

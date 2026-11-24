@@ -1,0 +1,1 @@
+audio:manual;toggle:Measure levels;files:tests/fixtures/clicks.wav;wait:300;click:Play;audio:render:200;audio:history;audio:stall:on;audio:render:700;audio:history;audio:stall:off;wait:300;audio:history;quit

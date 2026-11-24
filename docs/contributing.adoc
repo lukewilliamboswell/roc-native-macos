@@ -270,7 +270,11 @@ the example. `blueprint run examples` runs each case from the example's
 directory against the built app with a 60-second deadline; it must exit 0 and
 print the recorded output. A new example needs a case: add the `.script`, run
 `blueprint run examples -- --update`, and review the `.expected` diff before
-committing it. The stopwatch cases avoid wall-clock readouts. The
+committing it. The stopwatch cases avoid wall-clock readouts. The player's
+cases play the fixtures `scripts/audio_fixtures.roc` writes (`roc-stable
+scripts/audio_fixtures.roc`; commit what it writes) under the manual clock
+(`audio:manual`), so they need no speakers and print the same on every run.
+The
 examples' cases and an app's (`macos.roc test`) follow the same matching
 rules, `cli/Recorded.roc`, so `roc macos.roc test` in an example's directory
 runs the same cases.

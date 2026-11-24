@@ -1,0 +1,82 @@
+audio: Ended at 1000 ms of 1000 ms (track 1, 1 ended, analysis off)
+audio: Ended at 1000 ms of 1000 ms (track 1, 1 ended, analysis off)
+audio: Playing at 500 ms of 1000 ms (track 1, 1 ended, analysis off)
+audio: Ended at 1000 ms of 1000 ms (track 1, 2 ended, analysis off)
+--- 600x583
+ui-vstack [1 views]
+  ui-vstack [12 views]
+    ui-hstack [4 views]
+      ui-image music.note
+      ui-text "Player" {text-style=title2 weight=semibold}
+      ui-spacer
+      ui-file-button "Choose Audio…"
+    ui-drop-zone
+      ui-text "Drop an audio file here" {color=secondary-label text-style=headline}
+    ui-text "clicks.wav · Ended · 0:01.00 / 0:01.00" {design=monospaced-digits}
+    ui-slider 1000.0
+    ui-hstack [7 views]
+      ui-button "Play"
+      ui-button "Pause"
+      ui-button "Resume"
+      ui-button "Stop"
+      ui-spacer
+      ui-text "Volume" {color=secondary-label text-style=caption1}
+      ui-slider 100.0
+    ui-divider
+    ui-hstack [4 views]
+      ui-text "Equalizer" {text-style=headline}
+      ui-spacer
+      ui-checkbox "Bypass" [ ]
+      ui-button "Flat"
+    ui-vstack [11 views]
+      ui-hstack [3 views]
+        ui-text "32" {color=secondary-label text-style=caption1}
+        ui-slider 0.0
+        ui-text "0 dB" {color=secondary-label design=monospaced-digits text-style=caption1}
+      ui-hstack [3 views]
+        ui-text "64" {color=secondary-label text-style=caption1}
+        ui-slider 0.0
+        ui-text "0 dB" {color=secondary-label design=monospaced-digits text-style=caption1}
+      ui-hstack [3 views]
+        ui-text "125" {color=secondary-label text-style=caption1}
+        ui-slider 0.0
+        ui-text "0 dB" {color=secondary-label design=monospaced-digits text-style=caption1}
+      ui-hstack [3 views]
+        ui-text "250" {color=secondary-label text-style=caption1}
+        ui-slider 0.0
+        ui-text "0 dB" {color=secondary-label design=monospaced-digits text-style=caption1}
+      ui-hstack [3 views]
+        ui-text "500" {color=secondary-label text-style=caption1}
+        ui-slider 0.0
+        ui-text "0 dB" {color=secondary-label design=monospaced-digits text-style=caption1}
+      ui-hstack [3 views]
+        ui-text "1k" {color=secondary-label text-style=caption1}
+        ui-slider 0.0
+        ui-text "0 dB" {color=secondary-label design=monospaced-digits text-style=caption1}
+      ui-hstack [3 views]
+        ui-text "2k" {color=secondary-label text-style=caption1}
+        ui-slider 0.0
+        ui-text "0 dB" {color=secondary-label design=monospaced-digits text-style=caption1}
+      ui-hstack [3 views]
+        ui-text "4k" {color=secondary-label text-style=caption1}
+        ui-slider 0.0
+        ui-text "0 dB" {color=secondary-label design=monospaced-digits text-style=caption1}
+      ui-hstack [3 views]
+        ui-text "8k" {color=secondary-label text-style=caption1}
+        ui-slider 0.0
+        ui-text "0 dB" {color=secondary-label design=monospaced-digits text-style=caption1}
+      ui-hstack [3 views]
+        ui-text "16k" {color=secondary-label text-style=caption1}
+        ui-slider 0.0
+        ui-text "0 dB" {color=secondary-label design=monospaced-digits text-style=caption1}
+      ui-hstack [3 views]
+        ui-text "Preamp" {color=secondary-label text-style=caption1}
+        ui-slider 0.0
+        ui-text "0 dB" {color=secondary-label design=monospaced-digits text-style=caption1}
+    ui-divider
+    ui-hstack [3 views]
+      ui-checkbox "Measure levels" [ ]
+      ui-spacer
+      ui-text "—" {design=monospaced-digits}
+    ui-progress 0/60
+    ui-text "Played to the end (2 in all)" {color=secondary-label text-style=caption1}

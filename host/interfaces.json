@@ -170,6 +170,10 @@
           "evidence": "close under the name of its variant that is not a pthread cancellation point, `close$NOCANCEL` (apple-oss-distributions/Libc, include/sys/cdefs.h, __DARWIN_NOCANCEL; apple-oss-distributions/xnu, libsyscall), in libSystem's libsystem_kernel: Zig's std closes files through it on macOS (Zig's lib/std/c.zig, lib/std/c/darwin.zig), which Roc's run-mode shims (roc-lang/roc src/machine_code_shim, src/interpreter_shim) link"
         },
         {
+          "name": "_cos",
+          "evidence": "cos (ISO C 7.12.4.5), in libSystem's libsystem_m: the scripted tone measurement (host/AudioScript.swift)"
+        },
+        {
           "name": "_dlsym",
           "evidence": "dlsym, POSIX.1 (man 3 dlsym), in libSystem's libdyld: Roc's machine-code run shim resolves the system functions its support image calls by name with RTLD_DEFAULT (roc-lang/roc src/machine_code_shim/main.zig, resolveSystemSymbol)"
         },
@@ -232,6 +236,14 @@
         {
           "name": "_getrusage",
           "evidence": "getrusage (POSIX.1-2008; man 2 getrusage), whose peak resident set size ROC_BENCH reports, in libSystem's libsystem_kernel"
+        },
+        {
+          "name": "_log10",
+          "evidence": "log10 (ISO C 7.12.6.8), in libSystem's libsystem_m: the scripted tone measurement (host/AudioScript.swift)"
+        },
+        {
+          "name": "_log10f",
+          "evidence": "log10f (ISO C 7.12.6.8), in libSystem's libsystem_m: audio levels in dB (host/AudioAnalysis.swift)"
         },
         {
           "name": "_mach_task_self_",
@@ -704,6 +716,10 @@
           "evidence": "`Swift.Double.write<A where A: Swift.TextOutputStream>(to: inout A) -> ()`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
         },
         {
+          "name": "_$sSfN",
+          "evidence": "`type metadata for Swift.Float`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
           "name": "_$sSh15minimumCapacityShyxGSi_tcfC",
           "evidence": "`Swift.Set.init(minimumCapacity: Swift.Int) -> Swift.Set<A>`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
         },
@@ -746,6 +762,10 @@
         {
           "name": "_$ss10SetAlgebraPyxqd__ncSTRd__7ElementQyd__ACRtzlufCTj",
           "evidence": "`dispatch thunk of Swift.SetAlgebra.init<A where A1: Swift.Sequence, A.Element == A1.Element>(__owned A1) -> A`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$ss10_HashTableV11startBucketAB0D0Vvg",
+          "evidence": "`Swift._HashTable.startBucket.getter : Swift._HashTable.Bucket`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
         },
         {
           "name": "_$ss10_HashTableV12previousHole6beforeAB6BucketVAF_tF",
@@ -810,6 +830,10 @@
         {
           "name": "_$ss12_ArrayBufferV20_consumeAndCreateNew14bufferIsUnique15minimumCapacity13growForAppendAByxGSb_SiSbtFyXl_Ts5",
           "evidence": "`generic pre-specialization <Swift.AnyObject> of Swift._ArrayBuffer._consumeAndCreateNew(bufferIsUnique: Swift.Bool, minimumCapacity: Swift.Int, growForAppend: Swift.Bool) -> Swift._ArrayBuffer<A>`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$ss13OpaquePointerVMn",
+          "evidence": "`nominal type descriptor for Swift.OpaquePointer`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
         },
         {
           "name": "_$ss13_StringObjectV10sharedUTF8SRys5UInt8VGvg",
@@ -914,6 +938,10 @@
         {
           "name": "_$ss21_ObjectiveCBridgeableP09_bridgeToA1C01_A5CTypeQzyFTq",
           "evidence": "`method descriptor for Swift._ObjectiveCBridgeable._bridgeToObjectiveC() -> A._ObjectiveCType`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
+          "name": "_$ss21_findStringSwitchCase5cases6stringSiSays06StaticB0VG_SStF",
+          "evidence": "`Swift._findStringSwitchCase(cases: [Swift.StaticString], string: Swift.String) -> Swift.Int`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
         },
         {
           "name": "_$ss22_minimumMergeRunLengthyS2iF",
@@ -1316,6 +1344,10 @@
           "evidence": "`swift_unknownObjectRetain`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
         },
         {
+          "name": "_swift_unknownObjectRetain_n",
+          "evidence": "`swift_unknownObjectRetain_n`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+        },
+        {
           "name": "_swift_unknownObjectUnownedDestroy",
           "evidence": "`swift_unknownObjectUnownedDestroy`, a declaration of the Swift standard library (swiftlang/swift, stdlib/public/core), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
         },
@@ -1469,7 +1501,7 @@
         },
         {
           "name": "_$s10Foundation22_convertNSErrorToErrorys0E0_pSo0C0CSgF",
-          "evidence": "`Foundation._convertNSErrorToError(__C.NSError?) -> Swift.Error`, the bridging of an Objective-C error that Swift emits for a throwing Objective-C method, a declaration of Swift's Foundation module (swiftlang/swift-foundation; swiftlang/swift-corelibs-foundation), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst)"
+          "evidence": "`Foundation._convertNSErrorToError(__C.NSError?) -> Swift.Error`, the bridging of an Objective-C error that Swift emits for a throwing Objective-C method, a declaration of Swift's Foundation module (swiftlang/swift-foundation; swiftlang/swift-corelibs-foundation), named by Swift's ABI mangling (swiftlang/swift, docs/ABI/Mangling.rst): a throwing Objective-C method's error, as Swift receives it (MTLDevice, the drawing surface; AVAudioFile and AVAudioEngine, the audio session)"
         },
         {
           "name": "_$s10Foundation3URLV19_bridgeToObjectiveCSo5NSURLCyF",
@@ -2190,6 +2222,94 @@
         {
           "name": "_OBJC_CLASS_$_CATransaction",
           "evidence": "the Objective-C class CATransaction (https://developer.apple.com/documentation/quartzcore/catransaction)"
+        }
+      ]
+    },
+    {
+      "name": "AVFAudio",
+      "path": "System/Library/Frameworks/AVFAudio.framework/AVFAudio.tbd",
+      "install_name": "/System/Library/Frameworks/AVFAudio.framework/Versions/A/AVFAudio",
+      "evidence": "AVFAudio, /System/Library/Frameworks/AVFAudio.framework/Versions/A/AVFAudio (https://developer.apple.com/documentation/avfaudio): the playback session (host/Audio.swift). Its classes exist on arm64 and x86_64 alike.",
+      "symbols": [
+        {
+          "name": "_OBJC_CLASS_$_AVAudioEngine",
+          "evidence": "the Objective-C class AVAudioEngine (https://developer.apple.com/documentation/avfaudio/avaudioengine)"
+        },
+        {
+          "name": "_OBJC_CLASS_$_AVAudioFile",
+          "evidence": "the Objective-C class AVAudioFile (https://developer.apple.com/documentation/avfaudio/avaudiofile)"
+        },
+        {
+          "name": "_OBJC_CLASS_$_AVAudioFormat",
+          "evidence": "the Objective-C class AVAudioFormat (https://developer.apple.com/documentation/avfaudio/avaudioformat)"
+        },
+        {
+          "name": "_OBJC_CLASS_$_AVAudioPCMBuffer",
+          "evidence": "the Objective-C class AVAudioPCMBuffer (https://developer.apple.com/documentation/avfaudio/avaudiopcmbuffer)"
+        },
+        {
+          "name": "_OBJC_CLASS_$_AVAudioPlayerNode",
+          "evidence": "the Objective-C class AVAudioPlayerNode (https://developer.apple.com/documentation/avfaudio/avaudioplayernode)"
+        },
+        {
+          "name": "_OBJC_CLASS_$_AVAudioTime",
+          "evidence": "the Objective-C class AVAudioTime (https://developer.apple.com/documentation/avfaudio/avaudiotime)"
+        },
+        {
+          "name": "_OBJC_CLASS_$_AVAudioUnitEQ",
+          "evidence": "the Objective-C class AVAudioUnitEQ (https://developer.apple.com/documentation/avfaudio/avaudiouniteq)"
+        },
+        {
+          "name": "_OBJC_CLASS_$_AVAudioUnitEQFilterParameters",
+          "evidence": "the Objective-C class AVAudioUnitEQFilterParameters (https://developer.apple.com/documentation/avfaudio/avaudiouniteqfilterparameters)"
+        }
+      ]
+    },
+    {
+      "name": "Accelerate",
+      "path": "System/Library/Frameworks/Accelerate.framework/Accelerate.tbd",
+      "install_name": "/System/Library/Frameworks/Accelerate.framework/Versions/A/Accelerate",
+      "evidence": "Accelerate, /System/Library/Frameworks/Accelerate.framework/Versions/A/Accelerate (https://developer.apple.com/documentation/accelerate), the umbrella framework that re-exports vecLib and its vDSP: the audio analysis (host/AudioAnalysis.swift). Its functions exist on arm64 and x86_64 alike.",
+      "symbols": [
+        {
+          "name": "_vDSP_create_fftsetup",
+          "evidence": "vDSP_create_fftsetup, vDSP (https://developer.apple.com/documentation/accelerate/vdsp_create_fftsetup), in Accelerate, which re-exports vecLib's libvDSP: the audio analysis (host/AudioAnalysis.swift)"
+        },
+        {
+          "name": "_vDSP_ctoz",
+          "evidence": "vDSP_ctoz, vDSP (https://developer.apple.com/documentation/accelerate/vdsp_ctoz), in Accelerate, which re-exports vecLib's libvDSP: the audio analysis (host/AudioAnalysis.swift)"
+        },
+        {
+          "name": "_vDSP_destroy_fftsetup",
+          "evidence": "vDSP_destroy_fftsetup, vDSP (https://developer.apple.com/documentation/accelerate/vdsp_destroy_fftsetup), in Accelerate, which re-exports vecLib's libvDSP: the audio analysis (host/AudioAnalysis.swift)"
+        },
+        {
+          "name": "_vDSP_fft_zrip",
+          "evidence": "vDSP_fft_zrip, vDSP (https://developer.apple.com/documentation/accelerate/vdsp_fft_zrip), in Accelerate, which re-exports vecLib's libvDSP: the audio analysis (host/AudioAnalysis.swift)"
+        },
+        {
+          "name": "_vDSP_hann_window",
+          "evidence": "vDSP_hann_window, vDSP (https://developer.apple.com/documentation/accelerate/vdsp_hann_window), in Accelerate, which re-exports vecLib's libvDSP: the audio analysis (host/AudioAnalysis.swift)"
+        },
+        {
+          "name": "_vDSP_maxmgv",
+          "evidence": "vDSP_maxmgv, vDSP (https://developer.apple.com/documentation/accelerate/vdsp_maxmgv), in Accelerate, which re-exports vecLib's libvDSP: the audio analysis (host/AudioAnalysis.swift)"
+        },
+        {
+          "name": "_vDSP_measqv",
+          "evidence": "vDSP_measqv, vDSP (https://developer.apple.com/documentation/accelerate/vdsp_measqv), in Accelerate, which re-exports vecLib's libvDSP: the audio analysis (host/AudioAnalysis.swift)"
+        },
+        {
+          "name": "_vDSP_vadd",
+          "evidence": "vDSP_vadd, vDSP (https://developer.apple.com/documentation/accelerate/vdsp_vadd), in Accelerate, which re-exports vecLib's libvDSP: the audio analysis (host/AudioAnalysis.swift)"
+        },
+        {
+          "name": "_vDSP_vmul",
+          "evidence": "vDSP_vmul, vDSP (https://developer.apple.com/documentation/accelerate/vdsp_vmul), in Accelerate, which re-exports vecLib's libvDSP: the audio analysis (host/AudioAnalysis.swift)"
+        },
+        {
+          "name": "_vDSP_zvmags",
+          "evidence": "vDSP_zvmags, vDSP (https://developer.apple.com/documentation/accelerate/vdsp_zvmags), in Accelerate, which re-exports vecLib's libvDSP: the audio analysis (host/AudioAnalysis.swift)"
         }
       ]
     }

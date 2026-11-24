@@ -90,6 +90,19 @@ extension Host {
                 let prevented = deliverKey(down: true, key: name, code: code, flags: flags, target: nil, inText: false)
                 _ = deliverKey(down: false, key: name, code: code, flags: flags, target: nil, inText: false)
                 say("key \(arg)\(prevented ? " (heard)" : "")")
+            case "slide":
+                // `slide:k,value`: the k-th slider (from 1) moved to `value`,
+                // as a drag ending there would leave it.
+                let v = arg.split(separator: ",").map(String.init)
+                var sliders: [Node] = []
+                root.walk { if $0.name == "ui-slider" { sliders.append($0) } }
+                guard v.count == 2, let k = Int(v[0]), let value = Double(v[1]), sliders.indices.contains(k - 1), let s = sliders[k - 1].view as? NSSlider
+                else { fatal("script: slide needs k,value naming one of \(sliders.count) sliders, not \(arg)") }
+                s.doubleValue = value
+                slid(s)
+            case "audio":
+                // The playback session (AudioScript.swift).
+                audioStep(arg)
             case "pool":
                 // `pool:N`: at most N worker threads, so a recorded case runs
                 // the same on any machine. Before the first job.
