@@ -12,6 +12,7 @@ import cli.Path
 import cli.Stderr
 import cli.Stdout
 import src/Bundle
+import src/Release
 import src/SpecRun
 
 ## The `bundle` task: the platform bundle an app author's header names.
@@ -34,10 +35,13 @@ import src/SpecRun
 ## compiler accepts `http` only for localhost), makes the `macos.roc` tool
 ## there naming the served URLs (`scripts/release.roc -- tool`), and then,
 ## with an empty Roc package cache, takes an author's first steps outside
-## the checkout: `roc macos.roc init my-app`, which writes the starter app
+## the checkout: `roc run URL init my-app`, which writes the starter app
 ## (`examples/starter`, with `src/main.roc`), then `build`, `test` (its
 ## `expect`s and specs) and `fuzz --check` (its roc-fuzz targets) in
-## `my-app/`. It packages the app twice with `macos.roc package`, and
+## `my-app/`; then `roc macos.roc init --simple my-counter`, which writes
+## the counter (`examples/counter`), and `test` in `my-counter/`, which
+## builds it and runs its specs. It packages the starter twice with
+## `macos.roc package`, and
 ## checks that the two zips are
 ## the same bytes, hold the sealed bundle with each entry's Unix mode, and
 ## extract with `ditto` to an app whose seal verifies and whose program runs
@@ -145,7 +149,7 @@ consumer_test! = |root, out, bundle| {
 	server.close!() ?? {}
 	match result {
 		Ok({}) => {
-			note!("bundle: macos.roc created, built, tested and packaged the starter app, and built, tested and ran under dev ${Bundle.assets_example} with its assets, against the served bundle")
+			note!("bundle: macos.roc created, built, tested and packaged the starter app, created and tested the counter with init --simple, and built, tested and ran under dev ${Bundle.assets_example} with its assets, against the served bundle")
 			Ok({})
 		}
 		Err(problem) => {
@@ -164,15 +168,20 @@ served! = |server|
 		Err(error) => Err("the local server did not start: ${Str.inspect(error)}")
 	}
 
-## `roc macos.roc init my-app`, then `build`, `test` and `fuzz --check`
-## (not on an Intel Mac, which roc-fuzz does not run on), as an author takes
-## them, with the tool and the platform fetched from `base_url`.
+## `roc run URL init my-app`, then `build`, `test` and `fuzz --check`
+## (not on an Intel Mac, which roc-fuzz does not run on), and
+## `init --simple my-counter` and `test` there, as an author takes them,
+## with the tool and the platform fetched from `base_url`.
 first_steps! : Str, Str, Str => Try({}, Str)
 first_steps! = |root, dir, base_url| {
 	served_dir = "${dir}/served"
 	cache = "${dir}/cache"
 	step!(Cmd.new("roc-stable").args(["${root}/scripts/release.roc", "--", "tool", Bundle.test_version, served_dir, "--base-url", base_url].map(OsStr.from_str)), "scripts/release.roc -- tool ${Bundle.test_version} build/bundle-test/served --base-url ${base_url}") ? |_| "the macos.roc tool could not be made"
-	Path.copy!(Path.utf8("${served_dir}/macos.roc"), Path.utf8("${dir}/macos.roc")) ? |error| "could not copy macos.roc: ${Str.inspect(error)}"
+	entries = (Path.list!(Path.utf8(served_dir)) ? |error| "could not list ${served_dir}: ${Str.inspect(error)}").keep_oks(|path| Path.filename(path).map_ok(Path.display))
+	bootstrap = match entries.keep_if(Release.is_bootstrap_bundle) {
+		[file] => "${base_url}/${file}"
+		_ => return Err("expected one bootstrap bundle in ${served_dir}")
+	}
 	Path.create_all!(Path.utf8(cache)) ? |error| "could not create ${cache}: ${Str.inspect(error)}"
 	note!("bundle: an author's first steps in ${dir}, package cache ${cache}")
 	machine = Cmd.new("uname").args(["-m"]).capture!() ?? ""
@@ -180,8 +189,9 @@ first_steps! = |root, dir, base_url| {
 		note!("bundle: roc-fuzz has no Intel Mac target, so this Intel Mac skips `roc macos.roc fuzz --check`")
 	}
 	for { args, cwd } in Bundle.first_steps_on(machine.trim()) {
-		shown = "roc macos.roc ${Str.join_with(args, " ")}${if (cwd.is_empty()) "" else " (in ${cwd}/)"}"
-		step!(Cmd.new("roc").args(["macos.roc"].concat(args).map(OsStr.from_str)).cwd(Path.utf8(if (cwd.is_empty()) dir else "${dir}/${cwd}")).env("XDG_CACHE_HOME", OsStr.from_str(cache)), shown) ? |_| "${shown} failed against the bundle"
+		entry = if (args.first() == Ok("init")) ["run", bootstrap] else ["macos.roc"]
+		shown = "roc ${Str.join_with(entry.concat(args), " ")}${if (cwd.is_empty()) "" else " (in ${cwd}/)"}"
+		step!(Cmd.new("roc").args(entry.concat(args).map(OsStr.from_str)).cwd(Path.utf8(if (cwd.is_empty()) dir else "${dir}/${cwd}")).env("XDG_CACHE_HOME", OsStr.from_str(cache)), shown) ? |_| "${shown} failed against the bundle"
 	}
 	Ok({})
 }
@@ -263,7 +273,7 @@ assets_app! = |root, dir, url| {
 	Path.copy_dir!(Path.utf8("${root}/examples/${name}/assets"), Path.utf8("${app_dir}/assets")) ? |error| "could not copy examples/${name}/assets: ${Str.inspect(error)}"
 	spec = "tests/specs/${Bundle.assets_case}.scm"
 	Path.copy!(Path.utf8("${root}/examples/${name}/${spec}"), Path.utf8("${app_dir}/${spec}")) ? |error| "could not copy ${spec}: ${Str.inspect(error)}"
-	Path.copy!(Path.utf8("${dir}/macos.roc"), Path.utf8("${app_dir}/macos.roc")) ? |error| "could not copy macos.roc: ${Str.inspect(error)}"
+	Path.copy!(Path.utf8("${dir}/my-app/macos.roc"), Path.utf8("${app_dir}/macos.roc")) ? |error| "could not copy macos.roc: ${Str.inspect(error)}"
 	for command in ["build", "test"] {
 		shown = "roc macos.roc ${command} (in ${name}/)"
 		step!(Cmd.new("roc").args(["macos.roc", command].map(OsStr.from_str)).cwd(Path.utf8(app_dir)).env("XDG_CACHE_HOME", OsStr.from_str(cache)), shown) ? |_| "${shown} failed against the bundle"

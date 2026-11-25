@@ -1,23 +1,13 @@
 import Preset
 
-## The twelve shaded visualizations, as built-in presets: each an original
-## take on one idea of the late-90s feedback visualizers (a liquid warp, a
-## blur tunnel, a superscope, flow-field streaks, a stereo vectorscope, a
-## spectrum with falling caps, a plasma, a starfield, a kaleidoscope,
-## demoscene fire, water ripples and glowing orbs).
+## The Metal presets from the platform's visualizer example, represented
+## as `Preset.Doc` values. Each pairs shader source and params with layers
+## and feedback for the Core Graphics fallback.
 ##
-## They come from the platform's visualizer example
-## (`examples/visualizer/src/Presets.roc` in roc-native-macos), carried here
-## as `Preset.Doc`s so the app stands alone: each one's Metal shaders and
-## params are that example's, word for word, and its layers and feedback are
-## its Core Graphics fallback, the whole picture where shaders do not run,
-## drawn in this app's layer kinds. How to read a shader, and the `Frame`
-## and helpers it uses, is in the platform's Ui reference ("Shaders").
-##
-## Every param that follows the sound maps it from 0 to 1 onto its range,
-## so the editor's slider for it is the same range. Motion in the shaders is
-## scaled by the frame's length, so it keeps time at any refresh rate.
-
+## Params that follow audio map a measurement from 0 to 1 onto a range
+## shared with the editor slider. Scale motion by the time since the last
+## frame to keep it consistent across refresh rates.
+## https://lukewilliamboswell.github.io/roc-native-macos/ui.html#shaders
 Gallery := [].{
 
 	## The twelve, in the gallery's order.

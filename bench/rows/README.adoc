@@ -35,28 +35,28 @@ cleared. Then the specs beside it, `tests/specs/rows-2000.scm` and
 sizes (docs/apps.adoc, "Work metrics"): the mount
 creates at most 150 rows (one window), five ticks of the interval, each
 writing three rows, update at most 15 rows and emit at most 15 commands,
-and selecting a row does one turn and one command. A table that drew every
-row, or a write whose cost grew with the table, fails them. The timings
+and selecting a row takes one turn and emits at most one command. A table
+that draws every row exceeds the mount bound. The tick bounds catch extra
+work during writes. The timings
 that follow are diagnostics, reported and never failing, each comparing
 two sizes in fresh processes:
-the windowing guard (`window_guard`): the list mounted over 2,000 rows and
-over 200,000 must draw the same window (at most 300 rows, from the `stats`
-line `bench: list rows N drawn D`) and apply its mount in about the same
-time (at most three times the small one's, plus 15 ms); the engine's mount
-time is not compared, since building the table and its view is linear in
-the rows, windowed or not. A write-scaling check: the tick's engine p50 at
-200,000 rows must be at most 5 times its p50 at 2,000 (it is about 1;
-before engine patches 0004 and 0005 it was 38). And an insert-loop check:
-it builds 2,000 and 18,000 rows with `Table.insert` in a loop
-(`-rows-build insert`, the faster of two runs each) and fails if the
-larger mount's engine time is 25 times the smaller's or more: linear is
-about 9, and before engine patch 0004 it was about 96.
+the windowing guard reports different drawn row counts, a count above 300,
+or a host apply time at 200,000 rows above three times the time at 2,000
+rows plus 15 ms. This comparison uses the host's apply time because the
+engine still builds the full table at mount. The write-scaling check
+reports if the tick's engine p50 at 200,000 rows exceeds five times the
+2,000-row p50 (floored at 0.2 ms). The insert-loop check compares mounts
+after inserting 2,000 and 18,000 rows with `Table.insert`. It takes the
+faster of two runs per size and reports a ratio of 25 or more, using a
+1 ms floor for the smaller run. Linear scaling gives roughly nine times
+the work across these sizes.
 
 == Running it
 
 [source,sh]
 ----
 blueprint run build -- --platform   # the host, once
+blueprint shell                    # put roc-stable on PATH for run.sh
 bench/rows/run.sh                # N = 10000 100000 1000000
 bench/rows/run.sh 50000          # other sizes
 bench/rows/run.sh --smoke        # what the gate runs

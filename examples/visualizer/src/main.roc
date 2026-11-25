@@ -5,19 +5,12 @@ import pf.Audio
 import pf.Ui
 import Presets
 
-## A visualizer: a drawing surface fed by the platform's synthetic sources,
-## drawn at every display refresh without a turn of the engine, with a trail
-## and a caption over it. `Scope` draws a wave and a marker that moves with a
-## level; `Echo` draws a mark and a ring whose previous frames drift right and
-## fade (a trail); `Bands` draws the wave as bars, with a marker riding one
-## value of it, another bound past its end, which reads 0, and a line as
-## thick as the level. The caption is native text over the surface, which
-## the trail never draws. `Shaders` runs the surface's own GPU stages over
-## Echo's marks (`Ui.Shader`): a warp that drags the previous frame right, a
-## composite that inverts the colours, one whose red follows a param bound
-## to a source, and a warp that does not compile; the line beside them says
-## what the shaders are doing. `Gallery` plays an audio file the person
-## chooses through any of twelve visualizations (`Presets`).
+## Draw at the display's pace using native sources that update without an
+## engine turn. Scope shows a waveform, Echo adds a fading trail, and Bands
+## reads individual samples. The caption is a native overlay above the trail.
+## Shaders demonstrates Metal stages and how a compile error is reported.
+## Gallery plays chosen audio through twelve presets, with a separate preset
+## for measuring audio and picture sync.
 main : Engine.Program(_)
 main = Engine.program_store({}, |_boot| store, |_boot| view()).with_ports(Audio.ports)
 
@@ -91,7 +84,7 @@ modes = || Ui.segmented(cells.mode.signal(), { choices: ["Scope", "Echo", "Bands
 
 # --- The gallery ---
 
-## Where playback stood when the host last said.
+## The initial playback status, before the host reports its own.
 idle : Audio.Status
 idle = { track: 0, generation: 0, state: Idle, position_ms: 0, duration_ms: 0, volume: 1, latency_ms: 0, visual_offset_ms: 0, output: { name: "", uid: "" }, eq: { bypass: Bool.False, preamp_db: 0, gains_db: List.repeat(0, 10) } }
 
@@ -153,7 +146,7 @@ gallery = || {
 	)
 }
 
-## The commands a handler sends, in order.
+## Post commands for the `on_post` site to send in order.
 send : List(Audio.Command) -> List(Engine.Write(_))
 send = |commands| [cells.outbox.update(|box| box.post(commands))]
 

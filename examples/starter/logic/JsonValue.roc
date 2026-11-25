@@ -1,15 +1,8 @@
-## JSON text and values, small and strict: what the preset documents and
-## the saved settings are written in. `JsonValue.parse` reads text into a value
-## and `JsonValue.encode` writes one back, indented, so a preset a person
-## exports is readable and editable by hand.
-##
-## A whole number (`-12`, `300`) is an `Int`, and one with a fraction
-## (`0.0025`, `-1.5`) a `Dec`, kept exactly as written; an exponent is
-## refused with where it was. Most numbers the app stores are whole counts
-## of a unit (percent, per-mille, milliseconds), and a shader's params are
-## fractions. Objects keep their keys in order, as written. Nesting deeper
-## than `JsonValue.deepest` is refused, so a hostile file cannot exhaust the
-## stack; the size of a file is bounded where it is read.
+## Read and write the JSON subset used by presets and saved settings.
+## Exported presets are indented and keep their field order for editing.
+## Numbers with a decimal point use `Dec`. Integer notation uses `I64`.
+## The parser rejects exponents, duplicate keys and nesting beyond
+## `JsonValue.deepest`. File reads enforce their own size limits.
 JsonValue := [Null, Bool(Bool), Int(I64), Dec(Dec), Text(Str), Array(List(JsonValue)), Object(List((Str, JsonValue)))].{
 
 	## Two values are equal when they are the same kind with equal parts,
@@ -380,6 +373,7 @@ JsonValue := [Null, Bool(Bool), Int(I64), Dec(Dec), Text(Str), Array(List(JsonVa
 		}
 }
 
+## Read an object with keys in source order and values of several kinds.
 expect JsonValue.parse("{\"a\": [1, -2, true, null], \"b\": \"x\"}") == Ok(JsonValue.Object([("a", JsonValue.Array([JsonValue.Int(1), JsonValue.Int(-2), JsonValue.Bool(Bool.True), JsonValue.Null])), ("b", JsonValue.Text("x"))]))
 
 ## Escapes read as what they stand for, including a surrogate pair.
@@ -391,11 +385,20 @@ expect {
 	JsonValue.parse(JsonValue.encode(value)) == Ok(value)
 }
 
+## Indent object entries and print a short scalar array on one line.
 expect JsonValue.encode(JsonValue.Object([("a", JsonValue.Array([JsonValue.Int(1), JsonValue.Int(2)])), ("b", JsonValue.Object([]))])) == "{\n  \"a\": [1, 2],\n  \"b\": {}\n}"
 
 ## What is not JSON, or not whole numbers, is refused with where.
 expect JsonValue.parse("1.5") == Ok(JsonValue.Dec(1.5)) and JsonValue.parse("-0.0025") == Ok(JsonValue.Dec(-0.0025)) and JsonValue.parse("1e3") == Err({ at: 0, what: "write numbers without an exponent" }) and JsonValue.parse("1.") == Err({ at: 0, what: "a number's dot needs digits after it" })
+
+## Decimals survive encoding and parsing, including whole-valued decimals.
 expect [0.004, -12.5, 60.0, 0.975, 1.0, 0.0].all(|d| JsonValue.parse(JsonValue.encode(JsonValue.Dec(d))) == Ok(JsonValue.Dec(d)))
+
+## Reject trailing commas, missing colons, leading zeroes and empty input.
 expect JsonValue.parse("[1,]").is_err() and JsonValue.parse("{\"a\" 1}").is_err() and JsonValue.parse("01").is_err() and JsonValue.parse("").is_err()
+
+## Reject duplicate keys, unpaired surrogates and trailing text.
 expect JsonValue.parse("{\"a\": 1, \"a\": 2}").is_err() and JsonValue.parse("\"\\ud800\"").is_err() and JsonValue.parse("[1] x").is_err()
+
+## Reject excessive nesting and accept a shallower array.
 expect JsonValue.parse(Str.repeat("[", 40)).is_err() and JsonValue.parse("${Str.repeat("[", 20)}${Str.repeat("]", 20)}").is_ok()

@@ -1,7 +1,5 @@
-; The demo of the player example: scripts/record_demos.roc records its
-; window while these steps run. The session renders on its manual clock, so
-; the demo plays nothing aloud. A (demo …) is a spec with real effects and
-; time, so `test` and the check parse it but never run it.
+; Record playback controls on the manual audio clock without speaker output.
+; Used by scripts/record_demos.roc.
 (demo "player demo"
   (setup
     (live-effects)

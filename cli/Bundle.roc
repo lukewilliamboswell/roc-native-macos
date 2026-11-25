@@ -2,54 +2,60 @@
 # copies of the files it imports, and as cli/Bundle.roc for a checkout, where
 # it imports them from the working tree. `check` fails when cli/Bundle.roc
 # differs from what the script generates for a checkout.
-import "../examples/starter/assets/CREDITS.md" as scaffold_assets_credits_md : Str
-import "../examples/starter/assets/icon.png" as scaffold_assets_icon_png : List(U8)
-import "../examples/starter/assets/polymorphic-defunctionalization.lrc" as scaffold_assets_polymorphic_defunctionalization_lrc : Str
-import "../examples/starter/assets/polymorphic-defunctionalization.mp3" as scaffold_assets_polymorphic_defunctionalization_mp3 : List(U8)
-import "../examples/starter/assets/sync-test.wav" as scaffold_assets_sync_test_wav : List(U8)
-import "../examples/starter/logic/Eq.roc" as scaffold_logic_eq_roc : Str
-import "../examples/starter/logic/Gallery.roc" as scaffold_logic_gallery_roc : Str
-import "../examples/starter/logic/JsonValue.roc" as scaffold_logic_jsonvalue_roc : Str
-import "../examples/starter/logic/Library.roc" as scaffold_logic_library_roc : Str
-import "../examples/starter/logic/Lyrics.roc" as scaffold_logic_lyrics_roc : Str
-import "../examples/starter/logic/Pairing.roc" as scaffold_logic_pairing_roc : Str
-import "../examples/starter/logic/Prefs.roc" as scaffold_logic_prefs_roc : Str
-import "../examples/starter/logic/Preset.roc" as scaffold_logic_preset_roc : Str
-import "../examples/starter/logic/Queue.roc" as scaffold_logic_queue_roc : Str
-import "../examples/starter/logic/Scene.roc" as scaffold_logic_scene_roc : Str
-import "../examples/starter/logic/main.roc" as scaffold_logic_main_roc : Str
-import "../examples/starter/src/Editor.roc" as scaffold_src_editor_roc : Str
-import "../examples/starter/src/Export.roc" as scaffold_src_export_roc : Str
-import "../examples/starter/src/Media.roc" as scaffold_src_media_roc : Str
-import "../examples/starter/src/Panels.roc" as scaffold_src_panels_roc : Str
-import "../examples/starter/src/Player.roc" as scaffold_src_player_roc : Str
-import "../examples/starter/src/Store.roc" as scaffold_src_store_roc : Str
-import "../examples/starter/src/Visual.roc" as scaffold_src_visual_roc : Str
-import "../examples/starter/src/Widgets.roc" as scaffold_src_widgets_roc : Str
-import "../examples/starter/src/Words.roc" as scaffold_src_words_roc : Str
-import "../examples/starter/src/main.roc" as scaffold_src_main_roc : Str
-import "../examples/starter/tests/fixtures/clicks.lrc" as scaffold_tests_fixtures_clicks_lrc : Str
-import "../examples/starter/tests/fixtures/clicks.wav" as scaffold_tests_fixtures_clicks_wav : List(U8)
-import "../examples/starter/tests/fixtures/ember-tunnel.json" as scaffold_tests_fixtures_ember_tunnel_json : Str
-import "../examples/starter/tests/fixtures/tones-44100.wav" as scaffold_tests_fixtures_tones_44100_wav : List(U8)
-import "../examples/starter/tests/fixtures/verses.txt" as scaffold_tests_fixtures_verses_txt : Str
-import "../examples/starter/tests/fuzz/main.roc" as scaffold_tests_fuzz_main_roc : Str
-import "../examples/starter/tests/specs/broken.scm" as scaffold_tests_specs_broken_scm : Str
-import "../examples/starter/tests/specs/default.scm" as scaffold_tests_specs_default_scm : Str
-import "../examples/starter/tests/specs/ember.scm" as scaffold_tests_specs_ember_scm : Str
-import "../examples/starter/tests/specs/eq.scm" as scaffold_tests_specs_eq_scm : Str
-import "../examples/starter/tests/specs/fallback.scm" as scaffold_tests_specs_fallback_scm : Str
-import "../examples/starter/tests/specs/lyrics.scm" as scaffold_tests_specs_lyrics_scm : Str
-import "../examples/starter/tests/specs/plain.scm" as scaffold_tests_specs_plain_scm : Str
-import "../examples/starter/tests/specs/presets.scm" as scaffold_tests_specs_presets_scm : Str
-import "../examples/starter/tests/specs/problem.scm" as scaffold_tests_specs_problem_scm : Str
-import "../examples/starter/tests/specs/shaders.scm" as scaffold_tests_specs_shaders_scm : Str
-import "../examples/starter/tests/specs/small-screen.scm" as scaffold_tests_specs_small_screen_scm : Str
-import "../examples/starter/tests/specs/trails.scm" as scaffold_tests_specs_trails_scm : Str
-import "../examples/starter/tests/specs/transport.scm" as scaffold_tests_specs_transport_scm : Str
+import "../examples/starter/assets/CREDITS.md" as starter_assets_credits_md : Str
+import "../examples/starter/assets/icon.png" as starter_assets_icon_png : List(U8)
+import "../examples/starter/assets/polymorphic-defunctionalization.lrc" as starter_assets_polymorphic_defunctionalization_lrc : Str
+import "../examples/starter/assets/polymorphic-defunctionalization.mp3" as starter_assets_polymorphic_defunctionalization_mp3 : List(U8)
+import "../examples/starter/assets/sync-test.wav" as starter_assets_sync_test_wav : List(U8)
+import "../examples/starter/logic/Eq.roc" as starter_logic_eq_roc : Str
+import "../examples/starter/logic/Gallery.roc" as starter_logic_gallery_roc : Str
+import "../examples/starter/logic/JsonValue.roc" as starter_logic_jsonvalue_roc : Str
+import "../examples/starter/logic/Library.roc" as starter_logic_library_roc : Str
+import "../examples/starter/logic/Lyrics.roc" as starter_logic_lyrics_roc : Str
+import "../examples/starter/logic/Pairing.roc" as starter_logic_pairing_roc : Str
+import "../examples/starter/logic/Prefs.roc" as starter_logic_prefs_roc : Str
+import "../examples/starter/logic/Preset.roc" as starter_logic_preset_roc : Str
+import "../examples/starter/logic/Queue.roc" as starter_logic_queue_roc : Str
+import "../examples/starter/logic/Scene.roc" as starter_logic_scene_roc : Str
+import "../examples/starter/logic/main.roc" as starter_logic_main_roc : Str
+import "../examples/starter/src/Editor.roc" as starter_src_editor_roc : Str
+import "../examples/starter/src/Export.roc" as starter_src_export_roc : Str
+import "../examples/starter/src/Media.roc" as starter_src_media_roc : Str
+import "../examples/starter/src/Panels.roc" as starter_src_panels_roc : Str
+import "../examples/starter/src/Player.roc" as starter_src_player_roc : Str
+import "../examples/starter/src/Store.roc" as starter_src_store_roc : Str
+import "../examples/starter/src/Visual.roc" as starter_src_visual_roc : Str
+import "../examples/starter/src/Widgets.roc" as starter_src_widgets_roc : Str
+import "../examples/starter/src/Words.roc" as starter_src_words_roc : Str
+import "../examples/starter/src/main.roc" as starter_src_main_roc : Str
+import "../examples/starter/tests/fixtures/clicks.lrc" as starter_tests_fixtures_clicks_lrc : Str
+import "../examples/starter/tests/fixtures/clicks.wav" as starter_tests_fixtures_clicks_wav : List(U8)
+import "../examples/starter/tests/fixtures/ember-tunnel.json" as starter_tests_fixtures_ember_tunnel_json : Str
+import "../examples/starter/tests/fixtures/tones-44100.wav" as starter_tests_fixtures_tones_44100_wav : List(U8)
+import "../examples/starter/tests/fixtures/verses.txt" as starter_tests_fixtures_verses_txt : Str
+import "../examples/starter/tests/fuzz/main.roc" as starter_tests_fuzz_main_roc : Str
+import "../examples/starter/tests/specs/broken.scm" as starter_tests_specs_broken_scm : Str
+import "../examples/starter/tests/specs/default.scm" as starter_tests_specs_default_scm : Str
+import "../examples/starter/tests/specs/ember.scm" as starter_tests_specs_ember_scm : Str
+import "../examples/starter/tests/specs/eq.scm" as starter_tests_specs_eq_scm : Str
+import "../examples/starter/tests/specs/fallback.scm" as starter_tests_specs_fallback_scm : Str
+import "../examples/starter/tests/specs/lyrics.scm" as starter_tests_specs_lyrics_scm : Str
+import "../examples/starter/tests/specs/plain.scm" as starter_tests_specs_plain_scm : Str
+import "../examples/starter/tests/specs/presets.scm" as starter_tests_specs_presets_scm : Str
+import "../examples/starter/tests/specs/problem.scm" as starter_tests_specs_problem_scm : Str
+import "../examples/starter/tests/specs/shaders.scm" as starter_tests_specs_shaders_scm : Str
+import "../examples/starter/tests/specs/small-screen.scm" as starter_tests_specs_small_screen_scm : Str
+import "../examples/starter/tests/specs/trails.scm" as starter_tests_specs_trails_scm : Str
+import "../examples/starter/tests/specs/transport.scm" as starter_tests_specs_transport_scm : Str
+import "../examples/counter/src/main.roc" as simple_src_main_roc : Str
+import "../examples/counter/tests/specs/demo.scm" as simple_tests_specs_demo_scm : Str
+import "../examples/counter/tests/specs/increment.scm" as simple_tests_specs_increment_scm : Str
+import "../examples/counter/tests/specs/reset.scm" as simple_tests_specs_reset_scm : Str
+import "../examples/counter/tests/specs/work.scm" as simple_tests_specs_work_scm : Str
 
 ## What this copy of the tool ships with: the release it belongs to, that
-## release's platform, the Roc it was tested with, and the app `init` writes.
+## release's platform, the Roc it was tested with, and the apps `init`
+## writes.
 Bundle := [].{
 
 	## A file `init` writes, by its path in the app: text, or bytes such
@@ -71,52 +77,63 @@ Bundle := [].{
 
 	## The files `init` writes: the starter example (`examples/starter`),
 	## with its logic package, assets and tests.
-	scaffold : List(File)
-	scaffold = [
-		{ path: "assets/CREDITS.md", contents: Text(scaffold_assets_credits_md) },
-		{ path: "assets/icon.png", contents: Bytes(scaffold_assets_icon_png) },
-		{ path: "assets/polymorphic-defunctionalization.lrc", contents: Text(scaffold_assets_polymorphic_defunctionalization_lrc) },
-		{ path: "assets/polymorphic-defunctionalization.mp3", contents: Bytes(scaffold_assets_polymorphic_defunctionalization_mp3) },
-		{ path: "assets/sync-test.wav", contents: Bytes(scaffold_assets_sync_test_wav) },
-		{ path: "logic/Eq.roc", contents: Text(scaffold_logic_eq_roc) },
-		{ path: "logic/Gallery.roc", contents: Text(scaffold_logic_gallery_roc) },
-		{ path: "logic/JsonValue.roc", contents: Text(scaffold_logic_jsonvalue_roc) },
-		{ path: "logic/Library.roc", contents: Text(scaffold_logic_library_roc) },
-		{ path: "logic/Lyrics.roc", contents: Text(scaffold_logic_lyrics_roc) },
-		{ path: "logic/Pairing.roc", contents: Text(scaffold_logic_pairing_roc) },
-		{ path: "logic/Prefs.roc", contents: Text(scaffold_logic_prefs_roc) },
-		{ path: "logic/Preset.roc", contents: Text(scaffold_logic_preset_roc) },
-		{ path: "logic/Queue.roc", contents: Text(scaffold_logic_queue_roc) },
-		{ path: "logic/Scene.roc", contents: Text(scaffold_logic_scene_roc) },
-		{ path: "logic/main.roc", contents: Text(scaffold_logic_main_roc) },
-		{ path: "src/Editor.roc", contents: Text(scaffold_src_editor_roc) },
-		{ path: "src/Export.roc", contents: Text(scaffold_src_export_roc) },
-		{ path: "src/Media.roc", contents: Text(scaffold_src_media_roc) },
-		{ path: "src/Panels.roc", contents: Text(scaffold_src_panels_roc) },
-		{ path: "src/Player.roc", contents: Text(scaffold_src_player_roc) },
-		{ path: "src/Store.roc", contents: Text(scaffold_src_store_roc) },
-		{ path: "src/Visual.roc", contents: Text(scaffold_src_visual_roc) },
-		{ path: "src/Widgets.roc", contents: Text(scaffold_src_widgets_roc) },
-		{ path: "src/Words.roc", contents: Text(scaffold_src_words_roc) },
-		{ path: "src/main.roc", contents: Text(scaffold_src_main_roc) },
-		{ path: "tests/fixtures/clicks.lrc", contents: Text(scaffold_tests_fixtures_clicks_lrc) },
-		{ path: "tests/fixtures/clicks.wav", contents: Bytes(scaffold_tests_fixtures_clicks_wav) },
-		{ path: "tests/fixtures/ember-tunnel.json", contents: Text(scaffold_tests_fixtures_ember_tunnel_json) },
-		{ path: "tests/fixtures/tones-44100.wav", contents: Bytes(scaffold_tests_fixtures_tones_44100_wav) },
-		{ path: "tests/fixtures/verses.txt", contents: Text(scaffold_tests_fixtures_verses_txt) },
-		{ path: "tests/fuzz/main.roc", contents: Text(scaffold_tests_fuzz_main_roc) },
-		{ path: "tests/specs/broken.scm", contents: Text(scaffold_tests_specs_broken_scm) },
-		{ path: "tests/specs/default.scm", contents: Text(scaffold_tests_specs_default_scm) },
-		{ path: "tests/specs/ember.scm", contents: Text(scaffold_tests_specs_ember_scm) },
-		{ path: "tests/specs/eq.scm", contents: Text(scaffold_tests_specs_eq_scm) },
-		{ path: "tests/specs/fallback.scm", contents: Text(scaffold_tests_specs_fallback_scm) },
-		{ path: "tests/specs/lyrics.scm", contents: Text(scaffold_tests_specs_lyrics_scm) },
-		{ path: "tests/specs/plain.scm", contents: Text(scaffold_tests_specs_plain_scm) },
-		{ path: "tests/specs/presets.scm", contents: Text(scaffold_tests_specs_presets_scm) },
-		{ path: "tests/specs/problem.scm", contents: Text(scaffold_tests_specs_problem_scm) },
-		{ path: "tests/specs/shaders.scm", contents: Text(scaffold_tests_specs_shaders_scm) },
-		{ path: "tests/specs/small-screen.scm", contents: Text(scaffold_tests_specs_small_screen_scm) },
-		{ path: "tests/specs/trails.scm", contents: Text(scaffold_tests_specs_trails_scm) },
-		{ path: "tests/specs/transport.scm", contents: Text(scaffold_tests_specs_transport_scm) },
+	starter : List(File)
+	starter = [
+		{ path: "assets/CREDITS.md", contents: Text(starter_assets_credits_md) },
+		{ path: "assets/icon.png", contents: Bytes(starter_assets_icon_png) },
+		{ path: "assets/polymorphic-defunctionalization.lrc", contents: Text(starter_assets_polymorphic_defunctionalization_lrc) },
+		{ path: "assets/polymorphic-defunctionalization.mp3", contents: Bytes(starter_assets_polymorphic_defunctionalization_mp3) },
+		{ path: "assets/sync-test.wav", contents: Bytes(starter_assets_sync_test_wav) },
+		{ path: "logic/Eq.roc", contents: Text(starter_logic_eq_roc) },
+		{ path: "logic/Gallery.roc", contents: Text(starter_logic_gallery_roc) },
+		{ path: "logic/JsonValue.roc", contents: Text(starter_logic_jsonvalue_roc) },
+		{ path: "logic/Library.roc", contents: Text(starter_logic_library_roc) },
+		{ path: "logic/Lyrics.roc", contents: Text(starter_logic_lyrics_roc) },
+		{ path: "logic/Pairing.roc", contents: Text(starter_logic_pairing_roc) },
+		{ path: "logic/Prefs.roc", contents: Text(starter_logic_prefs_roc) },
+		{ path: "logic/Preset.roc", contents: Text(starter_logic_preset_roc) },
+		{ path: "logic/Queue.roc", contents: Text(starter_logic_queue_roc) },
+		{ path: "logic/Scene.roc", contents: Text(starter_logic_scene_roc) },
+		{ path: "logic/main.roc", contents: Text(starter_logic_main_roc) },
+		{ path: "src/Editor.roc", contents: Text(starter_src_editor_roc) },
+		{ path: "src/Export.roc", contents: Text(starter_src_export_roc) },
+		{ path: "src/Media.roc", contents: Text(starter_src_media_roc) },
+		{ path: "src/Panels.roc", contents: Text(starter_src_panels_roc) },
+		{ path: "src/Player.roc", contents: Text(starter_src_player_roc) },
+		{ path: "src/Store.roc", contents: Text(starter_src_store_roc) },
+		{ path: "src/Visual.roc", contents: Text(starter_src_visual_roc) },
+		{ path: "src/Widgets.roc", contents: Text(starter_src_widgets_roc) },
+		{ path: "src/Words.roc", contents: Text(starter_src_words_roc) },
+		{ path: "src/main.roc", contents: Text(starter_src_main_roc) },
+		{ path: "tests/fixtures/clicks.lrc", contents: Text(starter_tests_fixtures_clicks_lrc) },
+		{ path: "tests/fixtures/clicks.wav", contents: Bytes(starter_tests_fixtures_clicks_wav) },
+		{ path: "tests/fixtures/ember-tunnel.json", contents: Text(starter_tests_fixtures_ember_tunnel_json) },
+		{ path: "tests/fixtures/tones-44100.wav", contents: Bytes(starter_tests_fixtures_tones_44100_wav) },
+		{ path: "tests/fixtures/verses.txt", contents: Text(starter_tests_fixtures_verses_txt) },
+		{ path: "tests/fuzz/main.roc", contents: Text(starter_tests_fuzz_main_roc) },
+		{ path: "tests/specs/broken.scm", contents: Text(starter_tests_specs_broken_scm) },
+		{ path: "tests/specs/default.scm", contents: Text(starter_tests_specs_default_scm) },
+		{ path: "tests/specs/ember.scm", contents: Text(starter_tests_specs_ember_scm) },
+		{ path: "tests/specs/eq.scm", contents: Text(starter_tests_specs_eq_scm) },
+		{ path: "tests/specs/fallback.scm", contents: Text(starter_tests_specs_fallback_scm) },
+		{ path: "tests/specs/lyrics.scm", contents: Text(starter_tests_specs_lyrics_scm) },
+		{ path: "tests/specs/plain.scm", contents: Text(starter_tests_specs_plain_scm) },
+		{ path: "tests/specs/presets.scm", contents: Text(starter_tests_specs_presets_scm) },
+		{ path: "tests/specs/problem.scm", contents: Text(starter_tests_specs_problem_scm) },
+		{ path: "tests/specs/shaders.scm", contents: Text(starter_tests_specs_shaders_scm) },
+		{ path: "tests/specs/small-screen.scm", contents: Text(starter_tests_specs_small_screen_scm) },
+		{ path: "tests/specs/trails.scm", contents: Text(starter_tests_specs_trails_scm) },
+		{ path: "tests/specs/transport.scm", contents: Text(starter_tests_specs_transport_scm) },
+	]
+
+	## The files `init --simple` writes: the counter example
+	## (`examples/counter`), with its specs.
+	simple : List(File)
+	simple = [
+		{ path: "src/main.roc", contents: Text(simple_src_main_roc) },
+		{ path: "tests/specs/demo.scm", contents: Text(simple_tests_specs_demo_scm) },
+		{ path: "tests/specs/increment.scm", contents: Text(simple_tests_specs_increment_scm) },
+		{ path: "tests/specs/reset.scm", contents: Text(simple_tests_specs_reset_scm) },
+		{ path: "tests/specs/work.scm", contents: Text(simple_tests_specs_work_scm) },
 	]
 }

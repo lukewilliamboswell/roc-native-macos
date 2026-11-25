@@ -1,7 +1,6 @@
-; The README's demo of the counter example: scripts/record_demos.roc records
-; its window while these steps run, as docs/images/counter.gif. A (demo …)
-; is a spec with real effects and time, so `test` and the check parse it but
-; never run it.
+; This recording script uses the spec grammar with live effects and waits.
+; `roc macos.roc test --check` checks its syntax.
+; https://lukewilliamboswell.github.io/roc-native-macos/apps.html#test-an-app
 (demo "counter demo"
   (setup
     (live-effects))

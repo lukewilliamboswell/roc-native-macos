@@ -1,8 +1,6 @@
-; A param bound to a source, with the Metal renderer: the composite paints
-; the surface as red as `synthetic.level`, which the host reads each frame
-; without a turn of the engine. Four steps of the level (a half) make it
-; half red; four more, full red less an eighth of the way back round.
-; A Mac without a Metal device stops at (require-metal) and passes.
+; The Metal composite uses synthetic.level as red intensity. Four steps
+; reach half red, three more reach seven eighths, and the next wraps to zero.
+; The host updates the parameter without an engine turn.
 (test "shader-param-metal"
   (steps
     (require-metal)

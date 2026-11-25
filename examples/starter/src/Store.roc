@@ -11,30 +11,18 @@ import logic.Scene
 import Media
 import "../assets/polymorphic-defunctionalization.lrc" as default_lrc : Str
 
-## The player's shared state: the store, its cells, how a launch fills
-## them, and the decisions that change them.
+## Own the queue, player, EQ, preset library, editor draft and lyrics
+## settings here. Give state used by one widget to `Engine.state` (see
+## `Widgets.section`). Use `.map` or `Engine.derive` for a value that
+## follows other state (see `Player.drawing`).
 ##
-## State goes here when more than one part of the window reads or writes
-## it, or it must outlive the piece of the view that shows it: the queue,
-## the player, the EQ, the preset library and the editor's draft, and the
-## lyrics choice. State that one piece of the view cares about stays local
-## to it, in an `Engine.state` (see `Widgets.section` and
-## `Widgets.confirm_button`). A value that follows from other state is not
-## state at all: `map` it, or `Engine.derive` it (see `Player.drawing`).
+## A decision returns writes, like `Store.toggled_lyrics`. Attach it with
+## `Engine.handle_by` for an event or `Engine.react` for an effect reply.
+## Check the result in an expect with `Store.store.after(writes).read(cell)`.
 ##
-## A decision is a pure function that returns the writes it makes, such as
-## `Store.toggled_lyrics`. Views attach decisions to events
-## (`Engine.handle_by`) and to answers (`Engine.react`) and decide nothing
-## themselves, so every change of state is tested here with `expect`, with
-## no window: `Store.store.after(writes).read(cell)` is the state after
-## the writes.
-##
-## A decision that needs the player to act posts its commands with
-## `Store.send`, at most once a turn: the `media` outbox carries one list a
-## turn to `Media.session`.
-##
-## Only composing modules (`Player`, `Panels`, `Editor`, `Words`,
-## `Export`) import this one. A widget is handed what it needs instead.
+## Group playback commands in one `Store.send` per turn. Keep reusable
+## widgets independent of this store by passing them values and handlers.
+## https://lukewilliamboswell.github.io/roc-native-macos/apps.html#work-on-the-starter
 Store := [Music].{
 
 	## A song in the queue: where it comes from (a file the listener gave,
@@ -144,17 +132,14 @@ Store := [Music].{
 			.with_initial(Store.cells.offsets, saved_prefs.offsets)
 	}
 
-	## The default song: the one the queue starts with, so the app plays
-	## something before the listener gives it a file: *Polymorphic
-	## Defunctionalization Through Lambda Set Specialization* by Luke Boswell,
-	## licensed under CC BY 4.0, not under the app's licence, so
-	## `assets/CREDITS.md` travels with it. The song plays from `assets/`
-	## (`Media.LoadAsset`), and its timed lyrics are compiled in.
+	## The song queued at launch plays from `assets/`, with lyrics compiled
+	## into the app. Its CC BY 4.0 credit is in `assets/CREDITS.md`.
 	##
-	## To ship without it, delete `assets/polymorphic-defunctionalization.mp3`
-	## and `.lrc`, their section of `assets/CREDITS.md`, this value,
-	## `default_asset` and the `default_lrc` import, and start the queue
-	## empty (`first_queue`, `opening` and their `expect`s).
+	## To ship without it, remove this value, `default_asset` and the
+	## `default_lrc` import. Set `first_queue` to an empty queue and
+	## `opening` to an empty list of commands. Update the expects and specs
+	## that assume a bundled song. Remove the `.mp3` and `.lrc` files named
+	## `assets/polymorphic-defunctionalization` and their credit.
 	default : Track
 	default = {
 		file: Bundled(Store.default_asset),

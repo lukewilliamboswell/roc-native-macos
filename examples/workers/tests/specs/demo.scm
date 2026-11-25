@@ -1,7 +1,5 @@
-; The README's demo of the workers example: scripts/record_demos.roc records
-; its window while these steps run, as docs/images/workers.gif. A (demo …)
-; is a spec with real effects and time, so `test` and the check parse it but
-; never run it.
+; Record the heartbeat and the workers drawing the Mandelbrot set.
+; Used by scripts/record_demos.roc.
 (demo "workers demo"
   (setup
     (live-effects))

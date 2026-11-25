@@ -1,0 +1,21 @@
+= roc-native-macos 0.0.3
+
+Create a project directly with Roc using the installer command in these
+release notes. The installer creates the project and writes a local
+`macos.roc` launcher. Start the app with `roc macos.roc dev` and press
+Command-R in the app to load your edits after saving.
+
+* Pass `--simple` to `init` for a counter with one source module and its
+  specs. The default scaffold is the music player.
+* The app guide distinguishes the first-run steps from the command and UI
+  references. The starter's source comments explain where to make changes
+  and link to platform details in the manual.
+* The [examples archive]({examples-url}) includes each app's source, specs
+  and fixtures. The release also provides the [standalone launcher]({launcher-url}).
+
+To use the platform directly, put this header in your app:
+
+[source,roc]
+----
+app [main] { pf: platform "{platform-url}" }
+----

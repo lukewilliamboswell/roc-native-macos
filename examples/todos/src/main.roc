@@ -3,11 +3,10 @@ app [main] { pf: platform "../../../platform/main.roc" }
 import pf.Engine exposing [Elem, Signal, State, Table]
 import pf.Ui
 
-## A to-do list, after the roc-signals tutorial: a table of to-dos in the
-## store, a form that adds one, a filtered view of the table whose rows each
-## own a checkbox and a remove button, in a scroll area, and a count of
-## what is left. Command-N adds the draft as Return does. The list is saved
-## under the local storage key `todos` and read back at boot.
+## A to-do list based on the roc-signals tutorial. The store's table feeds
+## a filtered view, with a checkbox and remove button in each row.
+## Return or Command-N adds the draft. Local storage keeps the list across
+## launches.
 main : Engine.Program(_)
 main = Engine.program_store({ storage_keys: ["todos"] }, start, |_boot| view())
 
@@ -232,11 +231,13 @@ remaining = |table|
 		count => "${count.to_str()} items left"
 	}
 
+## Adding a title inserts an open to-do and advances the next key.
 expect {
 	after = store.after(added({ title: "Buy milk", next: 0 }))
 	after.read(cells.todos).get(0) == Ok({ title: "Buy milk", done: Bool.False }) and after.read(cells.next) == 1
 }
 
+## An empty title makes no changes.
 expect added({ title: "", next: 3 }).is_empty()
 
 ## The saved text reads back as the same to-dos, in the order they were added.

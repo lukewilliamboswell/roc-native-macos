@@ -1,8 +1,6 @@
-; Shaders with the Core Graphics renderer: they never run, the app hears
-; `Fallback`, and each test draws Echo's marks and trail, the same pixels
-; as echo.scm, whichever stages it asks for. This is what a Mac without a
-; Metal device draws for the shader-*-metal specs. (Invert's black background
-; is still fading from the trail when Param is drawn.)
+; Core Graphics reports Fallback and draws Echo's marks and trail for
+; the shader variants. The Invert variant's black background still fades
+; from the trail when Param is drawn.
 (test "shaders"
   (steps
     (renderer cg)

@@ -1,8 +1,5 @@
-; The design's legibility check: lyrics over Echo Rings, whose trail keeps
-; each frame under the next. The words are native text in the overlay's
-; foreground, so the surface under them never holds a trace of a letter:
-; where the line sits, the surface shows its background, frame after
-; frame and line after line.
+; Lyrics appear over Echo Rings as native text. After each frame the
+; surface behind the letters still shows only its own background.
 (test "trails"
   (setup
     (audio-clock manual))

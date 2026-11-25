@@ -6,15 +6,9 @@ import logic.Queue
 import Store
 import Widgets
 
-## The queue and EQ panels, below the transport, the EQ panel with the
-## picture's sync for the output playing. Opening a panel leaves
-## the song playing and the picture in view, so each change is seen and
-## heard as it is made. The preset editor is the third panel
-## (`Editor.roc`).
-##
-## To add a panel: write a function here (or a module of its own, as the
-## editor is) returning `Elem(ctx)`, add its name to `Panels.names`, and
-## build it in `Player.panel`.
+## Queue and EQ panels. The EQ panel also calibrates picture sync for
+## the current audio output. For a new panel, return an `Elem(ctx)`,
+## add the name to `Panels.names`, and build it in `Player.panel`.
 Panels := [].{
 
 	## The panels the switcher offers, the first showing none.

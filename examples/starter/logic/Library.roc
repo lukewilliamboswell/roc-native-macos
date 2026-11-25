@@ -3,16 +3,10 @@ import JsonValue
 import Preset
 import "../tests/fixtures/ember-tunnel.json" as ember_file : Str
 
-## The preset library: the three built-ins every listener has, the presets
-## a listener makes (kept in local storage), and the rules for saving,
-## duplicating and removing them.
-##
-## Built-ins have IDs that start `builtin.` and cannot be replaced or
-## removed. A listener's presets have IDs that start `user.`, made from
-## their names (`Ember Tunnel` is `user.ember-tunnel`), so saving under a
-## name that is taken replaces that preset, as Save As does in any app.
-## Every preset's name is distinct, so the preset selector can list them by
-## name.
+## The preset library combines `builtins` and the listener's presets
+## stored locally. Use `builtin.` IDs for presets shipped with the app.
+## Save As rejects a built-in name and derives a `user.` ID from the name,
+## replacing an existing user preset with that ID.
 Library := [].{
 
 	## A green oscilloscope: the waveform drawn across the view.
@@ -76,11 +70,8 @@ Library := [].{
 	default : Preset.Doc
 	default = Gallery.orb_garden
 
-	## The worked example a listener makes from a blank preset: a circular
-	## waveform a fifth of the view across, which the bass swells from 20% to
-	## 38% and the treble brightens at its edge, in amber, with a slight
-	## outward zoom and trails that halve every 300 ms. Each kick expands the
-	## ring into the fading outlines of the kicks before it.
+	## A worked preset for the specs. Bass grows the circular waveform,
+	## treble brightens its edge, and trails fade by half every 300 ms.
 	ember_tunnel : Preset.Doc
 	ember_tunnel = {
 		id: "user.ember-tunnel",
@@ -219,11 +210,14 @@ Library := [].{
 ## The built-ins and the worked example are valid presets, and each reads
 ## back from its file unchanged.
 expect Library.builtins.append(Library.ember_tunnel).all(|p| Preset.problems(p).is_empty() and Preset.decode(Preset.encode(p)) == Ok(p))
+
+## Built-in presets appear in selector order and Orb Garden is the default.
 expect Library.builtins.map(|p| p.name) == ["Scope", "Spectrum Bars", "Echo Rings", "Liquid Drift", "Blur Corridor", "Superscope Bloom", "Flux Streaks", "Phase Scope", "Peak Meter", "Plasma Weave", "Hyperspace", "Mirror Shard", "Spectrum Fire", "Ripple Pool", "Orb Garden", "Sync Test"] and Library.default.id == "builtin.orb-garden"
 
-## Every layer of the built-ins and Ember Tunnel uses a named palette.
+## The three introductory presets and Ember Tunnel use named palettes.
 expect [Library.scope, Library.spectrum_bars, Library.echo_rings, Library.ember_tunnel].all(|p| p.layers.all(|l| Library.palette_name(l.colors) != "Custom")) and Library.palette_name([]) == "Custom"
 
+## Preset ID slugs strip punctuation and have a fallback.
 expect Library.slug("Ember Tunnel!") == "ember-tunnel" and Library.slug("  ---  ") == "preset" and Library.slug("Über 2") == "ber-2"
 
 ## Saving Ember Tunnel from blank gives it its ID; saving again replaces it;

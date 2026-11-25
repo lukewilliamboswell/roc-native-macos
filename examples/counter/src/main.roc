@@ -3,10 +3,15 @@ app [main] { pf: platform "../../../platform/main.roc" }
 import pf.Engine exposing [Elem, In, Root, State]
 import pf.Ui
 
-## A counter: one piece of local state and three buttons that change it.
+## A counter with local state. `Engine.state` starts at 0 and builds
+## `view`. The count's signal updates the number when a button changes it.
+## https://lukewilliamboswell.github.io/roc-native-macos/apps.html#write-an-app
 main : Engine.Program
 main = Engine.program(|| Engine.state(0, view))
 
+## The window's contents. `count` is the state: `count.signal()` reads it
+## where the view shows it, and `count.update` makes an action that changes
+## it, such as a button's `on_press`.
 view : State(In(Root, I64), I64) -> Elem(In(Root, I64))
 view = |count|
 	Ui.vstack(
@@ -19,6 +24,9 @@ view = |count|
 				{ fill: ControlBackground, border: Line({ color: Separator, width: 1 }), radius: 16, padding: All(16), width: Fill },
 				Ui.text("${count.signal()}", { size: Fixed(72), weight: Medium, design: MonospacedDigits, align: Center, width: Fill }),
 			),
+
+			## Specs find the icon buttons by their hidden titles "−" and "+".
+			## https://lukewilliamboswell.github.io/roc-native-macos/apps.html#locators
 			Ui.hstack(
 				{ spacing: 12 },
 				[

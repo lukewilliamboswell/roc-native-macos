@@ -1,8 +1,5 @@
-; The demo of the visualizer example: scripts/record_demos.roc records its
-; window while these steps run: the scope at the display's refresh, then the
-; trail, the caption over it, and the trail cleared. A (demo …) is a spec
-; with real effects and time, so `test` and the check parse it but never run
-; it.
+; Record the scope, the fading trail and the native caption above it.
+; Used by scripts/record_demos.roc.
 (demo "visualizer demo"
   (setup
     (live-effects))

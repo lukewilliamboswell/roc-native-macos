@@ -55,13 +55,17 @@ Bundle := [].{
 
 	## An author's first steps, which the consumer test takes with the tool:
 	## each command's arguments and the directory it runs in, relative to the
-	## test's (empty for the test's own).
+	## test's (empty for the test's own). The starter is built, tested and
+	## fuzzed; the counter `init --simple` writes is only tested, which builds
+	## this Mac's own program and runs its specs.
 	first_steps : List({ args : List(Str), cwd : Str })
 	first_steps = [
 		{ args: ["init", "my-app"], cwd: "" },
 		{ args: ["build"], cwd: "my-app" },
 		{ args: ["test"], cwd: "my-app" },
 		{ args: ["fuzz", "--check"], cwd: "my-app" },
+		{ args: ["init", "--simple", "my-counter"], cwd: "" },
+		{ args: ["test"], cwd: "my-counter" },
 	]
 
 	## The first steps on a Mac whose `uname -m` is `machine`: roc-fuzz has
@@ -249,4 +253,4 @@ expect {
 }
 
 ## An Intel Mac takes every first step but `fuzz`.
-expect Bundle.first_steps_on("x86_64").map(|step| step.args) == [["init", "my-app"], ["build"], ["test"]] and Bundle.first_steps_on("arm64") == Bundle.first_steps
+expect Bundle.first_steps_on("x86_64").map(|step| step.args) == [["init", "my-app"], ["build"], ["test"], ["init", "--simple", "my-counter"], ["test"]] and Bundle.first_steps_on("arm64") == Bundle.first_steps

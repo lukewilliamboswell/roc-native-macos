@@ -1,3 +1,5 @@
+import Release
+
 ## The pure decisions of the workflows' steps (scripts/workflow.roc): which
 ## release a run is for, which release is the latest, which files a release
 ## directory holds, and what a step writes for later steps to read.
@@ -74,10 +76,10 @@ Workflow := [].{
 		}
 
 	## The platform bundle among a release's file names: the one `.tar.zst`
-	## that is not the tool's `macos-*`.
+	## outside the tool and bootstrap archives.
 	platform_bundle : List(Str) -> Try(Str, [NotOne(U64)])
 	platform_bundle = |names| {
-		found = names.keep_if(|name| name.ends_with(".tar.zst") and !name.starts_with("macos-"))
+		found = names.keep_if(Release.is_platform_bundle)
 		match found {
 			[one] => Ok(one)
 			_ => Err(NotOne(found.len()))
@@ -86,7 +88,7 @@ Workflow := [].{
 
 	tool_bundle : List(Str) -> Try(Str, [NotOne(U64)])
 	tool_bundle = |names| {
-		found = names.keep_if(|name| name.ends_with(".tar.zst") and name.starts_with("macos-"))
+		found = names.keep_if(Release.is_tool_bundle)
 		match found {
 			[one] => Ok(one)
 			_ => Err(NotOne(found.len()))
@@ -128,7 +130,7 @@ expect Workflow.semver("1.10.0") and !Workflow.semver("01.0.0") and !Workflow.se
 expect Workflow.latest_final(["0.2.0", "0.10.0", "0.11.0-rc1", "linker-inputs-sha256-ab", "0.9.3", ""]) == "0.10.0"
 expect Workflow.latest_final(["linker-inputs-sha256-ab"]) == ""
 
-expect Workflow.platform_bundle(["macos-T.tar.zst", "B.tar.zst", "B.tar.zst.cdx.json", "x.zip"]) == Ok("B.tar.zst")
+expect Workflow.platform_bundle(["init-macos-I.tar.zst", "macos-T.tar.zst", "B.tar.zst", "B.tar.zst.cdx.json", "x.zip"]) == Ok("B.tar.zst")
 expect Workflow.platform_bundle(["macos-T.tar.zst"]) == Err(NotOne(0))
 expect Workflow.tool_bundle(["macos-T.tar.zst", "B.tar.zst"]) == Ok("macos-T.tar.zst")
 

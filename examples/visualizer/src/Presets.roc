@@ -1,33 +1,16 @@
 import pf.Ui
 
-## Twelve music visualizations, each a drawing surface's look as plain
-## data: GPU shaders for the Metal renderer (`Ui.Shader`), and a scene and a
-## trail that are the whole picture where shaders do not run (Core
-## Graphics), so every one still looks like itself there.
+## Twelve music visualizations inspired by late-1990s feedback effects,
+## plus a sync test. Each preset supplies a scene and trail for Core
+## Graphics and shader stages for Metal. Both renderers can read from the
+## playback session's native sources, such as `audio.waveform` and `audio.bands`.
 ##
-## They take after the feedback visualizers of the late-90s players, each an
-## original take on one idea of that era: a liquid warp, a blur tunnel, a
-## superscope, flow-field streaks, a stereo vectorscope, a spectrum with
-## falling caps, a plasma, a starfield, a kaleidoscope, demoscene fire,
-## water ripples and glowing orbs. Every one reads the playback session's
-## sources (`audio.waveform`, `audio.left`, `audio.right`, `audio.bands`,
-## `audio.bass` and the rest): in its marks, through its params, and in the
-## shaders' `Frame`.
+## See `gallery` in `main.roc` for how to pass a preset to `Ui.surface`,
+## and the Shaders section in `docs/ui.adoc` for the shader interface.
 ##
-## A preset is data, so another app (a music player, say) adopts it by
-## copying this module and handing a preset's fields to `Ui.surface`:
-##
-## ```roc
-## Ui.surface(Engine.const(p.scene), { label: p.name, space: Engine.const(p.space), background: Engine.const(p.background), pacing: Engine.const(Display), trail: Engine.const(p.trail), shader: Engine.const(Presets.shader(p)) })
-## ```
-##
-## Reading a shader: each is one function, `warp` or `composite`, with
-## helpers above it (docs/ui.adoc, "Shaders"). A warp makes the new frame
-## from the previous one, and the marks are drawn over it; a composite maps
-## the result to the screen. Motion is scaled by `k`, the frame's length in
-## 60ths of a second, so it keeps time at 60 Hz and 120 Hz. The history
-## keeps 8 bits a channel, so a fade also subtracts a little, or faint
-## colours would never quite reach black.
+## Presets scale shader motion to the frame duration so the speed stays
+## consistent across refresh rates. Some fades subtract a small amount
+## so faint colours can reach black in the 8-bit frame history.
 Presets := [].{
 
 	## A named number a preset's shaders read as `p.NAME`, and the range it
@@ -113,9 +96,8 @@ hex = |rgb| Adaptive({ light: rgb, dark: rgb })
 fixed : Str, F64, F64, F64, Str -> Presets.Param
 fixed = |name, v, low, high, about| { name, number: Value(v), low, high, about }
 
-## A turn a second-ish: `synthetic.level` rises from 0 to 1 every four
-## seconds (and only on a spec's steps), so `turns` whole turns of it wrap
-## without a jump.
+## Make `turns` full rotations during each cycle of `synthetic.level`.
+## Whole rotations keep the wrap continuous.
 spin : F64 -> Ui.Number
 spin = |turns| Source({ source: "synthetic.level", scale: turns * 6.283185307179586, offset: 0 })
 
@@ -819,10 +801,9 @@ orb_garden = {
 
 # --- 13. Sync Test ---
 
-## Not a visualization: the audio/visual sync test. The screen flashes white
-## as the level crosses half way, so played with a click track (the
-## tests' `fixtures/sync-clicks.wav`) every click is one flash, to measure
-## (host/AVTiming.swift) or to film beside the speaker.
+## Measure audio and picture sync with `tests/fixtures/sync-clicks.wav`.
+## The Metal shader flashes white when the level reaches 0.5. The Core
+## Graphics scene uses the level as opacity.
 sync_test : Presets.Preset
 sync_test = {
 	name: "Sync Test",
@@ -931,7 +912,8 @@ orb_composite =
 	\\    return opaque(1.0 - exp(-col * 1.5));
 	\\}
 
-## Twelve, each named once, each with shaders, a scene and a description.
+## The twelve visualizations and sync test have unique names, shader
+## stages, scenes and descriptions.
 expect {
 	names = Presets.names
 	unique = names.fold([], |seen, n| if (seen.contains(n)) seen else seen.append(n))

@@ -5,19 +5,13 @@ import pf.Files
 import pf.Ui
 import pf.Worker
 
-## Workers: Roc tasks that run off the main thread, each job in a worker
-## instance of its own, while the window stays responsive.
+## Send Roc jobs to a worker pool so the window stays responsive.
+## Mandelbrot submits one job per band. Its heartbeat ticks while the
+## jobs run, and Cancel or a new drawing supersedes the outstanding jobs.
 ##
-## The Mandelbrot tab draws the set as text, eight bands at once, one job
-## each. The heartbeat counts on while the workers compute; Cancel stops
-## them, and zooming starts a new picture, which stops the old one's jobs.
-##
-## The Lab tab shows the rest of what a task can do and meet: a job that
-## crashes (only it is lost; the next job runs in a fresh instance), many
-## jobs at once, a job that finishes after its request is cancelled
-## (`on_cancel: Finish`), a job that times out, and a dropped file read,
-## counted and copied into a report file by a job, then searched line by
-## line by a preparation that a worker keeps between questions.
+## The Lab demonstrates a crash, a batch of jobs, `on_cancel: Finish`, and
+## a timeout. A file job builds a report, and a worker keeps the original
+## file's lines prepared for repeated searches.
 main : Engine.Program(_)
 main =
 	Engine.program_store({}, |_boot| store, |_boot| view())
@@ -45,7 +39,8 @@ View : { cx : I64, cy : I64, span : I64, samples : U64, limit : U64 }
 band : Worker.Task(Band, Str, Worker.Never)
 band = Worker.task({ name: "roc-native-macos.example/workers/band", run!: |b| Ok(render(b)) })
 
-## Always crashes: its job is lost, and only its job.
+## Always crashes. The job is lost and the host replaces its worker
+## instance. The page and other workers keep running.
 crasher : Worker.Task(U64, U64, Worker.Never)
 crasher = Worker.task({ name: "roc-native-macos.example/workers/crash", run!: |n| crash "the crash task crashed on job ${n.to_str()}, as it always does" })
 
@@ -66,7 +61,7 @@ late = Worker.task({ name: "roc-native-macos.example/workers/late", run!: |n| Ok
 ## and a report it wrote, a new file the page can read and save.
 Report : { bytes : U64, lines : U64, hash : U64, report : File }
 
-## Reads a file a mebibyte at a time and writes a report.
+## Read a file in chunks of up to 1 MiB and write a report.
 inspect : Worker.Task(File, Report, [Unreadable, TooLarge])
 inspect = Worker.task({ name: "roc-native-macos.example/workers/inspect", run!: inspect! })
 
@@ -349,7 +344,7 @@ report_panel = || {
 						Ui.text(cells.found.signal(), { style: Callout }),
 					],
 				),
-				# Each press of "Save Report…" is a new value, so each one saves.
+				# A serial makes each press distinct, even for the same report.
 				Engine.watch_changes(
 					cells.saving.signal(),
 					|s|
@@ -564,8 +559,8 @@ render = |{ top, rows, view: v, .. }| {
 	Str.join_with($lines, "\n")
 }
 
-## A sample's shade, 0 to 9: 9 inside the set, otherwise how many bits its
-## escape count takes, so the bands near the edge show.
+## Shade 9 means the orbit reached the iteration limit. An escaping orbit
+## uses the bit length of its escape count, capped at 8.
 shade_of : U64, U64 -> U64
 shade_of = |n, limit|
 	if n >= limit {
@@ -580,7 +575,8 @@ shade_of = |n, limit|
 		$bits.min(8)
 	}
 
-## The iterations before `c` leaves the radius-2 disk, at most `limit`.
+## Count iterations of z ↦ z² + c from zero until z leaves the radius-2
+## disk or reaches the iteration limit.
 escape : I64, I64, U64 -> U64
 escape = |cr, ci, limit| {
 	var $zr = 0.I64
@@ -658,11 +654,23 @@ upto = |n| {
 	$out
 }
 
+## Encode digest bytes as lowercase hex.
 expect hex([0, 15, 16, 255]) == "000f10ff"
+
+## A 64-bit hash has all sixteen hex digits, including leading zeroes.
 expect hex64(0x0123456789abcdef) == "0123456789abcdef"
+
+## Sum the squares below the given bound.
 expect sum_squares(4) == 14
+
+## The origin reaches the iteration limit.
 expect escape(0, 0, 50) == 50
+
+## The orbit of 2 + 2i escapes after one iteration.
 expect escape(one * 2, one * 2, 50) == 1
+
+## Reserve blank rows for an unfinished band.
 expect picture(["ab", ""]).split_on("\n").len() == 1 + band_rows
 
+## Reserve shade 9 for the iteration limit and cap escaping shades at 8.
 expect (shade_of(0, 10), shade_of(5, 10), shade_of(10, 10), shade_of(1000, 5000)) == (0, 3, 9, 8)

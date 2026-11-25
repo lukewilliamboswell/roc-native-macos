@@ -1,5 +1,5 @@
-; A job that crashes is lost alone: its worker is discarded, and the next
-; jobs run on a fresh one.
+; A crash loses one job. The worker starts a fresh Roc instance for
+; later jobs.
 (test "crash"
   (setup
     (worker-pool 1))

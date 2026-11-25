@@ -3,8 +3,8 @@ app [main] { pf: platform "../../../platform/main.roc" }
 import pf.Engine exposing [Elem, Signal]
 import pf.Ui
 
-## A stopwatch: a store of three cells, an interval effect that runs only
-## while the watch does, and a list of laps.
+## Keep time with an interval owned by `watch_latest`. Stop cancels the
+## interval, and the lap list shows split times and totals.
 main : Engine.Program(_)
 main = Engine.program_store({}, |_boot| store, |_boot| view())
 
@@ -111,8 +111,8 @@ lap_row = |lap|
 ## A lap as the list shows it.
 Lap : { number : U64, at : I64, split : I64, mark : [Fastest, Slowest, Ordinary] }
 
-## The laps, newest first, each with its split from the one before; with
-## two or more, the fastest and slowest split are marked.
+## Show laps newest first, with each split measured from the previous lap
+## or the start. Mark the fastest and slowest splits when they differ.
 splits : List(I64) -> List(Lap)
 splits = |times| {
 	timed = times.map_with_index(|at, index| { number: index + 1, at, split: at - (if (index == 0) 0 else times.get(index - 1) ?? 0) })
@@ -160,6 +160,7 @@ clock = |ms| {
 	"${minutes.to_str()}:${pad(seconds)}.${pad(centis)}"
 }
 
+## Stopwatch time is displayed to hundredths of a second.
 expect clock(83_456) == "1:23.45"
 
 ## Splits are the gaps between laps, newest first, with the extremes marked.

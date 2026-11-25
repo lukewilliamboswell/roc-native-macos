@@ -4,17 +4,14 @@ import pf.Audio
 import pf.Engine exposing [Elem, File, Signal]
 import pf.Ui
 
-## An audio player: choose or drop a local audio file, then play, pause,
-## seek and set the volume. Ten EQ sliders, a preamp, Bypass and Flat shape
-## what plays, and "Measure levels" turns on the session's measurements,
-## shown as a level readout and the loudest band. Play Sample loads a file
-## the app ships in `assets/` (`LoadAsset`); Escape Assets asks for one
-## outside it, which is refused. The host plays and
-## measures the file (`Audio`); the app keeps only the controls' state.
+## Play a chosen or dropped audio file, or use Play Sample to try the
+## bundled track. The host's `Audio` session handles transport, equalization
+## and level measurement. The app posts commands and reads back status.
+## Escape Assets demonstrates rejection of paths outside `assets/`.
 main : Engine.Program(_)
 main = Engine.program_store({}, |_boot| store, |_boot| view()).with_ports(Audio.ports)
 
-## Where playback stood when the host last said.
+## The initial playback status, before the host reports its own.
 idle : Audio.Status
 idle = { track: 0, generation: 0, state: Idle, position_ms: 0, duration_ms: 0, volume: 1, latency_ms: 0, visual_offset_ms: 0, output: { name: "", uid: "" }, eq: { bypass: Bool.False, preamp_db: 0, gains_db: List.repeat(0, 10) } }
 
@@ -36,7 +33,7 @@ store = Engine.store(
 
 cells = store.cells()
 
-## The commands a handler sends, in order.
+## Post commands for the `on_post` site to send in order.
 send : List(Audio.Command) -> List(Engine.Write(_))
 send = |commands| [cells.outbox.update(|box| box.post(commands))]
 
@@ -231,9 +228,7 @@ received = |track, { files, .. }|
 load : U64, File -> List(Engine.Write(_))
 load = |track, file| [cells.track.set(track), cells.name.set(file.name()), cells.event.set("Loading ${file.name()}…")].concat(send([Load({ track, file })]))
 
-## A file the app ships in `assets/`, loaded by its path there as the next
-## track (`LoadAsset`): no file handle, and a name that is not there fails
-## as a load does.
+## `LoadAsset` takes a path relative to `assets/` without a file handle.
 sample : U64, Str -> List(Engine.Write(_))
 sample = |track, path| [cells.track.set(track), cells.name.set(path), cells.event.set("Loading ${path}…")].concat(send([LoadAsset({ track, path })]))
 
@@ -332,8 +327,17 @@ clock = |ms| {
 	"${minutes.to_str()}:${pad(seconds)}.${pad(centis)}"
 }
 
+## Playback time is displayed to hundredths of a second.
 expect clock(83_456) == "1:23.45"
+
+## Round halves away from zero.
 expect [whole(-11.6), whole(2.5), whole(-0.2)] == [-12, 3, 0]
+
+## Pick the index of the loudest band.
 expect loudest([-120, -20, -30, -10]) == Band(3)
+
+## Bands below the display threshold stay out of the readout.
 expect loudest([-120, -90]) == None
+
+## Thousands of hertz use the compact k suffix.
 expect hz_label(16000) == "16k"

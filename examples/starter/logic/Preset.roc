@@ -1,31 +1,14 @@
 import JsonValue
 
-## A visualizer preset: the versioned document that says what to draw and
-## how sound moves it. Built-ins, the presets a listener makes, previews and
-## imports are all this one format, checked by `Preset.problems` and drawn
-## through `Scene.of`.
+## The versioned document shared by built-in presets, imports and the
+## editor. `Preset.problems` validates it and `Scene.of` prepares it to
+## draw. Each mapping sends one audio feature to a property. For example,
+## `Bass -> Size from 200 to 380` grows a ring as the bass rises.
 ##
-## A preset has an ID, a name, a background colour, ordered layers (drawn
-## first to last, so the last is on top), and feedback settings. A layer is
-## one of a small published list of kinds, with its colours (a palette:
-## the first is its base colour, the last its edge), its size, thickness,
-## opacity, brightness and rotation, and mappings: each sends one sound
-## feature (the level, the bass, mids or treble, or one of 24 bands) to one
-## property over a range. `Bass -> Size from 200 to 380` grows a ring from
-## a fifth of the view to nearly two fifths as the bass rises.
-##
-## Every number is whole, in the unit its field names: `size` in per-mille
-## of the view's shorter side, `thickness` in tenths of a point, `opacity`
-## and `brightness` in percent, `rotation` in degrees, feedback `zoom` in
-## per-mille a second (1000 is still), its `rotation` in degrees a
-## second, and `half_life_ms` the time a trail takes to fade to half.
-##
-## To add a layer kind: add it to `Kind`, `kinds`, `kind_name` and
-## `kind_key`, and draw it in `Scene.geometry` and `Scene.figure`. To add a
-## mapping target: add it to `Property`, `properties`, `property_name` and
-## `property_range`, and apply it in `Scene.shape` and `Scene.layer_marks`;
-## a target must be something the drawing surface can bind to a source: a
-## transform, an opacity or a pen's width.
+## To add a layer kind, update `Kind`, `kinds`, `kind_name` and `kind_key`
+## here, then draw it in `Scene.geometry` and `Scene.figure`. For a new
+## mapping target, update `Property`, `properties`, `property_name` and
+## `property_range`, then apply it in `Scene.shape` and `Scene.layer_marks`.
 Preset := [].{
 
 	## The version this app writes and reads.
@@ -38,12 +21,9 @@ Preset := [].{
 
 	Doc : { id : Str, name : Str, background : Color, layers : List(Layer), feedback : Feedback, shaders : Shaders }
 
-	## A preset's own GPU shaders, for the Metal renderer (docs/ui.adoc,
-	## "Shaders"): none, or a warp, a composite or both, each Metal Shading
-	## Language source defining one function (`float4 warp(Frame f, Params
-	## p)` or `float4 composite(Frame f, Params p)`) and its helpers, and the
-	## params they read as `p.NAME`. Where shaders do not run (Core
-	## Graphics), the layers and the feedback are the whole picture.
+	## Optional Metal stages and their params. The Core Graphics picture
+	## uses the layers and feedback.
+	## https://lukewilliamboswell.github.io/roc-native-macos/ui.html#shaders
 	Shaders : [NoShaders, Shaders(Stages)]
 
 	Stages : { warp : [None, Some(Str)], composite : [None, Some(Str)], params : List(Param) }
@@ -63,6 +43,10 @@ Preset := [].{
 
 	Color : { r : U8, g : U8, b : U8 }
 
+	## Size is in thousandths of the shorter side of the view. Its role
+	## depends on the layer kind, such as radius for a ring. Thickness is
+	## in tenths of a point at the reference drawing size. Opacity and
+	## brightness are percents, and rotation is in degrees.
 	Layer : { kind : Kind, colors : List(Color), size : I64, thickness : I64, opacity : I64, brightness : I64, rotation : I64, mappings : List(Mapping) }
 
 	## The kinds of layer: a waveform drawn across the view (an
@@ -80,9 +64,10 @@ Preset := [].{
 
 	Property : [Size, Thickness, Opacity, Brightness, Rotation]
 
-	## Visual feedback: whether each frame keeps the last one, faded by
-	## `half_life_ms`, zoomed by `zoom` and turned by `rotation`, under the
-	## new drawing.
+	## When enabled, draw over the last frame after fading, zooming and
+	## turning it. The trail fades by half in `half_life_ms`. Zoom is in
+	## thousandths per second (1000 keeps the size), and rotation is in
+	## degrees per second.
 	Feedback : { enabled : Bool, zoom : I64, rotation : I64, half_life_ms : I64 }
 
 	## Where a preset needs attention: the field (`layers[0].size`) and
@@ -717,9 +702,16 @@ Preset := [].{
 		}
 }
 
+## Read hex colours in either case and write them in uppercase.
 expect Preset.parse_hex("#FF8c1A") == Ok({ r: 255, g: 140, b: 26 }) and Preset.hex({ r: 255, g: 140, b: 26 }) == "#FF8C1A"
+
+## Reject malformed hex colours.
 expect ["FF8C1A", "#FF8C1", "#GG0000", ""].all(|text| Preset.parse_hex(text) == Err(NotAColor))
+
+## Recognise the last band and reject a malformed band name.
 expect Preset.feature_named("band-23") == Ok(Band(23)) and Preset.feature_named("band-x") == Err(NotAFeature) and Preset.features.len() == 28
+
+## Render an error location as one-based line and column.
 expect Preset.place("{\n  \"a\": x", 9) == "line 2, column 8"
 
 ## A layer out of range is reported field by field, every one at once.

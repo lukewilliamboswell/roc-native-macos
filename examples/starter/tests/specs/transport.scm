@@ -1,8 +1,5 @@
-; The design's first check: one song and one scope. The scope draws the
-; waveform the session measures while it plays; pause holds the playhead,
-; a seek while paused stays paused, resume plays on from there; and a
-; track switch near the end loads the other song, whose position the old
-; song's end never moves.
+; Check that playback updates the waveform and that a seek while paused
+; stays paused. A late end from the old track leaves the new one alone.
 (test "transport"
   (setup
     (audio-clock manual))

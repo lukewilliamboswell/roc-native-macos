@@ -3,11 +3,9 @@ app [main] { pf: platform "../../../platform/main.roc" }
 import pf.Engine exposing [Elem]
 import pf.Ui
 
-## A gallery of the native controls and looks: tabs over four pages of
-## labelled sections (controls, text, styles and shortcuts), a dropdown,
-## sliders over their own ranges, a multi-line text area, symbols, progress bars, text styles,
-## semantic colours that name themselves under the pointer, and two
-## window-wide shortcuts (Command-N and Command-K).
+## Explore native controls, text styles and semantic colours across four
+## tabs. Hover over a swatch to see its colour name, or try Command-N and
+## Command-K from any tab.
 main : Engine.Program(_)
 main = Engine.program_store({}, |_boot| store, |_boot| view())
 
@@ -237,4 +235,5 @@ summary = |notes| {
 	"${lines.to_str()} lines, ${chars.to_str()} bytes"
 }
 
+## Count lines and UTF-8 bytes in the text area.
 expect summary("a\nb") == "2 lines, 3 bytes"

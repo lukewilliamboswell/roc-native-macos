@@ -1,53 +1,42 @@
 = Build an app
 
-This chapter is for app authors. It takes you from nothing to a running app
-with `macos.roc`, the tool each release publishes, and covers writing,
-testing and sharing the app. Everything here works from a downloaded release:
-you never need a checkout of this repository, Xcode, Swift or an Apple SDK.
-xref:ui.adoc#builders[The Ui reference] lists every builder.
+Create, test and share a native Mac app with `macos.roc`, the tool included in
+each release. For control signatures, props and events, see
+xref:ui.adoc#builders[the Ui reference].
 
 [#get-started]
 == Get started
 
-You need Roc as `roc` on your PATH: a current
-https://github.com/roc-lang/nightlies/releases[nightly] or 0.1.0 RC1, on
-macOS, Linux or Windows. The platform carries the prebuilt Swift host and its
-linker inputs. The app is universal by default: it runs on Apple silicon and
-Intel Macs with macOS 15 or later.
+To run the app, use an Apple silicon or Intel Mac with macOS 15 or later.
+Install Roc as `roc` on your PATH. Use the compiler named by the
+https://github.com/lukewilliamboswell/roc-native-macos/releases/latest[release]
+or a compatible https://github.com/roc-lang/nightlies/releases[nightly].
+You can build the app on macOS, Linux or Windows using the prebuilt host
+and linker inputs in the release.
 
-Download `macos.roc`, the tool for creating, building, running and testing an
-app, and create one:
+Copy the `roc run … init my-app` command from the release notes. Roc fetches
+the installer and writes the starter and its local `macos.roc` launcher into
+`my-app`. If the release notes omit that command, download `macos.roc`
+from the release page and run `roc macos.roc init my-app` from the
+download directory.
+
+Start the app in development mode from the project directory.
 
 [source,sh]
 ----
-curl -LO https://github.com/lukewilliamboswell/roc-native-macos/releases/latest/download/macos.roc
-roc macos.roc init my-app
 cd my-app
-roc macos.roc run
+roc macos.roc dev
 ----
 
-`init` writes a project to build on, not a minimal one (the
-xref:apps.adoc#the-examples[examples] are smaller): a music player with a
-visualizer and lyrics that shows how a real app is laid out. Drop songs
-into its window with their `.lrc` or `.txt` lyrics, choose a visualizer
-preset, press Play, and turn on Lyrics (Command-L) to follow the words over
-the picture; it has a queue, an EQ, and a preset editor whose presets are
-saved, imported and exported as JSON. Its queue starts with a default song,
-_Polymorphic Defunctionalization Through Lambda Set Specialization_ by Luke
-Boswell, with timed lyrics, so it plays something at once; the song is
-licensed under CC BY 4.0, and `assets/CREDITS.md` carries its credit into
-the app (delete the song and `Store.default` to ship without it). It plays through
-the platform's `Audio` session and draws on a `Ui.surface` (see
-xref:apps.adoc#starter-seams[Where the starter meets the platform]). `init` also
-writes a copy of `macos.roc`, its metadata
-in `macos.json`, a `.gitignore` and a release workflow in
-`.github/workflows/release.yml` (see xref:apps.adoc#ship-your-app[Ship your
-app]). It is the repository's `starter` example. `run` builds `my-app.app`
-and starts it, with its output (`dbg`, a crash report) in the terminal.
-While you work on it, start it with `roc macos.roc dev` instead: it runs
-`roc src/main.roc`, which starts the app straight from the compiler and
-loads each edit you save into it, and Command-R in the app shows the new
-code (xref:apps.adoc#hot-reloading[Hot reloading]).
+The music player opens with a song in its queue. Press Play to see the
+visualizer and Command-L to show the timed lyrics. Quit with Command-Q to
+return to the terminal.
+
+With the runnable installer, pass `--simple` after `init` to start with
+a counter in one source file.
+
+Roc watches your source files and rebuilds when you save. Press Command-R
+in the app to load the changes. See xref:apps.adoc#hot-reloading[Hot reloading].
 
 [#layout]
 === How an app is laid out
@@ -72,34 +61,33 @@ my-app/
   macos.json         the app's name, bundle identifier and version
 ----
 
-Every module opens with a `##` comment saying what belongs in it and how to
-extend it (a panel, a widget, a worker, a layer kind, a fuzz target): read
-it before changing the module. xref:apps.adoc#work-on-the-starter[Work on
-the starter] says how its state flows, how presets and shaders work, and
-how to ship it without the default song.
+`init --simple` writes the same layout with only `src/main.roc` and
+`tests/specs/`, beside the same `macos.json`, `macos.roc`, `.gitignore` and
+workflow; add `assets/`, `logic/` and `tests/fuzz/` as the app needs them.
+
+The starter's module comments explain where to make changes and link to
+the relevant manual sections. The project also includes `macos.roc`,
+`.gitignore` and `.github/workflows/release.yml`. See
+xref:apps.adoc#ship-your-app[Ship your app] for the release workflow.
 
 [#starter-seams]
 ==== Where the starter meets the platform
 
-Roc owns the player's queue, controls, presets and lyrics; the platform
-owns decoding, the EQ's processing, the audio clock, the measurements and
-the drawing. Only `src/Media.roc` and `src/Visual.roc` speak to those:
-`Media` sends `Audio` commands from an outbox and hears its events and
-status (whose position times the lyrics), and `Visual` turns a preset's
-scene (`logic/Scene.roc`) into a display-paced `Ui.surface` with a trail,
-under a `Ui.overlay` whose foreground holds the lyrics, so the words never
-enter the trail. The surface reads the measurements (`audio.waveform`,
-`audio.bands`, `audio.level` and the rest) natively, so the picture moves
-without Roc running each frame. A preset may carry its own Metal shaders
-(xref:ui.adoc#shaders[Shaders]) with params bound to the sound: fifteen
-built-ins, twelve of them the visualizer example's shaded presets, with
-Orb Garden the default, and each preset's layers its Core Graphics
-fallback, where the window says "Simple visuals". The editor shows a
-preset's params as sliders and its shaders as text, compiled as you type. Its specs drive both on the manual audio
-and frame clocks.
+`src/Media.roc` sends commands to xref:ui.adoc#audio[the Audio session] and
+receives playback events and status. The playback position determines
+which lyric line to show.
 
-The app's root module is `src/main.roc`, whose header names the platform by
-its release URL, and the logic package by its path:
+`src/Visual.roc` renders a preset's scene from `logic/Scene.roc` on a
+display-paced xref:ui.adoc#drawing[drawing surface]. The surface reads
+audio measurements every frame without calling Roc. A `Ui.overlay` draws
+the lyrics separately from the visualizer's trail. Presets can include
+xref:ui.adoc#shaders[Metal shaders]. Their layers and feedback provide
+the Core Graphics fallback shown as “Simple visuals”. Specs exercise
+playback and drawing with manual clocks.
+
+The root module, `src/main.roc`, names the platform by its release URL and
+the logic package by its path. This header shows the layout with placeholders
+for the release version and bundle hash.
 
 [source,roc]
 ----
@@ -111,96 +99,65 @@ app [main] {
 
 `logic/main.roc` is a package header, `package [Lyrics, Preset, Queue, ...] {}`,
 so the app imports `logic.Lyrics`; the logic cannot import the platform, which keeps
-it testable with `expect` and fuzzable on any system. `macos.json`,
-`assets/` and `tests/` stay at the top of the app's directory; the
-tool reads the root module from `src/main.roc` alone. Each release's notes give the platform's URL, so an app
-can also be written and built without the tool (see
-xref:apps.adoc#without-the-tool[Without the tool]).
+it testable independently of the app. Each release's notes give the platform
+URL to use when xref:apps.adoc#without-the-tool[building without the tool].
 
 [#work-on-the-starter]
 ==== Work on the starter
 
-How state flows:: A view runs once, when the window opens. An event runs a
-handler, which returns writes; the engine applies them and wakes only the
-views that read what changed.
-+
-* State more than one part of the window shares lives in the store
-  (`src/Store.roc`): the queue, the player, the EQ, the preset library, the
-  editor's draft and the lyrics choice. It changes only through decisions,
-  pure functions that return writes, tested with
-  `Store.store.after(writes).read(cell)`.
-* State one piece of the view cares about is local to it, in
-  `Engine.state(initial, |s| ...)`, as a folding section's is; it starts
-  again when that piece is rebuilt.
-* A value that follows from state is not state: `signal.map(...)`, or
-  `Engine.derive` when it is costly or read in several places.
-* Effects (reading a lyric file, saving, a worker job, a player command) are
-  asked for by sites that watch a signal (`Engine.watch_latest`,
-  `Engine.watch_changes`, `Engine.on_post`), and their answers come back as
-  writes (`Engine.react`). Decisions post player commands to the `media`
-  outbox with `Store.send`, at most once a turn; `Media.session` sends them.
-* Rules that need no window go in `logic/`, tested with `expect` and
-  fuzzed. `src/` imports `logic`, never the other way round.
+A view reads state through signals. An event handler returns writes, and
+the engine applies them and wakes the sites that read the changed state.
 
-The rules the player keeps:: Each lives in one place. The lyrics choice
-belongs to the player, and survives changing song or preset and a relaunch
-(`logic/Prefs.roc`). A lyric file is read for one queue entry, so a read
-that finishes after the listener moved on never shows on another song. The
-line shown follows the playback position alone (`Store.overlay`), and
-`Media.boundary` sets a timer for the next one. The editor's draft is always
-a valid preset: text that is not lists the fields that need attention, and
-the picture keeps the last valid draft. The picture's sync offset belongs to
-the audio output: the EQ panel's Picture sync sets it for the output
-playing, and Sync Test plays `assets/sync-test.wav` under a ring that
-flashes on each click, to set it by (a flash before its click wants a
-positive offset). The queue holds at most 60 songs, leaving 4 of the
-platform's 64 file handles for lyric and preset files being read.
+* Put shared state and the pure decisions that update it in
+  `src/Store.roc`. To test a decision, apply its writes and inspect the
+  result with `Store.store.after(writes).read(cell)`.
+* Use `Engine.state(initial, |state| ...)` for state local to a widget,
+  such as whether a section is folded. Use `signal.map(...)` for a value
+  computed from state, or `Engine.derive` to share the computation.
+* Keep effect requests beside the code that handles their answers.
+  `Store.send` posts audio commands to the outbox and `Media.session`
+  sends them. Use one outbox post per turn.
+* Put rules that need no window in `logic/`. Run their `expect` tests
+  and xref:apps.adoc#fuzz-the-logic[fuzz targets] independently of the UI.
 
-Presets and shaders:: A preset (`logic/Preset.roc`) is a versioned JSON
-document: a background, ordered layers each with mappings from a sound
-feature to a property, feedback, and optionally its own Metal shaders. A
-layer kind or a mapping target is added in `Preset.roc` and drawn in
-`logic/Scene.roc`, as `Preset.roc`'s opening comment lists; the editor
-offers whatever `Preset.kinds` and `Preset.properties` list. A shader is a
-warp, a composite or both, each one Metal function, `float4 warp(Frame f,
-Params p)` or `float4 composite(Frame f, Params p)`, with up to 16 params it
-reads as `p.NAME`, each fixed or following a sound feature
-(xref:ui.adoc#shaders[Shaders] has the `Frame`, the helpers and the limits).
-Write one in the editor's Warp or Composite area: it draws as you type, and
-a stage that does not compile is named with its line while the surface keeps
-the last good one. Where shaders do not run, the preset's layers and
-feedback are the whole picture, and the window says "Simple visuals". A
-built-in preset is a value in `logic/Library.roc` (or `logic/Gallery.roc`,
-which holds twelve shaded ones to read) added to `Library.builtins`;
-`Library.default` is the one a first launch shows.
+To add a layer kind, start with `logic/Preset.roc` and draw it in
+`logic/Scene.roc`. The editor reads the choices from `Preset.kinds` and
+`Preset.properties`. To add a built-in preset, register it in
+`Library.builtins`. The starter includes Orb Garden as its default, 15
+visualization presets in all, and a separate Sync Test preset.
 
-The default song:: _Polymorphic Defunctionalization Through Lambda Set
-Specialization_ by Luke Boswell, a song about the PLDI 2023 paper
-https://doi.org/10.1145/3591260[Better Defunctionalization through Lambda
-Set Specialization], is licensed under CC BY 4.0, not under the app's own
-licence: keep `assets/CREDITS.md` with it. Its lyrics and liner notes are at
-https://gist.github.com/lukewilliamboswell/be88b49154f602495f2821a01f995d1f.
-To ship without it, follow `Store.default`'s comment in `src/Store.roc`:
-delete the two `assets/polymorphic-defunctionalization.*` files, their
-credit, and `Store.default`, and start the queue empty.
+Try a shader in the editor's Warp or Composite area. The surface reports
+the line of a compile error and keeps the last working shader for that
+stage. See xref:ui.adoc#shaders[Shaders] for the function signatures, inputs
+and parameter limits. To adjust picture timing for your audio output, use
+the EQ panel's Picture sync control with Sync Test. Use a positive offset
+when the ring flashes before the click.
+
+The default song, _Polymorphic Defunctionalization Through Lambda Set
+Specialization_ by Luke Boswell, is licensed under CC BY 4.0. Keep
+`assets/CREDITS.md` with the song. For the steps to remove it and start with
+an empty queue, see the comment on `Store.default` in `src/Store.roc`.
 
 [#the-tool]
 == The tool's commands
 
-Run `macos.roc` from the app's directory, the one holding `src/main.roc`
-and `macos.json`:
+Run `init` from the directory where you want to create a project.
+Use the installer URL from the release notes, or run a local `macos.roc`
+from the directory containing it. For an existing app, run commands from
+the directory containing its `src/main.roc` and `macos.json`.
 
 [cols="1,2",options="header"]
 |===
 | Command | What it does
 
-| `roc macos.roc init [DIR]` | create an app in `DIR`, or in this directory; it never overwrites a file
+| `roc macos.roc init [DIR]` | create an app in `DIR`, or in this directory: the starter, a music player; it checks for conflicts before writing
+| `roc macos.roc init --simple [DIR]` | create the counter instead, one `src/main.roc` and its specs, with the same `macos.json`, `.gitignore` and release workflow
 | `roc macos.roc build` | build `<name>.app`, universal, on any system; `--target arm64mac` or `--target x64mac` builds it for that Mac alone
+| `roc macos.roc dev` | run the app with Roc's file watcher on a Mac and press Command-R to remount it after saving. The bundle metadata and icon apply when you build or run the `.app` (xref:apps.adoc#hot-reloading[Hot reloading])
 | `roc macos.roc run` | build the app and start it, on a Mac; it takes `--target` as `build` does
-| `roc macos.roc dev` | start the app with `roc src/main.roc`, which reloads it as you save, on a Mac; no `.app`, so `macos.json` and the icon do not apply (xref:apps.adoc#hot-reloading[Hot reloading])
-| `roc macos.roc test` | run the app's `expect` tests (`roc test src/main.roc`, on any system), then build the app for this Mac and run its specs, `tests/specs/*.scm` but its demos, on a Mac; `--update` rewrites their dumps with what the app shows now and lowers their allocation bounds, `--metrics` prints what each measured, and `--check` parses them on any system
+| `roc macos.roc test` | run the app's `expect` tests, then run its specs on a Mac. `--update` records dumps and tightens allocation bounds. `--metrics` reports measurements. `--check` parses specs and demos on any system
 | `roc macos.roc fuzz` | build the app's roc-fuzz targets, `tests/fuzz/main.roc`, and run each for 10 seconds, on an Apple silicon Mac or Linux x64 (roc-fuzz has no Intel Mac target); `--check` runs only their declared examples, `--time SECONDS` longer, and target names only those (xref:apps.adoc#fuzz-the-logic[Fuzz the logic])
-| `roc macos.roc package` | build the app, sign it and zip it as `dist/<name>-<version>.zip`, on any system; `--sign` and `--notarize` sign it with a Developer ID, and `--target` packages one Mac's build as `dist/<name>-<version>-<target>.zip` (see xref:apps.adoc#ship-your-app[Ship your app])
+| `roc macos.roc package` | build and zip the app on any system as `dist/<name>-<version>.zip`. Use `--sign` for Developer ID signing, `--notarize` for signing and notarization, or `--target` for one slice in `dist/<name>-<version>-<target>.zip` (see xref:apps.adoc#ship-your-app[Ship your app])
 | `roc macos.roc ci package`, `ci release` | what the release workflow runs: package the app as the secrets allow, and attach the zip to the pushed tag's GitHub release (see xref:apps.adoc#automate[Let GitHub release it])
 |===
 
@@ -210,21 +167,17 @@ command, and every failure is explained in a sentence.
 `build` runs `roc build src/main.roc --target=arm64mac` and `--target=x64mac`,
 which write the program for Apple silicon and for Intel Macs, joins the two
 into one universal program, `.macos/<name>`, with no Apple tool, and puts it
-in a minimal `.app`, named for the app's `name` (by default `<name>.app`),
-with the app's xref:apps.adoc#assets[assets and icon] and its
-xref:apps.adoc#metadata[metadata]. Each Mac runs its own half natively.
-`--target arm64mac` (Apple silicon) or `--target x64mac` (Intel), which
-`build`, `run`, `package` and `ci package` take, builds only that program
-instead: a thin `.app`, about half the size, for that kind of Mac alone. An
-Apple silicon Mac runs an `x64mac` build under Rosetta; an Intel Mac cannot
-run an `arm64mac` one. `test` and `dev` build the program for the Mac they
-run on alone.
+in a minimal `.app` with its xref:apps.adoc#assets[assets and icon] and
+xref:apps.adoc#metadata[metadata]. The `name` metadata field sets the bundle
+file name. Each Mac runs its own slice natively.
 
-For now the tool builds with `roc build --opt=size`, not Roc's default
-`--opt=speed`. Today's Roc nightlies take minutes, and many gigabytes of
-memory, to specialize an app whose store has many cells written by many
-handlers, as the starter's is; `--opt=size` builds it in seconds. The
-default returns when Roc fixes it.
+`build`, `run`, `package` and `ci package` accept `--target arm64mac` for a
+smaller Apple silicon app or `--target x64mac` for an Intel app. Use the
+matching native build on each Mac. `test` builds a single slice for the Mac
+where it runs. `dev` uses Roc's run mode on that Mac.
+
+The tool uses `roc build --opt=size` to reduce compile time and memory for
+apps with many store cells and handlers, such as the starter.
 
 [#metadata]
 === The app's metadata
@@ -446,53 +399,44 @@ not cover them, as it does not cover `Info.plist`.
 [#try-an-example]
 == Try an example
 
-Each release attaches `roc-native-macos-examples-<version>.zip`: every
-example, each with its header naming that release, and the specs it was
-tested with. Download it from the
-https://github.com/lukewilliamboswell/roc-native-macos/releases[release],
-unzip it beside `macos.roc` and run an example from its directory:
+Download the examples archive from the
+https://github.com/lukewilliamboswell/roc-native-macos/releases[release].
+Unzip it and open `examples/todos` inside the extracted folder.
 
-[source,sh]
-----
-unzip roc-native-macos-examples-<version>.zip
-cd roc-native-macos-examples-<version>/examples/todos
-roc ../../../macos.roc run
-----
+Use the same release's `roc run` command with `dev` in place of
+`init my-app`. If the release notes omit that command, download
+`macos.roc` from the same release, copy it into the example's directory,
+and run `roc macos.roc dev` there.
 
-This is the way to run the examples: they build against the release's
-prebuilt host, so they need only Roc, and no Xcode. The examples in a
-checkout of the repository build the platform from source, which needs one
-exact Xcode and is for people changing the platform
-(xref:contributing.adoc#build-the-platform[Build the platform]).
+The examples archive uses the release's prebuilt host. To work on examples
+from a checkout, see xref:contributing.adoc#run-the-examples[Run the examples].
 
-Every example is laid out as `init` writes an app, with its root module in
-`src/main.roc`. To start your own app from a one-module example, copy its
-`src/main.roc` over the one `init` wrote, and delete the `src/` modules it
-no longer imports. A copy from the archive already names the release; a copy
-of an example read on GitHub names the platform by a path in this repository
-(`../../../platform/main.roc`), so keep `init`'s platform line instead.
+To base an app on an example, copy its source and any assets it needs. Use
+its specs as a starting point for the new app's tests. Archived examples
+already name their platform release. When copying from the source repository,
+keep your app's release URL in the platform line of `src/main.roc`.
 
 [#the-examples]
 === The examples
 
-The README shows each example running. What each one uses:
+Choose a working example to see the feature in context.
 
 [cols="1,4",options="header"]
 |===
 | Example | Shows
 
-| `starter` | What `init` writes: a music player with a visualizer and lyrics, laid out as a project, with modules in `src/` (a store with decisions and an outbox of player commands, a window composing it, queue, EQ and preset-editor panels, `section`, `confirm_button` and `labelled_slider` widgets with local state, each used more than once), lyric files paired with songs by name and read through the bounded file API, timed lyrics following the position, presets saved to local storage, imported with a bounded read and exported by a worker's file builder and the save panel, an icon, a pure logic package in `logic/` (LRC parsing, the queue, a versioned preset format in JSON with field-level checks, scenes) with `expect` tests, roc-fuzz targets for it in `tests/fuzz/`, the `Audio` session with a default song (`LoadAsset`), and a `Ui.surface` visualizer under a `Ui.overlay` of lyrics, whose presets carry Metal shaders (the visualizer example's twelve among its built-ins) with a Core Graphics fallback
-| `counter` | Local state (`Engine.state`), icon buttons, a large monospaced readout
+| `starter` | The music player from `init`. It shows a shared store, reusable widgets, local storage, worker-based preset export, a pure logic package with fuzz targets, and an audio-driven visualizer with a lyrics overlay. See xref:apps.adoc#work-on-the-starter[Work on the starter]
+| `counter` | What `init --simple` writes: local state (`Engine.state`), icon buttons, a large monospaced readout
 | `todos` | A store with a table, `table_view` rows (row templates) in a `Ui.scroll` inside a `box`, a form with Return-to-submit, a segmented filter, a Command-N shortcut, done rows greyed by `text_s`, an empty state, a shared `Theme`, saving to local storage and reading it back at boot, and `expect` tests
 | `gallery` | `tabs` over labelled sections: a dropdown, a slider and progress bar, a text area, text styles, semantic and adaptive colours, SF Symbols, Command-N/Command-K shortcuts
 | `contacts` | 10,000 generated rows in a sidebar `Ui.table_list` (`NSTableView`, drawing only the rows near those in sight), a search field filtering through the list's query, a detail pane for the selected row
 | `stopwatch` | Store cells, an interval effect owned by `watch_latest` (Stop cancels it), a default button, and an `each` list of laps with splits, the fastest and slowest coloured
 | `http-fetch` | `Engine.http` under `watch_latest`: Fetch, Cancel (a pure cancel), a second Fetch superseding the first, an optional 2 s timeout, transfer progress (`with_progress`), and a status badge whose colour follows the answer (`box_s`)
 | `about` | Images from the app's `assets/` (`Ui.asset_image`): a PNG that is also the app's icon, and a PDF drawn as vectors
-| `file-inspector` | `Ui.file_button` and a `Ui.drop_zone` delivering `File` handles, sizes in KB and MB; for an inspected file its SHA-256 (`sha256`), its first 200 bytes as text or "binary" (`slice`, `read_bytes`), its URL (`object_url`) and "Save Copy…" (`File.save`); Clear releases the handles
-| `visualizer` | A drawing surface (`Ui.surface`) paced by the display, with a wave and a marker fed by the platform's synthetic sources, a trail that drifts and fades (`Echo`), Clear trail (`reset`), and a caption over the picture (`Ui.overlay`)
+| `file-inspector` | `Ui.file_button` and a `Ui.drop_zone` delivering `File` handles, sizes in KB and MB; for an inspected file its SHA-256 (`sha256`), its first 200 bytes as trimmed UTF-8 or "binary" (`slice`, `read_bytes`), its file URL (`object_url`), and "Save Copy…" (`File.save`). Clear empties the displayed list and selection
+| `visualizer` | A drawing surface (`Ui.surface`) paced by the display, with a wave and a marker fed by the platform's synthetic sources, a trail that drifts and fades (`Echo`), Clear trail (`reset`), and a caption over the picture (`Ui.overlay`), twelve audio-driven Metal presets and a separate Sync Test
 | `player` | `Audio`: a local file played from a file button or drop zone, or a file the app ships in `assets/` (Play Sample, `LoadAsset`; Escape Assets is refused), the transport (Play, Pause, Resume, Stop), seek and volume sliders, ten EQ sliders with a preamp, Bypass and Flat, and a level readout from the measurements while "Measure levels" is checked; its specs play generated fixtures (`scripts/audio_fixtures.roc`) without speakers
-| `workers` | Worker tasks: the Mandelbrot set drawn as text by eight jobs at once, with progress, a heartbeat that keeps counting, Cancel and Zoom In (a new picture stops the old one's jobs); a Lab tab with a job that crashes (only it is lost), 24 jobs at once, an `on_cancel: Finish` job, a timed-out job, and a dropped file read and copied into a report by a job (`File.read!`, `Files.build!`), digested and saved by the page, and searched by a preparation a worker keeps
+| `workers` | Worker tasks: the Mandelbrot set drawn as text by eight band jobs, with progress, a heartbeat that keeps counting, Cancel and Zoom In (a new picture stops the old one's jobs); a Lab tab with a job that crashes (only it is lost), a batch of 24 jobs, an `on_cancel: Finish` job, a timed-out job, and a dropped file searched through a worker preparation or copied into a report (`File.read!`, `Files.build!`). The page digests and saves the report
 |===
 
 [#hot-reloading]
@@ -546,9 +490,6 @@ Compilers:: Roc 0.1.0 RC1 and current nightlies. `roc --opt=interpreter
 src/main.roc` runs the app too, but only the default development backend hot
 reloads.
 
-`roc macos.roc run` builds the real `.app` and is still how to check the app
-as people will see it.
-
 [#test-an-app]
 == Test an app
 
@@ -570,46 +511,33 @@ place of `(test "name" …)` is a demo: the same grammar, usually with
 --check` parses a demo, and `test` never runs one, since its timing is
 real.
 
-[source,scheme]
-----
-; Each click is one engine turn: three up and one down leave 2.
-(test "increment"
-  (steps
-    (expect-visible (text "0"))
-    (click (button "+"))
-    (click (button "+"))
-    (click (button "+"))
-    (click (button "−"))
-    (expect-visible (text "2"))
-    (expect-absent (text "0"))
-    (expect-dump (window :width 360 :height 237
-                   (vstack :views 1
-                     (vstack :views 4
-                       (text "Counter" :color secondary-label :text-style headline)
-                       (text "2" :design monospaced-digits :font-size 64 :weight light)
-                       (hstack :views 3
-                         (button "−")
-                         (button "Reset")
-                         (button "+"))
-                       (text "Each click is one engine turn." :color tertiary-label :text-style caption1)))))))
-----
-
-The platform performs each step on the app's real controls, through the same
-action methods AppKit calls, without taking keyboard focus, opening a panel
-or showing the crash alert, and prints what each expectation looks at; the
-tool compares, and a failure names the spec's file, line and column:
-
-----
-FAIL tests/specs/increment.scm
-  tests/specs/increment.scm:9:5: expected one (text "3"), saw none; the nearest are "2", "+", "−"
-----
-
 A spec is one `(test "name" …)` form: an optional `(setup …)`, then
 `(steps …)` with at least one step, run in order from a fresh window. `;`
 starts a comment. Strings know the escapes `\n`, `\t`, `\"` and `\\`.
 `roc macos.roc test --check` parses every spec without building or running
 the app, on any system, and the spec's mistakes are reported where they are,
 as its failures are.
+
+The counter's `tests/specs/increment.scm` exercises the three increment
+clicks and one decrement click, then checks the visible value and the view
+tree.
+
+[source,scheme]
+----
+include::../examples/counter/tests/specs/increment.scm[]
+----
+
+The platform performs each step on the app's real controls, through the same
+action methods AppKit calls, without taking keyboard focus, opening a panel
+or showing the crash alert, and prints what each expectation looks at; the
+tool compares the results. A failure names the spec's file, line and
+column.
+
+[source,text]
+----
+FAIL tests/specs/increment.scm
+  tests/specs/increment.scm:9:5: expected one (text "3"), saw none; the nearest are "2", "+", "−"
+----
 
 [#dumps]
 === Dumps
@@ -732,16 +660,15 @@ run. A spec ends after its last step, through the same teardown as quitting.
 [#effects-in-a-spec]
 === Effects
 
-In a spec nothing the app asks of the outside world happens on its own.
-HTTP requests, timers (`Engine.timer`) and intervals (`Engine.interval`) are
-held, numbered from 1 in the order the window issued them, and the spec
-answers them; the clock is virtual, starting at `(initial-time MS)` (0, the
-start of 1970, by default), and only `advance-time` moves it, so a stopwatch
-or a timeout reads the same time on every run. Worker jobs and file reads
-run for real: `(await-work)` waits for every one in flight, and
-`(worker-pool 1)` runs jobs one at a time, so they finish in the order they
-started. Storage reads answer by themselves, as they always do. A reload
-starts the numbering again; the clock carries over.
+By default, a spec holds HTTP requests, timers and intervals for the spec
+to answer. It numbers them from 1 in issue order. The virtual clock starts
+at `(initial-time MS)`, which defaults to the Unix epoch. Advance it with
+`(advance-time MS)` to exercise a stopwatch or a timeout.
+
+Worker jobs and file reads run for real. Use `(await-work)` to wait for
+them. In setup, `(worker-pool 1)` runs jobs one at a time, in issue order.
+Storage reads answer on their own. Reload restarts effect numbering and
+keeps the clock's current time.
 
 [cols="1,3",options="header"]
 |===
@@ -1042,7 +969,7 @@ a failure shows the end of.
 === Environment variables
 
 The platform reads these when the app starts. Set them on the command line,
-as in `ROC_APPEARANCE=dark roc macos.roc run`.
+as in `ROC_APPEARANCE=dark roc macos.roc dev`.
 
 [cols="1,3",options="header"]
 |===
@@ -1116,11 +1043,12 @@ Developer ID, and let GitHub do either when you push a tag.
 The zip holds `<name>.app` with each entry's Unix mode set by the tool
 (directories and the program 0755, other files 0644), so the program keeps
 its execute bit whichever system made the zip: a zip made on Windows, or by
-many tools, loses it, and macOS then will not launch the app. The same app
-always makes the same zip, byte for byte: its entries are sorted and carry
-one time, 1980-01-01, or `SOURCE_DATE_EPOCH` when it is set. The files are
-compressed with DEFLATE (by https://github.com/lukewilliamboswell/roc-zip[roc-zip]),
-so the counter's zip is about 1 MB, a little smaller than `zip -9` makes.
+many tools, loses it, and macOS then will not launch the app. With
+identical bundle bytes and timestamps, packaging produces identical ZIP
+bytes. Entries are sorted and stamped with 1980-01-01 by default. Set
+`SOURCE_DATE_EPOCH` to use a different timestamp. Signing and notarization
+can change the bundle bytes. The ZIP uses DEFLATE compression through
+https://github.com/lukewilliamboswell/roc-zip[roc-zip].
 
 [#share-with-friends]
 === Share it with friends
@@ -1138,25 +1066,19 @@ or with https://github.com/indygreg/apple-platform-rs/releases[`rcodesign`]
 (apple-codesign, on any system) when it is on your PATH. Without either, it
 zips the app unsealed and says so.
 
-An ad hoc app downloaded to another Mac is quarantined, and the first time
-it is opened macOS says it cannot check it for malicious software. Whoever
-downloaded it approves it once: they open it, choose Done, then choose Open
-Anyway in System Settings > Privacy & Security (on macOS 14 and earlier,
-Control-click the app and choose Open). From a terminal, this clears the
-quarantine instead:
-
-[source,sh]
-----
-xattr -dr com.apple.quarantine counter.app
-----
+Gatekeeper can block the first launch of a downloaded app with an ad hoc
+signature. If the recipient trusts the source and has verified the download,
+they can try opening it and then choose Open Anyway in System Settings >
+Privacy & Security. See https://support.apple.com/en-us/102445[Apple's
+instructions for opening apps safely].
 
 [#distribute]
 === Distribute it with a Developer ID
 
-An app signed with a Developer ID and notarized by Apple opens on any Mac
-with no warning. That takes a membership of the
-https://developer.apple.com/programs/[Apple Developer Program] (US$99 a
-year), and two things from it:
+For wider distribution outside the Mac App Store, sign the app with a
+Developer ID and notarize it with Apple. This requires membership in the
+https://developer.apple.com/programs/[Apple Developer Program] and two
+credentials:
 
 * A *Developer ID Application certificate*. The account holder creates it in
   Xcode (Settings > Accounts > Manage Certificates > + > Developer ID
@@ -1166,7 +1088,9 @@ year), and two things from it:
 * An *App Store Connect API key*, for notarization: in App Store Connect,
   Users and Access > Integrations > App Store Connect API, generate a team
   key with the Developer role. Note its Issuer ID and Key ID, and download
-  its `AuthKey_<id>.p8` file, which Apple offers only once.
+  its `AuthKey_<id>.p8` file. Save it securely because Apple offers the
+  download once.
+  https://developer.apple.com/documentation/appstoreconnectapi/creating-api-keys-for-app-store-connect-api[Create API keys]
 
 `package --sign` signs the app with the certificate, with the hardened
 runtime and a secure timestamp. `package --notarize` also signs it, sends
@@ -1286,16 +1210,11 @@ bare `roc build` need no `--target`. A machine whose CPU does not report
 x86-64-v3 (an Intel virtual machine, say, or Rosetta) gets Roc's baseline
 target, `x64v1mac`, which the platform supports too.
 
-Every `--opt` and `--specialize` works, for every target: `--opt=speed`
-(Roc's default), `--opt=size` (the tool's, for now), `--opt=dev` and
-`--opt=interpreter`, each with `--specialize=yes` or `--specialize=no`. Each
-combination links with the platform alone and runs the same app, with the
-same results. `--opt=interpreter` builds only for the Mac `roc` runs on, as
-Roc allows; `--opt=dev` cross-compiles like the others. Run an `x64mac`
-program on an Intel Mac, not under Rosetta, which does not offer the
-x86-64-v3 instructions it is built for (`x64v1mac` runs under Rosetta).
+`--opt=speed`, `--opt=size` and `--opt=dev` can cross-compile, with either
+`--specialize=yes` or `--specialize=no`. `--opt=interpreter` builds only for
+Roc's native target. Use `x64v1mac` for Intel builds to run under Rosetta, the
+target the xref:contributing.adoc#intel-macs[platform's build matrix]
+exercises there.
 
-A `.app` copied to a Mac from elsewhere (downloaded, or built on Linux or
-Windows) may be quarantined by Gatekeeper, which then refuses to open it.
-Clear that before you open it, as
-xref:apps.adoc#share-with-friends[Share it with friends] shows.
+When Gatekeeper blocks a downloaded ad hoc build, follow the steps in
+xref:apps.adoc#share-with-friends[Share it with friends].

@@ -1,27 +1,14 @@
 import Preset
 
-## What a preset draws, as a scene: the app's own description of the
-## picture, in two forms.
+## Turn a preset into a drawing. `Scene.of` gives each layer a shape with
+## fixed properties or bindings to native sources such as `audio.bass`.
+## `Scene.describe` describes the drawing for the editor, and `Scene.at`
+## evaluates its bindings for test measurements.
 ##
-## `Scene.of` gives a `Drawing`: one `Shape` a layer, in the preset's own
-## units, each moving value a binding (`Follows`) that names a native data
-## source (`audio.bass`) and the range it maps to. It is what the editor and
-## the editor describes (`Scene.describe`), and what `Scene.at` evaluates
-## for given measurements, as the host does, so a scene can be previewed and
-## tested without sound.
-##
-## `Scene.marks` turns a drawing into the drawing surface's form: an ordered
-## list of `Mark`s (fill and stroke a shape, move, scale, turn and fade what
-## follows), in a `Scene.space` of 1000 by 1000 units fitted to the view, a
-## `Scene.trail` for visual feedback, and a background colour. `Mark`,
-## `Shape`, `Number`, `Pen`, `Area` and `Trail` here have the same tags and
-## fields as the platform's `Ui` drawing types, colours aside (`Rgb`, a
-## `0xRRGGBB`, where `Ui` takes a `Ui.Color`), so `src/Visual.roc` hands them
-## on almost as they are. A moving value is a `Source` the host reads on
-## each display refresh (`offset + scale * value`, the value from 0 to 1, or
-## -1 to 1 for the waveform), so the picture moves with the music without
-## Roc running every frame. Roc rebuilds the marks only when the preset
-## changes.
+## `Scene.marks` lowers shapes to the platform's drawing vocabulary.
+## `src/Visual.roc` converts those marks to `Ui.Mark` and passes the scene
+## to the surface, where the host samples the audio sources each frame.
+## https://lukewilliamboswell.github.io/roc-native-macos/ui.html#surface-sources
 Scene := [].{
 
 	## A colour with its opacity.
@@ -400,8 +387,9 @@ Scene := [].{
 
 	## A geometry as the surface's shape, about the centre, at size `size`.
 	## A waveform runs from -1 to 1, its middle at the centre line; a loop's
-	## silence is at its radius, and the wave swings an eighth of the radius
-	## either side; bars rise from 0 to 1, `width` tenths of a point apart.
+	## silence is at the requested radius, and the wave swings one eighth
+	## of that radius either way. The bars rise from 0 to 1, with a gap
+	## set by `width` in tenths of a point at the reference drawing size.
 	figure : Geometry, F64, F64 -> SurfaceShape
 	figure = |traced, size, width|
 		match traced {
@@ -470,6 +458,7 @@ expect {
 		and Scene.value_at(Follows({ source: "audio.nothing", from: 7, to: 9 }), features) == 7
 }
 
+## An empty preset describes an empty scene without trails.
 expect Scene.describe(Scene.of({ id: "user.untitled", name: "Untitled", background: { r: 0, g: 0, b: 0 }, layers: [], feedback: Preset.no_feedback, shaders: NoShaders })) == ["No layers yet", "No trails"]
 
 ## A band binds one value of `audio.bands`, and a thickness mapping drives

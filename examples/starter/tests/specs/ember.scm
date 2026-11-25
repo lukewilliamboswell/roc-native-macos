@@ -1,7 +1,6 @@
-; The design's third check: Ember Tunnel made from a blank preset as its
-; file, saved, exported by a worker, drawn on the surface as a ring the
-; bass scales with a trail, then chosen again after Scope, and kept
-; through a reload, with the Lyrics choice.
+; Edit a blank preset into Ember Tunnel, export it through a worker, and
+; check its bass mapping and trail. The saved preset and Lyrics setting
+; survive a reload.
 (test "ember"
   (setup
     (worker-pool 1))

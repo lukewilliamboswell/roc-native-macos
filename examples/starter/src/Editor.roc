@@ -5,22 +5,13 @@ import logic.Preset
 import Store
 import Widgets
 
-## The preset editor panel: the preset's name and Save As, its layers and
-## their mappings, its feedback, its file as text, and Import… and
-## Export…. Editing is live: while the editor is open the picture shows the
-## draft (`Store.shown`), and the song plays on.
+## Edit the preset drawn while the Editor panel is open. Controls go
+## through `Store.edited`, and JSON text through `Store.edited_text`.
+## Both validate before replacing the draft, so invalid text leaves the
+## last valid picture visible.
 ##
-## Every control edits the draft through one decision, `Store.edited`,
-## and every slider keeps its value in range (`Preset.property_range`);
-## the file's text goes through `Store.edited_text`, which checks it with
-## `Preset.decode`: a text that is not a valid preset lists the fields that
-## need attention, and the draft stays the last valid one. Both paths end
-## in the same check, so a draft is always a preset that could be saved,
-## exported or drawn.
-##
-## To add a layer kind or a mapping target, extend `logic/Preset.roc` (its
-## opening comment says where); the editor offers what `Preset.kinds`,
-## `Preset.features` and `Preset.properties` list.
+## Extend layer kinds and mapping targets in `logic/Preset.roc`. The
+## editor uses `Preset.kinds`, `Preset.features` and `Preset.properties`.
 Editor := [].{
 
 	view : () -> Elem(ctx)
@@ -442,6 +433,11 @@ Editor := [].{
 		)
 }
 
+## A new bass-to-size mapping uses the full size range.
 expect Editor.mapping_added(Preset.layer(Ring), "Bass → Size").mappings == [{ feature: Bass, property: Size, from: 0, to: 1000 }]
+
+## An unknown mapping label leaves the layer alone.
 expect Editor.mapping_added(Preset.layer(Ring), "Nonsense").mappings == []
+
+## Clamp a numeric edit and use the lower bound for unparseable text.
 expect Editor.ranged("5000", Opacity) == 100 and Editor.ranged("x", Rotation) == -180

@@ -128,6 +128,7 @@ Prefs := [].{
 	}
 }
 
+## Settings including offsets for two outputs survive a round trip.
 expect {
 	prefs = { lyrics: Bool.True, lyric_size: Huge, preset: "user.ember-tunnel", volume: 40, eq: Eq.with_band(Eq.flat, 0, -60), offsets: [{ output: "BuiltInSpeakerDevice", ms: -20 }, { output: "BT-Speaker", ms: 180 }] }
 	Prefs.decode(Prefs.encode(prefs)) == prefs
@@ -136,6 +137,7 @@ expect {
 ## Nothing saved, or something damaged, reads as the defaults field by field.
 expect Prefs.decode("") == Prefs.defaults and Prefs.decode("{\"lyrics\": true, \"volume\": 900, \"lyric_size\": \"tiny\"}") == { ..Prefs.defaults, lyrics: Bool.True, volume: 100 }
 
+## Lyric size changes stop at the limits and Regular uses 20 points.
 expect Prefs.larger(Huge) == Huge and Prefs.smaller(Large) == Regular and Prefs.points(Regular) == 20
 
 ## An offset is kept per output, clamped, and 0 forgets it.

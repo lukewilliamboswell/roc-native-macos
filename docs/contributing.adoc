@@ -1,49 +1,30 @@
 = Contributing
 
-This chapter is for people changing the platform from a checkout: building
-it, running and driving its examples, passing the check gate, bundling it and
-releasing it. App authors need none of it; they work from a release, as
-xref:apps.adoc#get-started[Build an app] describes. The repository's rules are
-in `AGENTS.md`; xref:architecture.adoc#how-it-fits-together[Architecture]
-explains the design.
+Build, test and release the platform from a checkout. Read `AGENTS.md`
+before making changes. See xref:architecture.adoc#how-it-fits-together[Architecture]
+for the design and xref:apps.adoc#get-started[Build an app] to use a release.
 
 [#build-the-platform]
 == Build the platform
 
-Building the platform itself (not an app: an app needs only Roc, on any
-system) needs Apple silicon macOS, exactly Xcode 26.3 (build 17C529, Swift
-6.2.4), `python3`, and a Roc compiler installed as `roc`: a current
-nightly, or 0.1.0 RC1. An Apple silicon Mac cross-compiles the Intel host as
-well; CI builds and runs everything on an Intel Mac too
-(xref:contributing.adoc#intel-macs[Intel Macs]). The repository follows
-https://github.com/lukewilliamboswell/roc-automation[roc-automation], and
-https://github.com/lukewilliamboswell/roc-blueprint[Blueprint] 0.13.0
-provides the rest of the environment.
+For the local Blueprint workflow, use an Apple silicon Mac with
+xref:contributing.adoc#the-pinned-xcode[the pinned Xcode], `python3`, a current
+Roc nightly on PATH as `roc`, and
+https://github.com/lukewilliamboswell/roc-blueprint[Blueprint] 0.13.0.
+The build cross-compiles the Intel host. See
+xref:contributing.adoc#intel-macs[Intel Macs] for Intel CI coverage.
 
-Xcode 26.3 can sit beside another Xcode. Download it from
-https://developer.apple.com/download/all/[Apple's developer downloads],
-install it as `/Applications/Xcode_26.3.app`, and select it for the whole
-machine, or for one shell:
+Install Xcode 26.3 from
+https://developer.apple.com/download/all/[Apple's developer downloads] as
+`/Applications/Xcode_26.3.app`. Select it for your shell before building:
 
 [source,sh]
 ----
-sudo xcode-select -s /Applications/Xcode_26.3.app
 export DEVELOPER_DIR=/Applications/Xcode_26.3.app/Contents/Developer
 ----
 
-Before it compiles the host, `scripts/build.roc` compares `xcodebuild
--version` and `swiftc --version` with the pin and stops on any difference,
-naming what it found and what it needs: another Swift compiler references
-other runtime symbols, which the linker-input audit would reject (see
-xref:contributing.adoc#the-pinned-xcode[The pinned Xcode]). To build with
-another Xcode on purpose, when moving the pin, set `ROC_HOST_TOOLCHAIN=any`;
-the build then warns instead, and if the audit fails, its message says the
-host was built with an Xcode other than the pinned one.
-
-To run the examples rather than change the platform, you need none of
-this: use the examples archive a release attaches, as
-xref:apps.adoc#try-an-example[Try an example] describes. It builds against
-the release's prebuilt host, with no checkout and no Xcode.
+To select it for the whole machine, run
+`sudo xcode-select -s /Applications/Xcode_26.3.app` instead.
 
 For contributors building from source, Blueprint runs one example from the
 checkout. It builds the host first when it is missing, then runs `roc
@@ -84,8 +65,7 @@ PATH, or `$ROC`. Building the platform is two steps over committed inputs:
 . *Linker stubs.* The macOS TAPI stubs in `platform/targets/macos-sysroot`,
   one set for both architectures, come from the linker-input release that
   `link-inputs.lock.json` selects (only `publish-link-inputs.yml` writes
-  the lock; until the first release there is none, and the stubs are
-  generated from the catalog), verified by size and SHA-256, and each
+  the lock), verified by size and SHA-256, and each
   host's references are audited against what `host/interfaces.json`
   exports for its architecture, then the system imports of the `roc`
   compiler's run shims, which `roc main.roc` links the host with, against
@@ -114,31 +94,25 @@ The two keep separate `UserDefaults` domains (`todos` versus
 [#the-pinned-xcode]
 === The pinned Xcode
 
-CI, releases and every local build of the host use Xcode 26.3 (17C529,
-Swift 6.2.4). The pin is written once, as the input defaults of
-`.github/actions/setup-xcode/action.yml`: the action selects and verifies
-that Xcode in CI, and `scripts/build.roc` reads the same defaults
-(`Build.toolchain_pin`) and checks the local Xcode against them. `libtool`
-and `nm` come from the selected Xcode, so the check covers them too. The
-Swift version decides which Swift runtime symbols `libhost.a` references,
-and so what the stub audit accepts: Xcode 16.4's Swift 6.1, the runner
-image's default, references four that Swift 6.2 inlines, and Swift 6.3
-references others (it calls through the `Equatable` dispatch thunk for a
-plain enum's `==`, and through the CoreFoundation overlay's `_CFObject`
-conformance for `!=` on an optional CF type, which the host now avoids).
+The host build uses Xcode 26.3 (17C529, Swift 6.2.4). The pin lives in the
+input defaults in `.github/actions/setup-xcode/action.yml`. The action
+selects and verifies that Xcode in CI. Locally, `scripts/build.roc` reads
+the same defaults through `Build.toolchain_pin` and reports the versions
+it finds if they differ. The Swift version affects which runtime symbols
+the host references, so changing it can change the linker-input catalog.
 
-Swift 6.3 also routes Objective-C calls through Clang's code generation,
-which on arm64 calls `_objc_msgSend$<selector>` stubs for the linker to
-synthesize. The host is compiled with `-Xcc -fno-objc-msgsend-selector-stubs`,
-which every Clang from Xcode 26.3's on takes, so every call is to
-`_objc_msgSend`, as Swift 6.2 emits it.
+Swift 6.1 references runtime symbols that Swift 6.2 inlines. Swift 6.3
+can add references through the `Equatable` dispatch thunk and
+CoreFoundation's `_CFObject` conformance. The host avoids those calls.
+The selector-stub flag and its role in linking are documented in
+xref:architecture.adoc#linker-inputs[Linker inputs].
 
-To move to another Xcode, change the action's four defaults, run the check
-gate with that Xcode and `ROC_HOST_TOOLCHAIN=any` until the pin names it,
-and catalog any symbol the audit names, with its evidence. Built with Xcode
-26.6 (Swift 6.3.3), the host references one symbol the catalog does not
-own yet, `ContiguousArray._allocateBufferUninitialized(minimumCapacity:)`
-of the standard library.
+To try another Xcode while moving the pin, set `ROC_HOST_TOOLCHAIN=any`.
+The build warns about the mismatch and continues to the linker-input
+audit. When moving the pin, update all four action defaults and run the
+check gate with the new Xcode. For each required new symbol, record its
+owning library and evidence as described in
+xref:architecture.adoc#linker-inputs[Linker inputs].
 
 [#run-the-examples]
 === Run the examples
@@ -153,8 +127,7 @@ committed examples are never rewritten. `blueprint run build` builds every
 example as `examples/<name>/<name>` and `examples/<name>/<name>.app`, and
 xref:contributing.adoc#driving-an-app[Driving an app] runs them unattended.
 A new example needs at least one spec (see
-xref:contributing.adoc#specs[Specs]), a tile in the
-README's examples grid with its demo (see
+xref:contributing.adoc#specs[Specs]), a demo for the examples gallery (see
 xref:contributing.adoc#demos[Demos]), and a row in
 xref:apps.adoc#the-examples[The examples].
 
@@ -177,10 +150,20 @@ xref:apps.adoc#the-examples[The examples].
 | `blueprint run tooling-version` | the scripts' compiler version
 |===
 
-`.github/workflows/docs.yml` runs `blueprint run docs` on every pull request
-and deploys `.docs-out/site` to GitHub Pages from `main`. The renderer takes
-a subset of AsciiDoc and refuses what it cannot render, such as a table too
-wide for the PDF page, so a manual change is checked by building it.
+[#change-the-manual]
+=== Change the manual
+
+Keep the manual's chapter links source-qualified, for example
+`xref:apps.adoc#get-started[Build an app]`. Use a local listing include for
+a checked example when the whole file reads well in context. See
+https://lukewilliamboswell.github.io/roc-automation/documentation.html#write-for-the-shared-renderer[roc-automation's documentation guide]
+for the supported AsciiDoc conventions.
+
+Run `blueprint run docs` and review the affected chapter in the website,
+the Markdown export and the PDF. Follow its links and check that code and
+tables fit. Review the commands and their expected results against the
+implementation. The Documentation workflow builds these formats for
+every pull request and deploys the site from `main`.
 
 === Two compilers
 
@@ -218,7 +201,9 @@ xref:contributing.adoc#the-tool[The tool]), and with an empty package cache
 (`XDG_CACHE_HOME`) runs `roc macos.roc init my-app`, then `roc macos.roc
 build`, `roc macos.roc test` (the starter's `expect`s and specs)
 and `roc macos.roc fuzz --check` (its roc-fuzz targets) in
-`build/bundle-test/my-app/`, and packages it twice. It also builds and tests
+`build/bundle-test/my-app/`, and packages it twice. It runs
+`roc macos.roc init --simple my-counter` and `roc macos.roc test` there,
+which builds the counter and runs its specs. It also builds and tests
 `examples/about`, its one-file `main.roc` copied to `src/main.roc` where
 the tool reads it, with its assets, through the tool, and runs one of its specs under
 `roc macos.roc dev`. The `bundle` stage of `check` does the same with
@@ -241,9 +226,9 @@ xref:contributing.adoc#releasing[Releasing].
 
 `macos.roc` is the app author's tool: `init`, `build`, `run`, `dev`, `test`,
 `fuzz` and `package`. It
-is a package, `cli/`, on basic-cli, which a release bundles and names from a
-small launcher app, `macos.roc`, that the author downloads (the same model as
-roc-native-android's `android.roc` and roc-signals' `signals.roc`):
+is a package, `cli/`, on basic-cli. The runnable installer archive
+bundles a local copy of that package. It writes a small `macos.roc`
+launcher into the new project that imports the released package by URL.
 
 [cols="1,3",options="header"]
 |===
@@ -251,14 +236,14 @@ roc-native-android's `android.roc` and roc-signals' `signals.roc`):
 
 | `cli/main.roc` | the package root, exposing `MacOS`
 | `cli/MacOS.roc` | the command line: parsing, `help` and `COMMAND --help`, and every failure put into one sentence (`explain`; exit code 2 for misuse)
-| `cli/Init.roc` | `init`: the starter scaffold (`examples/starter`), never overwriting a file
+| `cli/Init.roc` | `init`: the starter scaffold (`examples/starter`), or with `--simple` the counter (`examples/counter`), never overwriting a file
 | `cli/App.roc` | the app's root module (`src/main.roc`), and `build` and `run`: `roc build --target=arm64mac` and `--target=x64mac`, joined into the universal `.macos/<name>` (or with `--target` one of them alone), then `<name>.app` with its `Info.plist`
 | `cli/Universal.roc` | the universal (fat) Mach-O file, written byte for byte as `lipo -create` writes it, with no Apple tool
 | `cli/Cases.roc` | `test`: `roc test` on the root module, then each `tests/specs/<name>.scm` but the demos run against `.macos/<name>`, built for this Mac's own target alone
 | `cli/Fuzz.roc` | `fuzz`: `roc build --fuzz tests/fuzz/main.roc` into `.macos/fuzz`, then each roc-fuzz target it lists, run or (`--check`) checked
 | `cli/Spec.roc` | the spec language: parsing, lowering to the host's `ROC_SPEC` steps, judging what the host observed, and `--update`'s rewrite of the dumps and allocation bounds; pure, shared with the scripts
 | `cli/SpecRun.roc` | one spec run against a built program, shared with the scripts
-| `cli/Bundle.roc` | generated: the release, its platform URL, the Roc that tested it, and the scaffold
+| `cli/Bundle.roc` | generated: the release, its platform URL, the Roc that tested it, and the scaffold's two templates
 |===
 
 `build` writes files and runs `roc`, nothing else, so it works on any system:
@@ -273,15 +258,18 @@ program `test` also builds for the Mac it runs on. `run`, `dev` and `test`
 need a Mac, either kind, and say so elsewhere.
 
 `cli/Bundle.roc` is generated by `scripts/src/Release.roc`. The checked-in
-copy is for a checkout: version `development`, importing the scaffold (every
-tracked file of `examples/starter`, its icon as bytes) from the working
-tree, so `roc test cli/main.roc` works. A release generates its own, importing
-copies staged under `scaffold/`. The `tool` stage of `check` fails when the
+copy is for a checkout: version `development`, importing the scaffold from
+the working tree, so `roc test cli/main.roc` works. The scaffold is two
+templates (`Release.templates`), each every tracked file of an example:
+`Bundle.starter`, `examples/starter` with its icon as bytes, which `init`
+writes, and `Bundle.simple`, `examples/counter`, which `init --simple`
+writes. A release generates its own `Bundle.roc`, importing copies staged
+under `scaffold/<template>/`. The `tool` stage of `check` fails when the
 checked-in copy is not what the script generates (when a file is added to
-the starter, say); `blueprint run check -- tool --update` rewrites it. The
-starter is an example like the others, so `check` builds it, runs its
-`expect`s, checks its fuzz targets' examples and runs its specs;
-change what `init` writes by changing it.
+the starter, say); `blueprint run check -- tool --update` rewrites it. Both
+are examples like the others, so `check` builds them, runs their
+`expect`s and specs, and checks the starter's fuzz targets' examples;
+change what `init` writes by changing them.
 
 A script cannot import a module outside `scripts/`, so
 `scripts/src/Spec.roc` and `scripts/src/SpecRun.roc` are byte-identical
@@ -292,7 +280,9 @@ checks. Change the one in `cli/`, then copy it over.
 bundle in `DIR`: it stages `cli/` with the release's `Bundle.roc`, the
 scaffold and the notices under `build/tool-stage/`, runs its `expect`s,
 `roc bundle`s it into `DIR/macos-<hash>.tar.zst` (the prefix keeps it apart
-from the platform's bundle), and writes `DIR/macos.roc` naming it.
+from the platform's bundle), and writes `DIR/macos.roc` naming it. It also
+bundles the runnable installer as `DIR/init-macos-<hash>.tar.zst` and prints
+its `roc run` command.
 `--base-url URL` names the assets at `URL` instead of the release's download
 URL, to try a release locally:
 
@@ -301,8 +291,16 @@ URL, to try a release locally:
 blueprint run bundle -- --prebuilt --output-dir /tmp/rel
 python3 -m http.server 8787 --bind :: --directory /tmp/rel &
 blueprint run release -- tool 0.0.1-dryrun /tmp/rel --base-url http://localhost:8787
-cd "$(mktemp -d)" && curl -LO http://localhost:8787/macos.roc
-roc macos.roc init my-app && cd my-app && roc macos.roc run
+cd "$(mktemp -d)"
+----
+
+Run the installer command printed by the release task to create `my-app`.
+Then start it in development mode.
+
+[source,sh]
+----
+cd my-app
+roc macos.roc dev
 ----
 
 [#driving-an-app]
@@ -411,7 +409,7 @@ same one CI runs on `macos-15`, and in part on `macos-15-intel`
 | `glue` | the committed glue is what `glue/SwiftGlue.roc` generates with the `roc` on PATH (`build -- glue --check`)
 | `build` | `scripts/build.roc` with the `roc` on PATH
 | `test` | `roc test` on `platform/main.roc` and every example (its `src/main.roc`, with the starter's logic package), and for an example with `tests/fuzz/main.roc` (the starter) its roc-fuzz build and `check` on every target
-| `examples` | every example's specs
+| `examples` | every example's specs, then one counter spec again through Roc's run mode (`roc src/main.roc`)
 | `bench` | every harness under `bench/`, built and run at a token size (`bench/<name>/run.sh --smoke`) so it never goes stale, failing unless the run does what it measures; then its specs, `bench/<name>/tests/specs/*.scm`, which count a turn's work with the same bounds at two sizes: a hover or a cooling timer at N=20 and N=60 cells, a tick writing 3 rows and a selection at 2,000 and 200,000 rows. The harnesses' timing ratios are reported as diagnostics and never fail
 | `matrix` | every build an author can ask `roc build` for, of the fixture `tests/matrix/arith` (the library calls 128-bit, `Dec` and float arithmetic lower to, at every count its Next button reaches) and `examples/workers` (worker threads, and a crashed job's unwind): each built with every `--opt` (`speed`, `size`, `dev`, `interpreter`) and `--specialize` (`yes`, `no`) for this Mac's own target and run against its specs (`arith`'s `rows` and `highest`, `workers`' `crash`; `matrix --update` rewrites their dumps from the first build), then `arith` with every `--opt` but `interpreter` (which builds only for the native target) for the other Mac targets, each linked, and run too where this Mac runs it: `x64v1mac` under Rosetta on Apple silicon, natively on an Intel Mac. Programs go to `build/matrix/`. It takes about 10 minutes on an M-series Mac, most of it `workers` with `--specialize=yes` (`TODO(slow-lambda-sets)`). A missing system symbol fails here first, so take it into `host/interfaces.json` with its evidence
 | `bundle` | the bundle from the `build` stage's inputs, and its consumer test: `macos.roc` `init`, `build`, `test`, `fuzz --check` and `ci package` against it
@@ -438,9 +436,9 @@ cross-compiled:
   of the Intel `roc`'s own run shims, every example's `expect`s, every
   example built natively and its specs run, the counter's through
   `roc src/main.roc` too, the build matrix with its `x64mac` and
-  `x64v1mac` builds run natively (the only place an `x64mac` build runs:
-  Rosetta has no x86-64-v3), and the bundle's consumer test, which inits the
-  starter app and whose `macos.roc` builds a universal app and runs its
+  `x64v1mac` builds run natively (the Apple silicon matrix exercises
+  `x64v1mac` under Rosetta), and the bundle's consumer test, which creates the
+  starter and the counter and whose `macos.roc` builds a universal app and runs its
   Intel half. roc-fuzz has no Intel Mac target (only `arm64mac` and
   `x64musl`), so on Intel the `test` stage does not check the starter's
   fuzz targets and the consumer test skips `macos.roc fuzz --check`; the
@@ -508,18 +506,20 @@ examples, the scripts, the notes or the workflow runs it as a dry run under
 | Intel (`macos-15-intel`) | the same candidate on an Intel Mac: builds every archived example natively against the served bundle and runs every spec, then with the served `macos.roc` creates, builds (universal) and tests an app (`release -- test`)
 | Cross-compile (`ubuntu-24.04`, `ubuntu-24.04-arm`, `windows-2025`) | with only Roc installed and no checkout, serves the candidate on localhost, builds every archived example with `--target=arm64mac` and `--target=x64mac`, and with `macos.roc` creates the starter app with `init` and builds `starter.app`; each program must be a Mach-O executable for its CPU, and each `.app`'s a universal one. It also records what `roc build` without `--target` does there.
 | Run the cross-compiled apps (`macos-15`, `macos-15-intel`) | on each Mac, runs every spec against each system's programs for that Mac and the universal `.app`s, the starter's against the `starter.app` `init` made (`release -- cross-run DIR CROSS TARGET`)
-| Attest | build-provenance attestations for every file, and SBOM attestations for the bundle, the examples archive, the tool's package and `macos.roc`, exported as `<file>.intoto.jsonl`
+| Attest | build-provenance attestations for every file, and SBOM attestations for the bundle, the examples archive, the tool's package, the runnable installer and `macos.roc`, exported as `<file>.intoto.jsonl`
 | Publish (`release` environment) | checks out nothing and runs no repository code: `actions/publish-release` stages a draft at the tested commit, downloads every asset back and compares it with the tested file, then publishes
 |===
 
 A release holds the bundle `<hash>.tar.zst`, `macos.roc` and the tool's
-package `macos-<hash>.tar.zst`, `roc-native-macos-examples-<version>.zip`
+package `macos-<hash>.tar.zst`, the installer `init-macos-<hash>.tar.zst`
+and `roc-native-macos-examples-<version>.zip`
 (every example naming the release URL, with its specs and
 fixtures), each with its SBOM documents (`.spdx.json`, `.spdx-2.3.json`,
 `.cdx.json`, `.sbom-manifest.json`), and the exported attestations. The
 notes are `docs/releases/<version>.adoc` with `{platform-url}`,
 `{examples-url}` and `{launcher-url}` (`macos.roc`) filled in, followed by
-the compilers, the Xcode and Swift versions, and every file's SHA-256.
+the runnable installer command, the compiler and toolchain versions, and
+every file's SHA-256.
 
 The bundle's hash depends on every byte it holds, `libhost.a` included, so
 the URL is known only once the build job has run. It is printed at the top of
@@ -658,9 +658,8 @@ published bundle and runs its specs, and an app is created, built
 and tested with the release's `macos.roc`. A failure opens or comments on one
 tracking issue, kept by roc-automation's `actions/nightly-report`, and the
 next pass closes it. The fix is a patch release that works with the new
-compiler; the archive is never changed. A manual run with `nightly-tag` or
-`release-tag` reproduces a past pair and leaves the issue alone. Before the
-first release it fails selection, since there is nothing to test.
+compiler. Use a manual run with `nightly-tag` or `release-tag` to check a
+specific pair without updating the tracking issue.
 
 [#styling]
 == Styling
@@ -766,5 +765,7 @@ same bundle.
 
 == Reporting
 
-Report bugs, and propose follow-up work, in the repository's issues; report
-vulnerabilities as `SECURITY.md` describes.
+Report bugs and propose follow-up work in the
+https://github.com/lukewilliamboswell/roc-native-macos/issues[repository's issues].
+Use the private reporting channel for vulnerabilities.
+https://github.com/lukewilliamboswell/roc-native-macos/blob/main/SECURITY.md[Security policy]

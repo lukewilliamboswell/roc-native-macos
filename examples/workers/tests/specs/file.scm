@@ -1,5 +1,5 @@
-; A dropped file is inspected in a worker, which reports on it, and a
-; search runs over the report as each query is typed.
+; A worker builds a report for the dropped file. A prepared search
+; answers successive queries about the original file.
 (test "file"
   (setup
     (worker-pool 1))

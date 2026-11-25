@@ -18,8 +18,6 @@ behind how the Roc compiler compiles closures. Its lyrics, walkthrough,
 arrangement and liner notes are at
 <https://gist.github.com/lukewilliamboswell/be88b49154f602495f2821a01f995d1f>.
 
-Both files are the gist's own: the compact MP3 and the LRC, renamed to
-share a basename so the player pairs them.
-
-If your app no longer plays the song, delete both files, this section, and
-`Store.default` in `src/Store.roc`.
+The app ships the gist's compact MP3 and timed LRC under the same basename.
+To start with an empty queue, follow the instructions by `Store.default`
+in `src/Store.roc`.

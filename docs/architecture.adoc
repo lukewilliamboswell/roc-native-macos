@@ -1,9 +1,8 @@
 = Architecture
 
-This chapter is for contributors. It explains how an app, the engine and the
-Swift host fit together, what crosses between them, and the rules the host
-follows for effects, threads, files, the ABI and linking. App authors need
-none of it; xref:ui.adoc#builders[the Ui reference] is theirs.
+Follow an app's state from Roc through the engine to the Swift host. This
+chapter describes the wire format, effects, threads, ABI and linking. For
+public control props and signatures, see xref:ui.adoc#builders[the Ui reference].
 
 == How it fits together
 
