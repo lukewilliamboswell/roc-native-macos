@@ -9,8 +9,8 @@
 ## also settles an ambiguous name.
 Pairing := [].{
 
-	## The extensions read as songs. The player decodes what macOS decodes;
-	## these are the common ones.
+	## Extensions the starter treats as songs. The macOS decoder still
+	## decides whether the contents can play.
 	song_extensions : List(Str)
 	song_extensions = ["mp3", "m4a", "aac", "wav", "aif", "aiff", "caf", "flac", "alac", "opus", "ogg"]
 
@@ -88,8 +88,13 @@ Pairing := [].{
 		}
 }
 
+## Use the last extension and ignore case when comparing basenames.
 expect Pairing.split("Track.Final.M4A") == { base: "track.final", ext: "m4a" } and Pairing.split("README") == { base: "readme", ext: "" } and Pairing.split(".lrc") == { base: ".lrc", ext: "" }
+
+## Classify audio and lyric extensions separately.
 expect Pairing.kind("a.FLAC") == Song and Pairing.kind("a.lrc") == LyricFile and Pairing.kind("a.png") == Other
+
+## Drop the extension from the display title and keep its case.
 expect Pairing.title("Track.Final.m4a") == "Track.Final" and Pairing.title("Track") == "Track"
 
 ## A unique basename pairs, ignoring case and order; the rest stay apart.

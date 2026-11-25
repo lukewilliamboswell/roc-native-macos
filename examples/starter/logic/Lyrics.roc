@@ -97,7 +97,7 @@ Lyrics := [].{
 	}
 
 	## A tag's time, `mm:ss`, `mm:ss.x`, `mm:ss.xx` or `mm:ss.xxx`, in
-	## milliseconds: minutes of any length, seconds below 60.
+	## milliseconds. Minutes take one to four digits, seconds two digits below 60.
 	time : Str -> Try(U64, [NotATime])
 	time = |tag|
 		match tag.split_first(":") {
@@ -268,7 +268,10 @@ Lyrics := [].{
 		}
 }
 
+## Read timestamps with and without fractional seconds.
 expect Lyrics.time("00:12.50") == Ok(12_500) and Lyrics.time("01:02") == Ok(62_000) and Lyrics.time("2:03.5") == Ok(123_500) and Lyrics.time("00:00.007") == Ok(7)
+
+## Reject out-of-range seconds and malformed time fields.
 expect ["00:60.00", "00:7x.50", "xx:10", "00:5.00", "00:05.", "00:05.1234", ""].all(|tag| Lyrics.time(tag) == Err(NotATime))
 
 ## Repeated timestamps expand, cues are ordered, and lines that start
@@ -286,12 +289,20 @@ expect {
 
 ## Malformed timing falls back to the words as plain text.
 expect Lyrics.from_lrc("[00:05.00]One\n[00:99.00]Two\n\nThree") == Plain([["One", "Two"], ["Three"]])
+
+## A line with no time falls back to plain text.
 expect Lyrics.from_lrc("[00:05.00]One\nno tag here") == Plain([["One", "no tag here"]])
+
+## Fallback text strips metadata tags.
 expect Lyrics.from_lrc("[ar:Someone]\nJust words") == Plain([["Just words"]])
+
+## Empty and metadata-only tracks have no lyrics.
 expect Lyrics.from_lrc("[ar:Someone]\n") == NoWords and Lyrics.from_lrc("") == NoWords
 
 ## Plain text keeps its verses and their line breaks.
 expect Lyrics.from_text("\u(feff)One\r\nTwo  \n\n\n  Three\nFour\n") == Plain([["One", "Two"], ["Three", "Four"]])
+
+## The filename determines whether to interpret time tags.
 expect Lyrics.from_file("Song.LRC", "[00:01.00]Hi") == Timed([{ start_ms: 1_000, lines: ["Hi"] }]) and Lyrics.from_file("Song.txt", "[00:01.00]Hi") == Plain([["[00:01.00]Hi"]])
 
 ## Before the first cue nothing shows; a cue stays until the next; an empty
@@ -307,6 +318,7 @@ expect {
 		and Lyrics.next_boundary(cues, 20_000) == Err(NoMore)
 }
 
+## Read all preserves verse breaks and skips empty cues.
 expect Lyrics.all_lines(Plain([["a", "b"], ["c"]])) == ["a", "b", "", "c"] and Lyrics.all_lines(Timed([{ start_ms: 0, lines: ["x", "y"] }, { start_ms: 1, lines: [] }])) == ["x", "y"]
 
 ## Cues written as LRC read back as the same cues.

@@ -2,24 +2,15 @@ import pf.Engine exposing [Elem, Signal]
 import pf.Ui
 import logic.Scene
 
-## The visualization: the one module that knows how a scene reaches the
-## screen. Everything else hands it a `Scene.Drawing` (from
-## `logic/Scene.roc`, which turns a preset into one) and the lyrics to show
-## over it.
+## Draw a `Scene.Drawing` on a display-paced surface. Its `audio.*`
+## sources read the host's measurements on each frame. Roc supplies a
+## new scene when the preset changes and resets the trail when the
+## audio session generation changes.
 ##
-## The picture and the words are two layers of one `Ui.overlay`. The
-## picture is a drawing surface (`Ui.surface`) that draws `Scene.marks` at
-## every refresh of the display, reading the sound's measurements
-## (`audio.waveform`, `audio.bands`, `audio.level`, ...) natively, so Roc
-## runs only when the preset changes. Its trail (`Scene.trail`) keeps the
-## last frames under the new one; the player's session generation resets
-## it after a load, seek or stop. A preset's shaders go to the surface
-## (`shader`), which runs them with the Metal renderer and reports what
-## they are doing (`on_shader`): running, a stage that does not compile
-## (it keeps drawing that stage's last good source), or the Core Graphics
-## fallback, where the marks and the trail are the whole picture. The words are native text in the
-## overlay's foreground, over the finished picture, so they stay sharp,
-## read to VoiceOver, and never enter the trail.
+## Pass lyrics to the foreground of `Ui.overlay`, outside the surface.
+## That keeps the words out of the trail and available to VoiceOver.
+## For the drawing inputs and shader status, see the Ui reference.
+## https://lukewilliamboswell.github.io/roc-native-macos/ui.html#drawing
 Visual := [].{
 
 	## How tall the visualization is when the window opens.
@@ -120,4 +111,5 @@ Visual := [].{
 	backing = Adaptive({ light: 0x141210, dark: 0x141210 })
 }
 
+## Pass through an opacity binding to a single audio band.
 expect Visual.mark(Opacity(Element({ source: "audio.bands", index: 2, scale: 1, offset: 0 }))) == Opacity(Element({ source: "audio.bands", index: 2, scale: 1, offset: 0 }))

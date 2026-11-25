@@ -3,9 +3,8 @@ app [main] { pf: platform "../../../platform/main.roc" }
 import pf.Engine exposing [Elem, In, Root, State]
 import pf.Ui
 
-## An About window drawn from the app's assets: `assets/icon.png`, which is
-## also the app's icon in `about.app`, and `assets/mark.pdf`, a vector
-## drawing. The picker switches the image the window shows.
+## Use `Ui.asset_image` to show a file bundled in `assets/`. The picker
+## switches between the PNG used for the app icon and a vector PDF.
 main : Engine.Program
 main = Engine.program(|| Engine.state("icon.png", view))
 

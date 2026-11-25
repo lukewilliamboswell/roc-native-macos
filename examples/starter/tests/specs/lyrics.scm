@@ -1,8 +1,5 @@
-; The design's lyrics check: cues at 5 s and 12 s and an empty cue at 20 s.
-; Lyrics on at 7 s show the first line; a preset switch mid-line keeps it;
-; hiding and showing the words keeps the song in place; pausing, then
-; seeking to 13 s while paused, shows the second line and stays paused;
-; resuming through 20 s clears the overlay.
+; Follow the first cue through a preset switch, then seek to the second
+; while paused. Resuming through an empty cue clears the overlay.
 (test "lyrics"
   (setup
     (audio-clock manual))

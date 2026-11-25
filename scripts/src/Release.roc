@@ -79,6 +79,16 @@ Release := [].{
 	is_tool_bundle : Str -> Bool
 	is_tool_bundle = |name| name.starts_with("macos-") and name.ends_with(".tar.zst")
 
+	## The runnable app archive used for `roc run URL`.
+	bootstrap_bundle : Str -> Str
+	bootstrap_bundle = |name| "init-macos-${name}"
+
+	is_bootstrap_bundle : Str -> Bool
+	is_bootstrap_bundle = |name| name.starts_with("init-macos-") and name.ends_with(".tar.zst")
+
+	is_platform_bundle : Str -> Bool
+	is_platform_bundle = |name| name.ends_with(".tar.zst") and !Release.is_tool_bundle(name) and !Release.is_bootstrap_bundle(name)
+
 	## The examples among tracked paths: each example's name and its app's
 	## entry, `src/main.roc` (with a logic package beside `src/` in the
 	## starter), in order.
@@ -219,8 +229,8 @@ Release := [].{
 		\\# roc-native-macos app. Keep it in the app's directory and run it with Roc:
 		\\#
 		\\#     roc macos.roc init my-app    create an app in my-app/
-		\\#     roc macos.roc run            build it and start it
 		\\#     roc macos.roc dev            start it, reloading it as you save
+		\\#     roc macos.roc run            build it and start it
 		\\#     roc macos.roc build          build my-app.app, on any system
 		\\#     roc macos.roc test           run its expect tests and specs, tests/specs/*.scm
 		\\#     roc macos.roc fuzz           run its roc-fuzz targets, tests/fuzz/main.roc
@@ -235,6 +245,20 @@ Release := [].{
 		\\import macos.MacOS
 		\\
 		\\main! = |args| MacOS.run!(args)
+		\\
+
+	## The bootstrap runs the same tool and carries the local launcher as data.
+	bootstrap : Str -> Str
+	bootstrap = |basic_cli|
+		\\app [main!] {
+		\\	cli: platform "${basic_cli}",
+		\\	macos: "tool/main.roc",
+		\\}
+		\\
+		\\import macos.MacOS
+		\\import "macos.roc" as launcher : Str
+		\\
+		\\main! = |args| MacOS.run_with_launcher!(args, Bundled(launcher))
 		\\
 
 	## A released `macos.roc` with its tool URL, which must end in the tool

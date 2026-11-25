@@ -12,20 +12,13 @@ import Store
 import Visual
 import Words
 
-## The player window, composed from the store's cells, the panels, the
-## widgets and the effect sites. This is a composing module: it imports
-## `Store` and hands each part what it shows.
+## Compose the window from the store, controls, panels and effect sites.
+## The visualizer stays visible while the listener opens the Queue, EQ or
+## Editor panel. See `Panels.roc` when adding one.
 ##
-## From the top: the title bar with the Lyrics toggle (Command-L) and Add
-## lyrics…; the visualization, where songs are dropped, beside the preset
-## list; the transport strip; the panel switcher and the open panel (queue,
-## EQ or preset editor); and the notice. The visualization stays in view
-## whatever panel is open.
-##
-## A view runs once, when the window opens. After that, a write wakes only
-## the texts, rows and branches that read what it wrote, so a view reads
-## state through signals (`cell.signal()`, `.map`) and never holds a value
-## it read once.
+## Pass signals to the controls that follow shared state. A change to
+## a cell updates the dependent views and can rebuild a dependent branch.
+## https://lukewilliamboswell.github.io/roc-native-macos/apps.html#work-on-the-starter
 Player := [].{
 
 	## The whole window, which `src/main.roc` mounts.
@@ -269,5 +262,8 @@ Player := [].{
 		]
 }
 
+## Format elapsed time and show a placeholder for unknown duration.
 expect Player.clock(0) == "0:00" and Player.clock(72_400) == "1:12" and Player.times({ ..Media.stopped, position_ms: 7_000 }) == "0:07 / –:––"
+
+## The progress slider uses thousandths of the track duration.
 expect Player.permille({ ..Media.stopped, position_ms: 5_000, duration_ms: 20_000 }) == 250

@@ -1,7 +1,7 @@
-; A click is one turn that rewrites the count's text and builds nothing,
-; and allocates a bounded amount: a stray copy of the state would show
-; here first. `roc macos.roc test --update` lowers the allocation bounds
-; when the app allocates less, and never raises them.
+; A click updates the text in one turn without creating views. This spec
+; also bounds allocation and checks that an increment and decrement leave
+; no additional allocations live.
+; https://lukewilliamboswell.github.io/roc-native-macos/apps.html#work-metrics
 (test "work"
   (steps
     (mark-metrics)

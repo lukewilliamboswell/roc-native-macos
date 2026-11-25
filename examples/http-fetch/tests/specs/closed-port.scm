@@ -1,4 +1,4 @@
-; A refused connection is answered as the network's failure, with its message.
+; A stubbed connection refusal shows a network error and its message.
 (test "closed-port"
   (steps
     (fill (text-field) "http://127.0.0.1:9/")

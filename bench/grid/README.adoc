@@ -43,6 +43,7 @@ and the specs keep the work from regressing silently. `NO_SCALING=1` skips both 
 [source,sh]
 ----
 blueprint run build -- --platform   # the host, once
+blueprint shell                    # put roc-stable on PATH for run.sh
 bench/grid/run.sh                # N = 10 32 100 150 200 316
 bench/grid/run.sh 50 70          # other sizes
 bench/grid/run.sh --smoke        # what the gate runs

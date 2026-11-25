@@ -3,10 +3,9 @@ app [main] { pf: platform "../../../platform/main.roc" }
 import pf.Engine exposing [Elem, Signal, State, Table]
 import pf.Ui
 
-## Ten thousand generated contacts in a `Ui.table_list` (a view-based
-## NSTableView that draws only the rows near those in sight): a search
-## field filters them through the list's query, and selecting a row shows
-## that contact beside the list.
+## Browse 10,000 generated contacts in a virtualized `Ui.table_list`.
+## The search field filters the list's query. Selecting a row shows that
+## contact in the detail pane.
 main : Engine.Program(_)
 main = Engine.program_store({}, |_boot| store.with_initial(cells.contacts, generated(contact_count)), |_boot| view())
 
@@ -45,11 +44,9 @@ view = || {
 			Ui.hstack(
 				{ spacing: 16, align: Fill, width: Fill, height: Fill },
 				[
-					## The sidebar: a list of every match, 10,000 rows at most,
-					## of which only those near the visible ones are drawn.
+					# AppKit creates views for rows near the visible area.
 					Ui.table_list({ width: Fixed(300), opening_height: 400 }, cells.contacts, { query: cells.search.signal(), plan }, |key, contact| row(key, contact)),
 
-					## The detail pane for the selected contact.
 					Ui.box(
 						{ fill: TextBackground, padding: All(24), border: Line({ color: Separator, width: 1 }), radius: 14, width: Fill, height: Fill },
 						Engine.when(
@@ -123,8 +120,8 @@ field = |shown, read|
 		Nobody => ""
 	}
 
-## The rows whose name or city contains the search text, ignoring ASCII
-## case, in id order.
+## Match against the combined name and city, ignoring ASCII case.
+## Keep matches in ID order.
 plan : Str -> Engine.QueryPlan(U64, Contact, (U64, U64))
 plan = |query| {
 	needle = lower(query.trim())
@@ -175,9 +172,14 @@ contact_of = |id| {
 	{ name, email: "${lower(first)}.${lower(last)}${id.to_str()}@example.com", city, search: lower("${name} ${city}") }
 }
 
+## Search normalizes ASCII case.
 expect lower("Ada LOVELACE") == "ada lovelace"
 
+## Generated IDs give reproducible contact names.
 expect contact_of(28).name == "Alan A. Turing"
 
+## Show both the number of matches and the table size.
 expect matching(generated(30), "ada") == "2 of 30"
+
+## The selected ID looks up the contact for the detail pane.
 expect field(picked(generated(30), Picked(28)), |c| c.name) == "Alan A. Turing"

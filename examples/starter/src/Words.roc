@@ -5,19 +5,10 @@ import Media
 import Store
 import Visual
 
-## The words over the picture: the lyrics overlay, the site that reads
-## lyric files, and the timer for the next line.
-##
-## With Lyrics on, a song with timed lyrics shows its current line in large
-## type, the next line beneath it in a secondary style; Read all shows every
-## line, to scroll at the listener's pace, and Follow returns to the current
-## line. Plain text is shown whole, its verses kept. With no words, or
-## Lyrics off, the picture stays clear. The words sit on an opaque dark
-## backing kept to the words, in a size the listener chooses.
-##
-## Which line shows depends only on the playback position, never on the
-## picture's frame rate: `Store.overlay` picks it, and `Media.boundary`
-## sets a timer for the next line so it changes on time.
+## Choose how to show the lyrics and read a lyric file for its queue
+## entry. `Store.overlay` picks the cue from the playback position and
+## `Media.boundary` schedules the next cue independently of the frame
+## clock. Read all lets the listener scroll the verses or timed lines.
 Words := [].{
 
 	## The overlay, for `Visual.view` to place over the picture.

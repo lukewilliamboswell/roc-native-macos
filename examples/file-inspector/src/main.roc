@@ -3,16 +3,14 @@ app [main] { pf: platform "../../../platform/main.roc" }
 import pf.Engine exposing [Elem, File, Signal]
 import pf.Ui
 
-## A file inspector: pick files in an open panel or drop them from the
-## Finder. The app holds each one as a handle (a `File`), never its bytes,
-## and lists them; inspecting one asks the host for its SHA-256 digest and
-## its first bytes as text and a URL that shows it, and "Save Copy…" saves
-## it through a save panel.
-## Clearing the list drops the handles, and the host lets the files go.
+## Pick files with the open panel or drop them from Finder. The list
+## stores `File` handles and reads only a small range for the preview.
+## Inspect shows the SHA-256 digest, preview and file URL.
+## Save Copy… opens a save panel. Clear empties the list and selection.
 main : Engine.Program(_)
 main = Engine.program_store({}, |_boot| store, |_boot| view())
 
-## What one inspected file shows while its requests are answered.
+## The file whose details the app is showing.
 Selected : [Nothing, Picked(File)]
 
 store = Engine.store(
@@ -139,8 +137,8 @@ view = || {
 				),
 				|| Engine.text(""),
 			),
-			# The digest and the first bytes of the inspected file. Inspecting
-			# another file cancels what the last one still had in flight.
+			# Each watch belongs to the current selection. When it changes,
+			# `watch_latest` cancels requests still in flight.
 			Engine.watch_latest(
 				selected,
 				|s| match s {
@@ -184,7 +182,8 @@ view = || {
 					},
 				),
 			),
-			# Each press of "Save Copy…" is a new value, so each one saves.
+			# A serial makes each press distinct, even for the same file.
+			# The cell retains the file from the most recent save request.
 			Engine.watch_changes(
 				cells.save.signal(),
 				|s| match s {
@@ -269,8 +268,9 @@ hex = |bytes| {
 	Str.from_utf8($out) ?? ""
 }
 
-## The bytes as text, or "binary" for bytes that are not UTF-8 text. A
-## multi-byte character the cut split at the end is dropped.
+## Show trimmed UTF-8 text, allowing up to three trailing bytes to be
+## discarded in case the preview ends mid-character. Show "binary" for a
+## NUL byte or when no attempted prefix decodes.
 as_text : List(U8) -> Str
 as_text = |bytes| {
 	if bytes.contains(0) {
@@ -287,9 +287,20 @@ as_text = |bytes| {
 	"binary"
 }
 
+## Encode each byte as two lowercase hex digits.
 expect hex([0, 15, 16, 255]) == "000f10ff"
+
+## Trim trailing whitespace from the preview.
 expect as_text("hello\n".to_utf8()) == "hello"
+
+## A NUL byte marks the preview as binary.
 expect as_text([104, 105, 0]) == "binary"
+
+## Keep the readable prefix when the preview ends inside a character.
 expect as_text([104, 105, 0xE2, 0x82]) == "hi"
+
+## Show binary when no tested prefix is valid UTF-8.
 expect as_text([0xFF, 0xFE, 0xFD, 0xFC, 0xFB]) == "binary"
+
+## Report file sizes in decimal units.
 expect [size(12), size(1_256), size(3_400_000)] == ["12 bytes", "1.2 KB", "3.4 MB"]

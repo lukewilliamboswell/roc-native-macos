@@ -1,7 +1,6 @@
-; The design's second check: an EQ cut heard and seen. Two tones, 250 Hz
-; and 4 kHz at -20 dBFS: cutting the 250 Hz band by 12 dB lowers it at the
-; output and in the measurements the picture draws, the 4 kHz tone never
-; moves, Flat restores it, and the volume changes the output alone.
+; A 12 dB cut at 250 Hz lowers that tone in both the output and the
+; visualizer measurements. The 4 kHz tone stays steady, Flat restores
+; the cut, and the volume changes the output alone.
 (test "eq"
   (setup
     (audio-clock manual))

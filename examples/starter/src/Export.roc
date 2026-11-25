@@ -4,25 +4,13 @@ import pf.Worker
 import logic.Library
 import Store
 
-## Exporting a preset, in a worker: a Roc task that runs off the main
-## thread and builds a new file the page can save.
-##
-## Page code cannot write a file; a worker job can, with the file builder
-## (`Files.build!`), and its answer carries the finished `File` back, which
-## the page offers to the save panel (`File.save`). A job runs in an
-## instance of its own, and only data crosses: the job's input (the preset's
-## name and text) and its answer (the file's handle). A job that crashes
-## loses only that job. To add a worker:
-##
-## 1. Declare a task, `Worker.task({ name, run! })`, whose `run!` takes an
-##    input and answers `Ok(output)` or `Err(error)`.
-## 2. Register it in `src/main.roc`'s `.with_workers([...])`.
-## 3. Ask for jobs from an effect site, `Engine.watch_latest(signal,
-##    |value| [task.ask(input)], Engine.react(...))`, and turn each answer
-##    into writes with a decision (`Store.exported`).
-##
-## Importing goes the other way and needs no worker: a preset file is small,
-## so the page reads it with the bounded `read_utf8` (`Editor.importing`).
+## Build the preset's JSON file in a worker and return its `File` handle.
+## The page sends the name and text, then offers the finished file to the
+## save panel. Follow this path when adding a task: register it in
+## `main.roc`, ask for a job from an effect site, and turn the answer into
+## writes in `Store`. For small imports, see the bounded read in
+## `Editor.importing`.
+## https://lukewilliamboswell.github.io/roc-native-macos/ui.html#workers
 Export := [].{
 
 	## What a job is given: the preset's name and its file's text.

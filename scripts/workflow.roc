@@ -10,6 +10,7 @@ import cli.OsStr
 import cli.Path
 import cli.Stderr
 import cli.Stdout
+import src/Release
 import src/Workflow
 
 ## The `workflow` task: the steps of the workflows that ask GitHub or hand
@@ -95,12 +96,16 @@ files! = |version, dir| {
 	names = list!(dir)?
 	bundle = Workflow.platform_bundle(names) ? |NotOne(count)| "${dir} holds ${count.to_str()} platform bundles, not one"
 	tool = Workflow.tool_bundle(names) ? |NotOne(count)| "${dir} holds ${count.to_str()} tool bundles, not one"
+	bootstrap = match names.keep_if(Release.is_bootstrap_bundle) {
+		[one] => one
+		found => return Err("${dir} holds ${found.len().to_str()} bootstrap bundles, not one")
+	}
 	for name in ["roc-native-macos-examples-${version}.zip", "macos.roc"] {
 		if !names.contains(name) {
 			return Err("${dir} holds no ${name}")
 		}
 	}
-	output!([("file", "${dir}/${bundle}"), ("name", bundle), ("tool", "${dir}/${tool}"), ("tool-name", tool)])
+	output!([("file", "${dir}/${bundle}"), ("name", bundle), ("tool", "${dir}/${tool}"), ("tool-name", tool), ("bootstrap", "${dir}/${bootstrap}"), ("bootstrap-name", bootstrap)])
 }
 
 ## The platform URL and the rendered notes, for the run's summary.

@@ -1,5 +1,5 @@
-; Typing filters the contacts as each letter arrives, and selecting a row
-; shows that contact's card.
+; Filling the search field filters the rows. Selecting a match opens
+; that contact's detail pane.
 (test "search-select"
   (steps
     (fill (text-field) "ada")

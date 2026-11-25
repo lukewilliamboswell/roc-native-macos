@@ -3,15 +3,13 @@ app [main] { pf: platform "../../../platform/main.roc" }
 import pf.Engine exposing [Elem, Signal]
 import pf.Ui
 
-## Fetch a URL: a text field, Fetch and Cancel, and the answer's status,
-## size and the start of its body. The request is a store cell watched by
-## `watch_latest`, so a second Fetch supersedes the first (the host cancels
-## its transfer) and Cancel is a change whose plan asks for nothing.
+## Fetch a URL to see transfer progress, then the response status, size
+## and a preview. `watch_latest` cancels the previous transfer when Fetch
+## starts another request. Cancel changes the request plan to an empty list.
 main : Engine.Program(_)
 main = Engine.program_store({}, |_boot| store, |_boot| view())
 
-## What the watch site asks for: `serial` makes every Fetch a new value, even
-## of the same URL; `active` false asks for nothing (and cancels).
+## The request's serial distinguishes successive fetches of the same URL.
 Fetch : { serial : U64, url : Str, timeout : Bool, active : Bool }
 
 ## How the last request went, as the status badge shows it.
@@ -159,11 +157,18 @@ size = |bytes|
 		"${(bytes // 1_000_000).to_str()}.${((bytes % 1_000_000) // 100_000).to_str()} MB"
 	}
 
-## The first 400 bytes of the body, on one line.
+## Flatten up to 400 bytes of the decoded response text onto one line.
 preview : Str -> Str
 preview = |body| Str.join_with(Str.from_utf8_lossy(body.to_utf8().take_first(400)).split_on("\n").map(|line| line.trim()), " ")
 
+## Trim and join the lines of a response preview.
 expect preview("a\n  b") == "a b"
+
+## A cancelled request plan asks for no effects.
 expect plan({ serial: 1, url: "u", timeout: Bool.False, active: Bool.False }).is_empty()
+
+## Report response sizes in decimal units.
 expect [size(512), size(1_256), size(3_400_000)] == ["512 bytes", "1.2 KB", "3.4 MB"]
+
+## The badge distinguishes HTTP status from a transfer failure.
 expect [badge_text(Answered(404)), badge_text(Failed("NETWORK"))] == ["404", "NETWORK"]

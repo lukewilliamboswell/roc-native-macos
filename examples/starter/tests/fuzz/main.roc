@@ -9,25 +9,14 @@ import logic.Lyrics
 import logic.Preset
 import logic.Queue
 
-## Fuzz targets for the player's logic in `logic/`, built with roc-fuzz
-## (https://github.com/lukewilliamboswell/roc-fuzz), a platform of its own:
-## this is a development program, never part of the app, and it imports
-## `logic` exactly as `src/main.roc` does.
+## Fuzz the app's pure logic through the same package imported by
+## `src/main.roc`. Use `roc macos.roc fuzz` to generate and mutate inputs
+## or `roc macos.roc fuzz --check` to check the declared examples.
 ##
-## `roc macos.roc fuzz` builds it (`roc build --fuzz tests/fuzz/main.roc`, into
-## `.macos/fuzz`) and runs each target in turn for ten seconds;
-## `roc macos.roc fuzz --check` runs only the declared examples, quickly, as
-## CI does. A failure leaves a report and the failing input under
-## `.roc-fuzz/`, which `.macos/fuzz --target=NAME replay INPUT` reproduces;
-## roc-fuzz's manual covers `show`, `minimize` and keeping a failure as a
-## regression example.
-##
-## To add a target: write a property as a function returning `Fuzz.keep`
-## (or `Fuzz.reject` for an input outside it) that `crash`es when the
-## property fails, wrap it in `Fuzz.target_with` with a unique `name`, and
-## add it to `target` below. Good properties are round trips, invariants
-## and "never crashes" checks of a parser: the files a listener drops and
-## imports are anything at all.
+## Add a named `Fuzz.target_with` to the suite below. Return `Fuzz.keep`
+## for a passing case, `Fuzz.reject` outside the property's preconditions,
+## and crash with the failing case when the property fails.
+## https://lukewilliamboswell.github.io/roc-native-macos/apps.html#fuzz-the-logic
 target = Fuzz.suite([lrc_parse, lrc_round_trip, json_round_trip, preset_decode, preset_round_trip, queue_invariants])
 
 # ------------------------------------------------------------------ lyrics

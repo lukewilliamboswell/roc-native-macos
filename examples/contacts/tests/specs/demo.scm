@@ -1,7 +1,5 @@
-; The README's demo of the contacts example: scripts/record_demos.roc
-; records its window while these steps run, as docs/images/contacts.gif. A
-; (demo …) is a spec with real effects and time, so `test` and the check
-; parse it but never run it.
+; Record filtering contacts and opening the detail pane.
+; Used by scripts/record_demos.roc.
 (demo "contacts demo"
   (setup
     (live-effects))

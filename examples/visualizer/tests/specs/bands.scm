@@ -1,6 +1,5 @@
-; The bands: one bar a value of a series source, each bar's height read
-; from it (`Element`), redrawn as the wave steps on. A bar's colour and
-; height read the same at every probe.
+; The bars follow the series, and the amber marker reads one element.
+; The red marker reads past the end of the series and stays in place.
 (test "bands"
   (steps
     (choose "Bands")

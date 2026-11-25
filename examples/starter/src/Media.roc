@@ -2,23 +2,15 @@ import pf.Audio
 import pf.Engine exposing [Elem, File, Signal]
 import logic.Eq
 
-## The audio session: the one module that talks to the player (the
-## platform's `Audio`), so that everything else speaks in the commands,
-## events and status below. Roc owns the queue, the controls and what they
-## mean; the host owns decoding, the EQ, the audio clock and the analysis.
+## Translate between the queue and the platform's `Audio` session.
+## `Store.send` posts commands to the outbox. `Media.session` sends them
+## and delivers playback events to `Store.heard` and status updates to
+## `Store.followed`. The `track` on a load is the queue generation, so
+## those decisions can ignore replies for a song the listener left.
 ##
-## Decisions in `Store` post commands to the store's `media` outbox, a list
-## a turn (`Store.send`), and `Media.session` sends them with `Audio.send`.
-## The player's events come back to `Store.heard`, and its status (where
-## playback stands, about five times a second while playing) to
-## `Store.followed`. Every load names its song by `track`, the queue's
-## generation when it was chosen (`logic/Queue.roc`), and every event and
-## status carries it, so a late event about an older song changes nothing.
-## The drawing surface reads the sound's measurements natively (the
-## `audio.*` sources); Roc never relays them.
-##
-## The program declares the session's ports: `src/main.roc`'s
-## `.with_ports(Audio.ports)`.
+## `main.roc` registers `Audio.ports`. The surface reads the host's audio
+## measurements directly.
+## https://lukewilliamboswell.github.io/roc-native-macos/ui.html#audio
 Media := [].{
 
 	## What the player is doing, as the app shows it.
@@ -28,8 +20,8 @@ Media := [].{
 	## song (milliseconds), how long the song is (0 until it is known), the
 	## song it holds (its `track`, the queue's generation when it was
 	## chosen), and the session's own generation, which changes with every
-	## load, seek and stop: the drawing surface's `reset`, so its trails
-	## start again.
+	## load, seek, stop and restart. The drawing surface uses it as `reset`
+	## to clear the trail.
 	Player : { status : Phase, position_ms : U64, duration_ms : U64, generation : U64, reset : U64 }
 
 	stopped : Player
@@ -204,11 +196,16 @@ Media := [].{
 		}
 }
 
+## Schedule the next lyric cue relative to the current playback position.
 expect {
 	p = { ..Media.stopped, status: Playing, position_ms: 7_000, generation: 2 }
 	Media.wait(p, At(12_000)) == Wait({ ms: 5_000, until: 12_000, player: p })
 }
+
+## The lyric timer waits for playback to resume when paused.
 expect Media.wait({ ..Media.stopped, status: Paused, position_ms: 7_000 }, At(12_000)) == NoWait
+
+## With no later cue, the lyric timer has nothing to schedule.
 expect Media.wait({ ..Media.stopped, status: Playing }, None) == NoWait
 
 ## EQ settings become every band's gain in dB, the preamp and bypass.
@@ -217,4 +214,5 @@ expect {
 	commands.len() == 12 and commands.get(2) == Ok(Gain({ band: 2, db: -4.5 })) and commands.last() == Ok(Bypass(Bool.False))
 }
 
+## Map volume percent to the unit interval and clamp the upper bound.
 expect Media.volume(40) == Volume(0.4) and Media.volume(250) == Volume(1)

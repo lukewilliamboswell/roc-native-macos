@@ -10,13 +10,15 @@ import Workflow
 ## directory). `init` writes the starter example, a music player with a
 ## logic package, fuzz targets, an icon and specs; `init --simple` writes the
 ## counter example, one `src/main.roc` and its specs. It writes only files
-## that are not there yet, and copies this directory's `macos.roc` into a new
-## directory so the app can run the tool from its own.
+## that are not there yet. The project gets a launcher it can run locally.
 Init :: [].{
 
 	## What `init` writes: a file's path in the app, and its text, its bytes
 	## or the file it is copied from.
 	Step : { path : Str, contents : [Text(Str), Bytes(List(U8)), CopyOf(Str)] }
+
+	## A downloaded launcher can be copied. A URL launch provides its source.
+	Launcher : [Local, Bundled(Str)]
 
 	## Which app `init` writes: the starter, or the counter with `--simple`.
 	Template : [Starter, Simple]
@@ -31,9 +33,13 @@ Init :: [].{
 
 	## Every file `init` writes into `dir`, for the app whose name is `name`.
 	## The app's root module names the release's platform.
-	plan : Str, Str, Template -> List(Step)
-	plan = |dir, name, template| {
-		tool = if (dir == ".") [] else [{ path: "macos.roc", contents: CopyOf("macos.roc") }]
+	plan : { dir : Str, name : Str, template : Template, launcher : Launcher } -> List(Step)
+	plan = |{ dir, name, template, launcher }| {
+		tool = match launcher {
+			Bundled(source) => [{ path: "macos.roc", contents: Text(source) }]
+			Local if dir == "." => []
+			Local => [{ path: "macos.roc", contents: CopyOf("macos.roc") }]
+		}
 		scaffold = Init.files(template).map(
 			|file|
 				match file.contents {
@@ -50,18 +56,18 @@ Init :: [].{
 	}
 
 	## Create the app, after checking that no file it writes already exists
-	## and, for a new directory, that there is a `macos.roc` here to copy.
-	run! : Str, Template => Try({}, _)
-	run! = |dir, template| {
+	## and that any local launcher it plans to copy is present.
+	run! : { dir : Str, template : Template, launcher : Launcher } => Try({}, _)
+	run! = |{ dir, template, launcher }| {
 		location = if (dir == ".") Env.cwd!()?.display() else dir.drop_suffix("/")
-		steps = Init.plan(dir, App.app_name(App.last_part(location)), template)
+		steps = Init.plan({ dir, name: App.app_name(App.last_part(location)), template, launcher })
 		for step in steps {
 			target = Init.place(dir, step.path)
 			if Path.exists!(Path.utf8(target))? {
 				return Err(InitWouldOverwrite(target))
 			}
 		}
-		if dir != "." and !(Path.exists!(Path.utf8("macos.roc"))?) {
+		if launcher == Local and dir != "." and !(Path.exists!(Path.utf8("macos.roc"))?) {
 			return Err(NoToolToCopy(dir))
 		}
 		for step in steps {
@@ -100,7 +106,7 @@ Init :: [].{
 	## What `init` prints: which app it made, its files, and what to do next.
 	summary : Str, Template -> Str
 	summary = |dir, template| {
-		next = if (dir == ".") "  roc macos.roc run" else "  cd ${dir}\n  roc macos.roc run"
+		next = if (dir == ".") "  roc macos.roc dev" else "  cd ${dir}\n  roc macos.roc dev"
 		(made, listing, other) = match template {
 			Starter => (
 				"a music player to build on",
@@ -131,12 +137,12 @@ Init :: [].{
 				"  .gitignore   keeps build output out of version control",
 				"  .github/     a workflow that tests and packages it when you push a tag such as v1.0.0",
 				"",
-				"Next, run the app (on a Mac; `build` and `package` work anywhere):",
+				"On a Mac, start the app in development mode:",
 				"",
 				next,
 				"",
-				"While you edit it, `roc macos.roc dev` runs it with hot reloading, and",
-				"`roc macos.roc test` checks its specs.",
+				"Save your changes, then press Command-R in the app to reload them.",
+				"`roc macos.roc test` checks the specs.",
 				"",
 				other,
 			])
@@ -165,8 +171,8 @@ expect {
 ## The starter writes the app in src/, its logic package, fuzz targets,
 ## icon, specs and the `.gitignore`.
 expect {
-	new = Init.plan("my-app", "my-app", Starter).map(|step| step.path)
-	here = Init.plan(".", "my-app", Starter).map(|step| step.path)
+	new = Init.plan({ dir: "my-app", name: "my-app", template: Starter, launcher: Local }).map(|step| step.path)
+	here = Init.plan({ dir: ".", name: "my-app", template: Starter, launcher: Local }).map(|step| step.path)
 	new.first() == Ok("macos.roc")
 		and new.drop_first(1) == here
 		and ["src/main.roc", "logic/main.roc", "tests/fuzz/main.roc", "assets/icon.png", ".gitignore", "macos.json", ".github/workflows/release.yml"].all(|path| here.contains(path))
@@ -177,8 +183,8 @@ expect {
 ## metadata, `.gitignore`, workflow and copy of the tool, and none of the
 ## starter's logic package, fuzz targets or assets.
 expect {
-	new = Init.plan("my-app", "my-app", Simple).map(|step| step.path)
-	here = Init.plan(".", "my-app", Simple).map(|step| step.path)
+	new = Init.plan({ dir: "my-app", name: "my-app", template: Simple, launcher: Local }).map(|step| step.path)
+	here = Init.plan({ dir: ".", name: "my-app", template: Simple, launcher: Local }).map(|step| step.path)
 	new.first() == Ok("macos.roc")
 		and new.drop_first(1) == here
 		and here.keep_if(|path| path.starts_with("src/")) == ["src/main.roc"]
@@ -189,7 +195,7 @@ expect {
 ## Each template's root module names the release's platform.
 expect [Starter, Simple].all(
 	|template|
-		match Init.plan(".", "my-app", template).keep_if(|step| step.path == "src/main.roc") {
+		match Init.plan({ dir: ".", name: "my-app", template: template, launcher: Local }).keep_if(|step| step.path == "src/main.roc") {
 			[{ contents: Text(text), .. }] => text.contains("pf: platform \"${Bundle.platform_url}\"") and !text.contains("../../../platform/")
 			_ => Bool.False
 		},
@@ -200,9 +206,10 @@ expect {
 	starter = Init.summary("my-app", Starter)
 	simple = Init.summary(".", Simple)
 	starter.contains("a music player to build on")
-		and starter.contains("  cd my-app\n  roc macos.roc run")
+		and starter.contains("  cd my-app\n  roc macos.roc dev")
 		and starter.contains("`roc macos.roc init --simple DIR` writes a counter")
 		and simple.contains("a counter to build on")
+		and simple.contains("  roc macos.roc dev")
 		and !simple.contains("cd ")
 		and !simple.contains("logic/")
 		and simple.contains("`roc macos.roc init DIR` writes a music player")
@@ -211,7 +218,7 @@ expect {
 ## The starter's root module names the release's platform; the fuzz
 ## targets keep roc-fuzz's, and the icon is written as the bytes it is.
 expect {
-	steps = Init.plan(".", "my-app", Starter)
+	steps = Init.plan({ dir: ".", name: "my-app", template: Starter, launcher: Local })
 	contents = |path| steps.keep_if(|step| step.path == path).first().map_ok(|step| step.contents)
 	root = match contents("src/main.roc") {
 		Ok(Text(text)) => text.contains("pf: platform \"${Bundle.platform_url}\"")
@@ -230,8 +237,13 @@ expect {
 
 ## Either template's metadata names the app.
 expect {
-	metadata = |template| Init.plan(".", "my-app", template).keep_if(|step| step.path == "macos.json").first().map_ok(|step| step.contents)
+	metadata = |template| Init.plan({ dir: ".", name: "my-app", template: template, launcher: Local }).keep_if(|step| step.path == "macos.json").first().map_ok(|step| step.contents)
 	[metadata(Starter), metadata(Simple)] == [Ok(Text(Meta.starter("my-app"))), Ok(Text(Meta.starter("my-app")))] and Meta.starter("my-app").contains("\"id\": \"com.example.my-app\"")
 }
 
 expect [Init.place("my-app/", "main.roc"), Init.place(".", "tests/specs/a.scm")] == ["my-app/main.roc", "tests/specs/a.scm"]
+
+## URL launch writes the bundled launcher for either init location.
+expect [".", "my-app"].all(
+	|dir| Init.plan({ dir, name: "my-app", template: Simple, launcher: Bundled("launcher source") }).first() == Ok({ path: "macos.roc", contents: Text("launcher source") }),
+)

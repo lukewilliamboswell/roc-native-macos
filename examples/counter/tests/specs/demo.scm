@@ -1,7 +1,6 @@
-; A recording of the counter: a (demo …) is a spec with real effects and
-; time, so `roc macos.roc test` parses it but never runs it. The platform's
-; repository records this one as its README's demo, docs/images/counter.gif
-; (scripts/record_demos.roc).
+; This recording script uses the spec grammar with live effects and waits.
+; `roc macos.roc test --check` checks its syntax.
+; https://lukewilliamboswell.github.io/roc-native-macos/apps.html#test-an-app
 (demo "counter demo"
   (setup
     (live-effects))

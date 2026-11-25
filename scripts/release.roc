@@ -98,10 +98,10 @@ absolute = |root, path| if (path.starts_with("/")) path else "${root}/${path}"
 ## The one bundle in a release directory: its file name.
 bundle_in! : Str => Try(Str, Str)
 bundle_in! = |dir| {
-	found = names_in!(dir)?.keep_if(|name| name.ends_with(".tar.zst") and !Release.is_tool_bundle(name))
+	found = names_in!(dir)?.keep_if(Release.is_platform_bundle)
 	match found {
 		[one] => Ok(one)
-		_ => Err("${dir} holds ${found.len().to_str()} platform bundles (.tar.zst files not named macos-*), not one")
+		_ => Err("${dir} holds ${found.len().to_str()} platform bundles, not one")
 	}
 }
 
@@ -112,6 +112,15 @@ tool_in! = |dir| {
 	match found {
 		[one] => Ok(one)
 		_ => Err("${dir} holds ${found.len().to_str()} tool bundles (macos-*.tar.zst), not one: run `release -- tool` first")
+	}
+}
+
+## The runnable installer archive of a release candidate.
+bootstrap_in! : Str => Try(Str, Str)
+bootstrap_in! = |dir| {
+	match names_in!(dir)?.keep_if(Release.is_bootstrap_bundle) {
+		[one] => Ok(one)
+		found => Err("${dir} holds ${found.len().to_str()} bootstrap bundles, not one: run `release -- tool` first")
 	}
 }
 
@@ -161,23 +170,45 @@ tool! = |root, version, dir, base| {
 	write!("${stage}/Bundle.roc", Release.release_bundle({ version, platform_url: "${base_url}/${bundle}", roc_version }, scaffold_files))?
 	step!(Cmd.new("roc").args(["test", "main.roc"]).cwd(Path.utf8(stage)), "roc test (the tool, with the release's Bundle.roc)")?
 	packed = "${root}/build/tool-bundle"
-	fresh!(packed) ? |error| "could not empty ${packed}: ${Str.inspect(error)}"
 	files = Release.tool_files(modules, scaffold_files)
-	step!(Cmd.new("roc").args(["bundle"].concat(files).concat(["--output-dir", packed]).map(OsStr.from_str)).cwd(Path.utf8(stage)), "roc bundle (the tool, ${files.len().to_str()} files)")?
-	hashed = match names_in!(packed)?.keep_if(|name| name.ends_with(".tar.zst")) {
-		[one] => one
-		found => return Err("roc bundle wrote ${found.len().to_str()} .tar.zst files to ${packed}, not one")
-	}
-	for old in names_in!(dir)?.keep_if(Release.is_tool_bundle) {
+	hashed = pack_tool!({ stage, packed, files })?
+	for old in names_in!(dir)?.keep_if(|name| Release.is_tool_bundle(name) or Release.is_bootstrap_bundle(name)) {
 		Path.delete!(Path.utf8("${dir}/${old}")) ? |error| "could not replace ${dir}/${old}: ${Str.inspect(error)}"
 	}
 	tool = Release.tool_bundle(hashed)
 	Path.copy!(Path.utf8("${packed}/${hashed}"), Path.utf8("${dir}/${tool}")) ? |error| "could not copy the tool's bundle to ${dir}: ${Str.inspect(error)}"
 	basic_cli = Release.platform_of(read!("cli/main.roc")?) ? |_| "cli/main.roc names no platform"
-	write!("${dir}/macos.roc", Release.launcher({ version, basic_cli, tool_url: "${base_url}/${tool}" }))?
+	tool_url = "${base_url}/${tool}"
+	launcher = Release.launcher({ version, basic_cli, tool_url })
+	write!("${dir}/macos.roc", launcher)?
+	bootstrap_stage = "${root}/build/bootstrap-stage"
+	fresh!(bootstrap_stage) ? |error| "could not empty ${bootstrap_stage}: ${Str.inspect(error)}"
+	write!("${bootstrap_stage}/main.roc", Release.bootstrap(basic_cli))?
+	write!("${bootstrap_stage}/macos.roc", launcher)?
+	# The runnable entry uses a local package so it can be bundled before
+	# GitHub has the tool package. The written launcher names the release URL.
+	for file in files {
+		copy!("${stage}/${file}", "${bootstrap_stage}/tool/${file}")?
+	}
+	bootstrap_files = ["main.roc", "macos.roc"].concat(files.map(|file| "tool/${file}"))
+	bootstrap_hash = pack_tool!({ stage: bootstrap_stage, packed, files: bootstrap_files })?
+	bootstrap = Release.bootstrap_bundle(bootstrap_hash)
+	copy!("${packed}/${bootstrap_hash}", "${dir}/${bootstrap}")?
 	note!("release: ${dir}/${tool}, the macos.roc tool naming ${base_url}/${bundle}")
-	note!("release: ${dir}/macos.roc, naming ${base_url}/${tool}")
+	note!("release: ${dir}/macos.roc, naming ${tool_url}")
+	note!("release: run with `roc run ${base_url}/${bootstrap} init my-app`")
 	Ok({})
+}
+
+## Pack the staged tool or installer and return its content-addressed file name.
+pack_tool! : { stage : Str, packed : Str, files : List(Str) } => Try(Str, Str)
+pack_tool! = |{ stage, packed, files }| {
+	fresh!(packed) ? |error| "could not empty ${packed}: ${Str.inspect(error)}"
+	step!(Cmd.new("roc").args(["bundle"].concat(files).concat(["--output-dir", packed]).map(OsStr.from_str)).cwd(Path.utf8(stage)), "roc bundle (${files.len().to_str()} files)")?
+	match names_in!(packed)?.keep_if(|name| name.ends_with(".tar.zst")) {
+		[one] => Ok(one)
+		found => Err("roc bundle wrote ${found.len().to_str()} .tar.zst files to ${packed}, not one")
+	}
 }
 
 ## The examples archive: `roc-native-macos-examples-VERSION/` holding each
@@ -232,12 +263,11 @@ readme = |version, url, count|
 			"    ${url}",
 			"",
 			"Build one with a Roc compiler on any system; the app runs on Apple silicon",
-			"and Intel Macs with macOS 15 or later. With macos.roc, the tool this release",
-			"publishes, saved beside this directory, build and start an example from its",
-			"own directory:",
+			"and Intel Macs with macOS 15 or later. Save the release's macos.roc beside",
+			"the extracted folder. Start an example in development mode from its directory:",
 			"",
 			"    cd examples/todos",
-			"    roc ../../../macos.roc run",
+			"    roc ../../../macos.roc dev",
 			"",
 			"`roc ../../../macos.roc build` builds `todos.app`, a universal app for both",
 			"kinds of Mac, on any system. Without the tool, name the Mac to build for:",
@@ -367,20 +397,34 @@ build_each! = |work, top, url, bundle, examples| {
 	Ok({})
 }
 
-## An author's first steps, through the release's `macos.roc` served from
-## localhost, with an empty package cache: `init` an app, then `build`
-## and `test` it. `init` names the platform by its release URL, which is
-## served from localhost too.
+## Run the release's installer with an empty package cache, then build and
+## test the app. Redirect the generated launcher and platform URL to the
+## local server. Older releases start with their standalone launcher.
 beginner! : Str, Str, Str, { bundle : Str, tool : Str } => Try({}, Str)
 beginner! = |work, dir, served, { bundle, tool }| {
 	home = "${work}/beginner"
 	cache = "${work}/beginner-cache"
 	Path.create_all!(Path.utf8(cache)) ? |error| "could not create ${cache}: ${Str.inspect(error)}"
-	launcher = Release.served_launcher(read!("${dir}/macos.roc")?, tool, "${served}/${tool}") ? |_| "${dir}/macos.roc does not name the release URL of ${tool}"
-	write!("${home}/macos.roc", launcher)?
-	tool_step! = |args, cwd| step!(Cmd.new("roc").args(["macos.roc"].concat(args).map(OsStr.from_str)).cwd(Path.utf8(cwd)).env("XDG_CACHE_HOME", OsStr.from_str(cache)), "roc macos.roc ${Str.join_with(args, " ")} (in ${cwd.drop_prefix("${work}/")})")
-	tool_step!(["init", "my-app"], home)?
+	release_launcher = read!("${dir}/macos.roc")?
+	launcher = Release.served_launcher(release_launcher, tool, "${served}/${tool}") ? |_| "${dir}/macos.roc does not name the release URL of ${tool}"
 	app_dir = "${home}/my-app"
+	tool_step! = |args, cwd| step!(Cmd.new("roc").args(["macos.roc"].concat(args).map(OsStr.from_str)).cwd(Path.utf8(cwd)).env("XDG_CACHE_HOME", OsStr.from_str(cache)), "roc macos.roc ${Str.join_with(args, " ")} (in ${cwd.drop_prefix("${work}/")})")
+	match names_in!(dir)?.keep_if(Release.is_bootstrap_bundle) {
+		[] => {
+			write!("${home}/macos.roc", launcher)?
+			tool_step!(["init", "my-app"], home)?
+		}
+		[bootstrap] => {
+			Path.create_all!(Path.utf8(home)) ? |error| "could not create ${home}: ${Str.inspect(error)}"
+			url = "${served}/${bootstrap}"
+			step!(Cmd.new("roc").args(["run", OsStr.from_str(url), "init", "my-app"]).cwd(Path.utf8(home)).env("XDG_CACHE_HOME", OsStr.from_str(cache)), "roc run ${url} init my-app")?
+			if read!("${app_dir}/macos.roc")? != release_launcher {
+				return Err("the installer wrote a launcher that differs from the release's macos.roc")
+			}
+			write!("${app_dir}/macos.roc", launcher)?
+		}
+		found => return Err("${dir} holds ${found.len().to_str()} bootstrap bundles, expected at most one")
+	}
 	entry = "src/main.roc"
 	source = read!("${app_dir}/${entry}")?
 	write!("${app_dir}/${entry}", Release.served_main(source, bundle, "${served}/${bundle}") ? |_| "init wrote a ${entry} that does not name the release URL of ${bundle}")?
@@ -437,6 +481,7 @@ notes! = |version, dir, out| {
 	}
 	bundle = bundle_in!(dir)?
 	root_url = Release.download_root(repository!(), version)
+	bootstrap = bootstrap_in!(dir)?
 	rendered = match Release.render_notes({ source: read!(source_path)?, version: notes_version, platform_url: "${root_url}/${bundle}", examples_url: "${root_url}/${Release.examples_name(version)}.zip", launcher_url: "${root_url}/macos.roc" }) {
 		Ok(text) => text
 		Err(WrongTitle(title)) => return Err("${source_path} must open with ${title}")
@@ -460,6 +505,17 @@ notes! = |version, dir, out| {
 			[
 				"${prefix}${rendered.trim()}",
 				"",
+				"## Create an app directly with Roc",
+				"",
+				"```sh",
+				"roc run ${root_url}/${bootstrap} init my-app",
+				"cd my-app",
+				"roc macos.roc dev",
+				"```",
+				"",
+				"Press Command-R in the app to load your edits after saving.",
+				"Pass `--simple` after `init` to start with a counter.",
+				"",
 				"## Compilers and toolchain",
 				"",
 				"- Platform, examples and bundle: `${roc}`",
@@ -468,7 +524,7 @@ notes! = |version, dir, out| {
 				"",
 				"## Files",
 				"",
-				"The bundle, the examples archive, the tool's package and `macos.roc` each",
+				"The platform, examples, tool package, installer archive and `macos.roc` each",
 				"have SBOM documents beside them, bound to their SHA-256: SPDX 3",
 				"(`.spdx.json`), SPDX 2.3 (`.spdx-2.3.json`), CycloneDX (`.cdx.json`) and",
 				"the evidence manifest (`.sbom-manifest.json`). Every file has a",

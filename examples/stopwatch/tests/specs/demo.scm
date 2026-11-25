@@ -1,7 +1,5 @@
-; The README's demo of the stopwatch example: scripts/record_demos.roc
-; records its window while these steps run, as docs/images/stopwatch.gif. A
-; (demo …) is a spec with real effects and time, so `test` and the check
-; parse it but never run it.
+; Record laps as the live interval advances the stopwatch.
+; Used by scripts/record_demos.roc.
 (demo "stopwatch demo"
   (setup
     (live-effects))

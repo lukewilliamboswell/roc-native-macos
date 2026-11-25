@@ -1,4 +1,4 @@
-; A picked file is inspected: its size, type, lines and URL.
+; Inspect shows the file's size, type, SHA-256, preview and file URL.
 (test "inspect"
   (steps
     (files "tests/fixtures/hello.txt")

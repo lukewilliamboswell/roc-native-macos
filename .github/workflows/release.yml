@@ -103,6 +103,7 @@ jobs:
     outputs:
       bundle: ${{ steps.bundle.outputs.name }}
       tool: ${{ steps.bundle.outputs.tool-name }}
+      bootstrap: ${{ steps.bundle.outputs.bootstrap-name }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -174,6 +175,7 @@ jobs:
         with:
           files: |
             ${{ steps.bundle.outputs.tool }}
+            ${{ steps.bundle.outputs.bootstrap }}
             build/release/macos.roc
           composition: sbom/tool.json
           version: ${{ needs.validate.outputs.version }}
@@ -272,7 +274,7 @@ jobs:
           candidate="$tmp/candidate"
           bundles=()
           for file in "$candidate"/*.tar.zst; do
-            case "$(basename "$file")" in macos-*) ;; *) bundles+=("$file") ;; esac
+            case "$(basename "$file")" in macos-*|init-macos-*) ;; *) bundles+=("$file") ;; esac
           done
           tools=("$candidate"/macos-*.tar.zst)
           archives=("$candidate"/roc-native-macos-examples-*.zip)
@@ -446,6 +448,11 @@ jobs:
         with:
           subject-path: candidate/${{ needs.build.outputs.tool }}
           sbom-path: candidate/${{ needs.build.outputs.tool }}.cdx.json
+      - name: Attest the runnable installer archive's SBOM
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6
+        with:
+          subject-path: candidate/${{ needs.build.outputs.bootstrap }}
+          sbom-path: candidate/${{ needs.build.outputs.bootstrap }}.cdx.json
       - name: Attest macos.roc's SBOM
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6
         with:

@@ -103,8 +103,13 @@ Eq := [].{
 	}
 }
 
+## Gain labels show sign, tenths and units.
 expect Eq.label(35) == "+3.5 dB" and Eq.label(-120) == "-12.0 dB" and Eq.label(0) == "0.0 dB" and Eq.label(-5) == "-0.5 dB"
+
+## Convert stored tenths to decibels for the audio session.
 expect Eq.decibels(35) == 3.5 and Eq.decibels(-120) == -12.0
+
+## Band centres show Hz or kHz.
 expect Eq.centre_label(32) == "32 Hz" and Eq.centre_label(16_000) == "16 kHz"
 
 ## A band is kept within its range, and Flat restores zero but not bypass.

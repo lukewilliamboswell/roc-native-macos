@@ -16,8 +16,8 @@ import Package
 ##
 ## ```sh
 ## roc macos.roc init my-app   # create an app; --simple for a counter
-## roc macos.roc run           # build it and start it
 ## roc macos.roc dev           # start it with hot reloading
+## roc macos.roc run           # build it and start it
 ## roc macos.roc build         # build my-app.app, on any system
 ## roc macos.roc test          # run its expect tests and specs
 ## roc macos.roc fuzz          # run its roc-fuzz targets, tests/fuzz/main.roc
@@ -43,12 +43,16 @@ MacOS :: [].{
 	## is explained in a sentence on standard error and ends the program with
 	## a non-zero exit code (2 for a misused command line).
 	run! : List(OsStr.OsStr) => Try({}, [Exit(I32)])
-	run! = |raw| {
+	run! = |raw| MacOS.run_with_launcher!(raw, Local)
+
+	## A URL-launched app supplies the source of the project launcher.
+	run_with_launcher! : List(OsStr.OsStr), Init.Launcher => Try({}, [Exit(I32)])
+	run_with_launcher! = |raw, launcher| {
 		args = raw.map(OsStr.display).drop_if(|arg| arg == "--")
 		outcome = match MacOS.parse(args) {
 			Ok(Help) => Stdout.line!(MacOS.usage)
 			Ok(CommandHelp(command)) => Stdout.line!(MacOS.command_usage(command))
-			Ok(Init({ dir, template })) => Init.run!(dir, template)
+			Ok(Init({ dir, template })) => Init.run!({ dir, template, launcher })
 			Ok(Build(chosen)) => App.build!(chosen).map_ok(|_| {})
 			Ok(Run(chosen)) => App.run!(chosen)
 			Ok(Dev) => App.dev!()
@@ -125,8 +129,8 @@ MacOS :: [].{
 		\\  roc macos.roc init [DIR]       Create an app in DIR, or in this directory: a music player.
 		\\  roc macos.roc init --simple    Create a counter instead: src/main.roc and its specs.
 		\\  roc macos.roc build            Build the app, a universal <name>.app, on any system.
-		\\  roc macos.roc run              Build it and start it, its output in this terminal.
 		\\  roc macos.roc dev              Start it with roc src/main.roc, which reloads it as you save.
+		\\  roc macos.roc run              Build it and start it, its output in this terminal.
 		\\  roc macos.roc test [--update]  Run its expect tests, then its specs, tests/specs/*.scm.
 		\\  roc macos.roc fuzz [--check]   Build its roc-fuzz targets, tests/fuzz/main.roc, and run them.
 		\\  roc macos.roc package          Build it, sign it and zip it, as dist/<name>-<version>.zip.
@@ -169,7 +173,8 @@ MacOS :: [].{
 				\\Either writes macos.json (the app's name, identifier and version),
 				\\.gitignore, and .github/workflows/release.yml, which packages the app on
 				\\GitHub when you push a tag such as v1.0.0. It never overwrites a file.
-				\\Keep macos.roc in the directory you run init from; a new app gets a copy.
+				\\Run a local macos.roc from the directory that holds it. For a URL launch,
+				\\use the roc run command from the release notes. Both give the app a launcher.
 			"build" =>
 				\\Build the app as <name>.app, where <name> is the app's directory.
 				\\

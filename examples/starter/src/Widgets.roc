@@ -99,4 +99,5 @@ Widgets := [].{
 		)
 }
 
+## Toggling a section twice restores its original state.
 expect Widgets.flipped(Widgets.flipped(Open)) == Open

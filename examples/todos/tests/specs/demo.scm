@@ -1,7 +1,5 @@
-; The README's demo of the todos example: scripts/record_demos.roc records
-; its window while these steps run, as docs/images/todos.gif. A (demo …) is
-; a spec with real effects and time, so `test` and the check parse it but
-; never run it.
+; Record adding, completing and filtering to-dos.
+; Used by scripts/record_demos.roc.
 (demo "todos demo"
   (setup
     (live-effects))

@@ -1,7 +1,5 @@
-; The README's demo of the http-fetch example: scripts/record_demos.roc
-; records its window while these steps run, as docs/images/http-fetch.gif. A
-; (demo …) is a spec with real effects and time, so `test` and the check
-; parse it but never run it.
+; Record a live request to the recorder's local HTTP server.
+; Used by scripts/record_demos.roc.
 (demo "http-fetch demo"
   (setup
     (live-effects))
